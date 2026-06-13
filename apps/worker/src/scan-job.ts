@@ -6,7 +6,7 @@ import {
   type ScanExecutionPlan,
   type ScanExecutionResult
 } from "@security-preflight/scanners";
-import { generateJsonReport, generateMarkdownReport } from "@security-preflight/report";
+import { generateCentralResultEnvelope, generateJsonReport, generateMarkdownReport } from "@security-preflight/report";
 import type { Project, ScanProfile, ScanRun } from "@security-preflight/core";
 
 export interface ExecuteScanJobInput {
@@ -24,6 +24,7 @@ export interface ExecuteScanJobResult {
     executionResult: string;
     json: string;
     markdown: string;
+    centralEnvelope: string;
   };
 }
 
@@ -83,7 +84,7 @@ function mapProjectPathForWorker(plan: ScanExecutionPlan): ScanExecutionPlan {
 async function writeReports(
   plan: ScanExecutionPlan,
   execution: ScanExecutionResult
-): Promise<{ json: string; markdown: string }> {
+): Promise<{ json: string; markdown: string; centralEnvelope: string }> {
   await mkdir(plan.evidenceRoot, { recursive: true });
 
   const now = new Date().toISOString();
@@ -131,9 +132,11 @@ async function writeReports(
   };
   const json = path.join(plan.evidenceRoot, "report.json");
   const markdown = path.join(plan.evidenceRoot, "report.md");
+  const centralEnvelope = path.join(plan.evidenceRoot, "central-result-envelope.json");
 
   await writeFile(json, `${generateJsonReport(input)}\n`, "utf8");
   await writeFile(markdown, generateMarkdownReport(input), "utf8");
+  await writeFile(centralEnvelope, `${JSON.stringify(generateCentralResultEnvelope(input), null, 2)}\n`, "utf8");
 
-  return { json, markdown };
+  return { json, markdown, centralEnvelope };
 }

@@ -21,6 +21,30 @@ export type FindingType =
   | "documentation"
   | "configuration"
   | "tooling";
+export type ToolCategory =
+  | "runtime"
+  | "secret-scanning"
+  | "sast"
+  | "sca"
+  | "sbom"
+  | "license"
+  | "container"
+  | "iac"
+  | "openapi"
+  | "dast"
+  | "attestation"
+  | "telemetry";
+
+export interface ToolRequirement {
+  id: string;
+  name: string;
+  category: ToolCategory;
+  requiredForHealthcare: boolean;
+  command: string;
+  args: string[];
+  checks: string[];
+  purpose: string;
+}
 
 export interface Project {
   id: string;
@@ -101,6 +125,119 @@ export const severityOrder: Record<Severity, number> = {
   low: 2,
   info: 1
 };
+
+export const requiredScannerTools: ToolRequirement[] = [
+  {
+    id: "docker",
+    name: "Docker",
+    category: "runtime",
+    requiredForHealthcare: true,
+    command: "docker",
+    args: ["--version"],
+    checks: ["container", "trivy:image", "scanner-toolbox"],
+    purpose: "Local container runtime for isolated scanner execution."
+  },
+  {
+    id: "docker-compose",
+    name: "Docker Compose",
+    category: "runtime",
+    requiredForHealthcare: true,
+    command: "docker",
+    args: ["compose", "version"],
+    checks: ["local-stack", "scanner-toolbox"],
+    purpose: "Local orchestration for API, worker, Redis, PostgreSQL, and scanner services."
+  },
+  {
+    id: "gitleaks",
+    name: "Gitleaks",
+    category: "secret-scanning",
+    requiredForHealthcare: true,
+    command: "gitleaks",
+    args: ["version"],
+    checks: ["gitleaks:quick", "gitleaks", "gitleaks:history", "secrets"],
+    purpose: "Secret detection in working tree and Git history."
+  },
+  {
+    id: "semgrep",
+    name: "Semgrep",
+    category: "sast",
+    requiredForHealthcare: true,
+    command: "semgrep",
+    args: ["--version"],
+    checks: ["semgrep:light", "semgrep", "auth", "authorization", "audit-logging"],
+    purpose: "Static application security checks and framework-specific rules."
+  },
+  {
+    id: "trivy",
+    name: "Trivy",
+    category: "sca",
+    requiredForHealthcare: true,
+    command: "trivy",
+    args: ["--version"],
+    checks: ["trivy:fs-quick", "trivy:fs", "trivy:image", "container:secrets", "container:misconfiguration"],
+    purpose: "Filesystem, dependency, container, and misconfiguration scanning."
+  },
+  {
+    id: "redocly",
+    name: "Redocly",
+    category: "openapi",
+    requiredForHealthcare: true,
+    command: "npx",
+    args: ["--yes", "@redocly/cli@latest", "--version"],
+    checks: ["openapi", "openapi:lint", "api:error-response", "api:health", "api:ready"],
+    purpose: "OpenAPI JSON-first contract validation."
+  },
+  {
+    id: "syft",
+    name: "Syft",
+    category: "sbom",
+    requiredForHealthcare: true,
+    command: "syft",
+    args: ["version"],
+    checks: ["syft:sbom", "sbom"],
+    purpose: "CycloneDX SBOM generation for central evidence and supply-chain review."
+  },
+  {
+    id: "grype",
+    name: "Grype",
+    category: "sca",
+    requiredForHealthcare: true,
+    command: "grype",
+    args: ["version"],
+    checks: ["grype:sbom", "license-policy"],
+    purpose: "Vulnerability analysis from SBOM evidence."
+  },
+  {
+    id: "osv-scanner",
+    name: "OSV Scanner",
+    category: "sca",
+    requiredForHealthcare: true,
+    command: "osv-scanner",
+    args: ["--version"],
+    checks: ["osv:dependencies"],
+    purpose: "Open-source vulnerability checks against lockfiles and manifests."
+  },
+  {
+    id: "checkov",
+    name: "Checkov",
+    category: "iac",
+    requiredForHealthcare: true,
+    command: "checkov",
+    args: ["--version"],
+    checks: ["iac:checkov"],
+    purpose: "Infrastructure-as-code and deployment policy scanning."
+  },
+  {
+    id: "zap",
+    name: "OWASP ZAP",
+    category: "dast",
+    requiredForHealthcare: false,
+    command: "zap-baseline.py",
+    args: ["--version"],
+    checks: ["zap:baseline"],
+    purpose: "Controlled baseline DAST for explicitly allowlisted owned targets."
+  }
+];
 
 export const defaultScanProfiles: ScanProfile[] = [
   {
@@ -183,6 +320,44 @@ export const defaultScanProfiles: ScanProfile[] = [
     allowActiveDast: false,
     allowProductionTargets: false,
     timeoutSeconds: 1800
+  },
+  {
+    id: "healthcare-reference",
+    name: "healthcare-reference",
+    description:
+      "Reference profile for healthcare and other highly sensitive systems requiring evidence, privacy, SBOM, API, IaC, and central-result export readiness.",
+    checks: [
+      "gitleaks:history",
+      "semgrep",
+      "trivy:fs",
+      "osv:dependencies",
+      "syft:sbom",
+      "grype:sbom",
+      "openapi",
+      "openapi:lint",
+      "api:error-response",
+      "api:health",
+      "api:ready",
+      "documentation",
+      "threat-model",
+      "data-classification",
+      "privacy-impact",
+      "audit-logging",
+      "auth",
+      "authorization",
+      "encryption",
+      "retention",
+      "logging-redaction",
+      "telemetry-export",
+      "iac:checkov",
+      "container",
+      "license-policy",
+      "forbidden-files"
+    ],
+    failThreshold: "medium",
+    allowActiveDast: false,
+    allowProductionTargets: false,
+    timeoutSeconds: 2400
   }
 ];
 
@@ -219,6 +394,11 @@ export function evaluateGate(
 
     if (profile.name === "pre-release" && finding.severity === "high") {
       blockingReasons.push(`HIGH pre-release finding: ${finding.title}`);
+      continue;
+    }
+
+    if (profile.name === "healthcare-reference" && severityOrder[finding.severity] >= severityOrder.medium) {
+      blockingReasons.push(`${finding.severity.toUpperCase()} healthcare-reference finding: ${finding.title}`);
       continue;
     }
 

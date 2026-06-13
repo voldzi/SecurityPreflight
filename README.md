@@ -16,6 +16,8 @@ CODEX and Claude Code, following the central application standards
 - Evidence-oriented reporting for issues, risks, and remediation status.
 - Guarded scan execution planning with read-only mounts, evidence paths, and
   explicit controlled DAST allowlists.
+- Healthcare reference profile with SBOM, SCA, SAST, IaC, OpenAPI, privacy,
+  audit, encryption, retention, and central result envelope coverage.
 - Chroma-assisted development through the local `chromadb` tooling repository.
 
 ## Technology Stack
@@ -63,6 +65,12 @@ Queue a supported internal scan through the API and worker:
 
 ```bash
 pnpm --filter @security-preflight/cli preflight scan --project . --profile documentation-compliance
+```
+
+Preview the healthcare reference profile:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan --project . --profile healthcare-reference --dry-run
 ```
 
 Basic configuration is described in `docs/operations.md`; `.env.example` lists

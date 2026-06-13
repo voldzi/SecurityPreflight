@@ -19,6 +19,17 @@ describe("api server", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().data.length).toBeGreaterThan(0);
+    expect(response.json().data.some((profile: { id: string }) => profile.id === "healthcare-reference")).toBe(true);
+  });
+
+  it("serves healthcare toolchain requirements", async () => {
+    const server = createServer({ logger: false });
+    const response = await server.inject({ method: "GET", url: "/api/v1/toolchain/requirements" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().meta.healthcareRequired).toBeGreaterThan(0);
+    expect(response.json().data.some((tool: { id: string }) => tool.id === "syft")).toBe(true);
+    expect(response.json().data.some((tool: { id: string }) => tool.id === "checkov")).toBe(true);
   });
 
   it("plans a local scan", async () => {
@@ -138,5 +149,53 @@ describe("api server", () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe("SCAN_PLAN_BLOCKED");
+  });
+
+  it("accepts a redacted central result envelope", async () => {
+    const server = createServer({ logger: false });
+    const response = await server.inject({
+      method: "POST",
+      url: "/api/v1/results/ingest",
+      payload: {
+        schemaVersion: "security-preflight.result.v1",
+        generatedAt: new Date().toISOString(),
+        producer: {
+          name: "SecurityPreflight",
+          version: "0.1.0"
+        },
+        project: {
+          id: "project_test",
+          name: "Test Project",
+          dataClassification: "health-data"
+        },
+        scanRun: {
+          id: "scan_test",
+          status: "completed",
+          gateResult: "pass"
+        },
+        profile: {
+          id: "healthcare-reference",
+          name: "healthcare-reference",
+          checks: ["documentation"]
+        },
+        gate: {
+          result: "pass",
+          blockingReasons: []
+        },
+        findings: [],
+        evidence: {
+          findingCount: 0,
+          redacted: true
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      data: {
+        status: "accepted",
+        scanRunId: "scan_test"
+      }
+    });
   });
 });

@@ -40,7 +40,11 @@ const tools = [
   { name: "Gitleaks", status: "container", version: "scanner-toolbox" },
   { name: "Semgrep", status: "container", version: "scanner-toolbox" },
   { name: "Trivy", status: "container", version: "scanner-toolbox" },
-  { name: "OpenAPI", status: "available", version: "Redocly" }
+  { name: "OpenAPI", status: "available", version: "Redocly" },
+  { name: "Syft SBOM", status: "missing", version: "required" },
+  { name: "Grype / OSV", status: "missing", version: "required" },
+  { name: "Checkov IaC", status: "missing", version: "required" },
+  { name: "Central results API", status: "available", version: "v1 envelope" }
 ];
 
 const findings = [

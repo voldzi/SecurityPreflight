@@ -42,6 +42,7 @@ pnpm --filter @security-preflight/cli preflight status
 pnpm --filter @security-preflight/cli preflight doctor
 pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run
 pnpm --filter @security-preflight/cli preflight scan --project . --profile documentation-compliance
+pnpm --filter @security-preflight/cli preflight scan --project . --profile healthcare-reference --dry-run
 ```
 
 Controlled local DAST dry-run example:
@@ -71,6 +72,11 @@ When the worker runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
 directory containing the projects to scan. The worker mounts it read-only at
 `PROJECTS_ROOT_CONTAINER` and maps queued host paths under that root into the
 container path before reading project files.
+
+Completed worker jobs write `central-result-envelope.json` next to `report.json`
+and `report.md`. A central storage service can implement or call
+`POST /api/v1/results/ingest` using the OpenAPI schema. Do not send raw scanner
+outputs or source code through this endpoint.
 
 ### Test, Lint, Typecheck
 

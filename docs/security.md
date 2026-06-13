@@ -82,6 +82,11 @@ Trivy is the default MVP dependency and filesystem scanner. Findings are
 normalized into the shared `Finding` model and evaluated by the selected scan
 profile's release gate.
 
+The healthcare reference profile additionally requires SBOM generation,
+SBOM-based vulnerability analysis, OSV dependency checks, license-policy
+evidence, IaC scanning, OpenAPI validation, privacy/audit/encryption/retention
+documentation evidence, and central result envelope export readiness.
+
 ## Scanner Isolation
 
 Scanner workloads run with read-only project mounts by default. Scanner
@@ -130,3 +135,8 @@ Default behavior is offline-first: no cloud upload, no external telemetry, no
 automatic report sharing, and no source-code upload outside the developer
 MacBook. External export requires explicit user action and must not include
 plaintext secrets.
+
+Central result exchange uses the redacted `security-preflight.result.v1`
+envelope. Central storage must receive findings, summaries, gate results, and
+evidence metadata only; source code and raw scanner outputs remain local unless
+an explicit future export policy allows them.

@@ -61,6 +61,7 @@ Project name:
   - `pnpm validate`
   - `pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run`
   - `pnpm --filter @security-preflight/cli preflight scan --project . --profile documentation-compliance`
+  - `pnpm --filter @security-preflight/cli preflight scan --project . --profile healthcare-reference --dry-run`
   - `docker compose up -d`
   - `docker compose down`
 - Planned local ports:

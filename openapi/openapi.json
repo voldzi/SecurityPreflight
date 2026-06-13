@@ -285,6 +285,76 @@
           }
         }
       }
+    },
+    "/api/v1/toolchain/requirements": {
+      "get": {
+        "summary": "List required scanner and evidence tooling",
+        "operationId": "listToolchainRequirements",
+        "tags": ["Toolchain"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Required scanner and evidence tooling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolRequirementListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid toolchain requirements request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/results/ingest": {
+      "post": {
+        "summary": "Accept a redacted SecurityPreflight result envelope for central storage",
+        "operationId": "ingestResultEnvelope",
+        "tags": ["Results"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CentralResultEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Result envelope accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultIngestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid result envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -823,6 +893,240 @@
           }
         }
       },
+      "ToolRequirementListResponse": {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolRequirement"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "required": ["total", "healthcareRequired"],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "healthcareRequired": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "ToolRequirement": {
+        "type": "object",
+        "required": ["id", "name", "category", "requiredForHealthcare", "command", "args", "checks", "purpose"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "secret-scanning",
+              "sast",
+              "sca",
+              "sbom",
+              "license",
+              "container",
+              "iac",
+              "openapi",
+              "dast",
+              "attestation",
+              "telemetry"
+            ]
+          },
+          "requiredForHealthcare": {
+            "type": "boolean"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      },
+      "CentralResultEnvelope": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "generatedAt",
+          "producer",
+          "project",
+          "scanRun",
+          "profile",
+          "gate",
+          "findings",
+          "evidence"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "const": "security-preflight.result.v1"
+          },
+          "envelopeId": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "producer": {
+            "type": "object",
+            "required": ["name", "version"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            }
+          },
+          "project": {
+            "type": "object",
+            "required": ["id", "name", "dataClassification"],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "dataClassification": {
+                "type": "string",
+                "enum": ["public", "internal", "confidential", "sensitive", "health-data"]
+              }
+            }
+          },
+          "scanRun": {
+            "type": "object",
+            "required": ["id", "status", "gateResult"],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["queued", "running", "completed", "failed", "cancelled"]
+              },
+              "gateResult": {
+                "type": "string",
+                "enum": ["pass", "warning", "fail", "error"]
+              }
+            }
+          },
+          "profile": {
+            "type": "object",
+            "required": ["id", "name", "checks"],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "gate": {
+            "type": "object",
+            "required": ["result", "blockingReasons"],
+            "additionalProperties": true,
+            "properties": {
+              "result": {
+                "type": "string",
+                "enum": ["pass", "warning", "fail", "error"]
+              },
+              "blockingReasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "required": ["findingCount", "redacted"],
+            "additionalProperties": true,
+            "properties": {
+              "findingCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "redacted": {
+                "type": "boolean",
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "ResultIngestResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["status", "envelopeId", "scanRunId", "receivedAt"],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["accepted"]
+              },
+              "envelopeId": {
+                "type": "string"
+              },
+              "scanRunId": {
+                "type": "string"
+              },
+              "receivedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
       "ErrorResponse": {
         "type": "object",
         "required": ["error"],
@@ -877,6 +1181,10 @@
     {
       "name": "Scans",
       "description": "Scan profiles and scan run orchestration."
+    },
+    {
+      "name": "Results",
+      "description": "Central result envelope exchange for evidence storage."
     },
     {
       "name": "Toolchain",

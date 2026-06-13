@@ -53,6 +53,8 @@ The API uses path versioning:
 | POST | `/api/v1/scans/plan` | Build a guarded scan execution plan without running scanners |
 | POST | `/api/v1/scans/queue` | Queue an unblocked scan execution plan for worker execution |
 | GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
+| GET | `/api/v1/toolchain/requirements` | List scanner/evidence tools required for healthcare reference coverage |
+| POST | `/api/v1/results/ingest` | Accept a redacted result envelope for central storage |
 
 ## Error Responses
 
@@ -129,6 +131,28 @@ Only unblocked plans are queued. A blocked plan returns HTTP 409 with
 curl http://localhost:8781/api/v1/toolchain/doctor
 ```
 
+### Healthcare tool requirements
+
+```bash
+curl http://localhost:8781/api/v1/toolchain/requirements
+```
+
+The healthcare reference coverage requires runtime isolation, secret scanning,
+SAST, SCA, SBOM, license, container, IaC, OpenAPI, controlled DAST readiness,
+and central result export support.
+
+### Central result envelope ingest
+
+```bash
+curl -X POST http://localhost:8781/api/v1/results/ingest \
+  -H 'content-type: application/json' \
+  -d @central-result-envelope.json
+```
+
+The envelope schema is `security-preflight.result.v1`. It must be redacted
+(`evidence.redacted: true`) and is designed for central evidence storage
+without uploading source code or raw scanner output.
+
 ## Client Generation
 
 Client SDKs are generated from:
@@ -150,3 +174,5 @@ The OpenAPI specification is validated in the CI pipeline
 - All errors use `ErrorResponse`.
 - Active DAST controls and scanner safety decisions are represented in the scan
   execution plan contract before scanner execution is enabled.
+- Central storage integrations should consume `CentralResultEnvelope` through
+  the OpenAPI contract instead of scraping reports.

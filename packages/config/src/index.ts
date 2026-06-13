@@ -52,6 +52,19 @@ export const globalConfigSchema = z.object({
       apiTokenRef: z.string().default("")
     })
     .default({}),
+  resultSinks: z
+    .object({
+      centralOpenApi: z
+        .object({
+          enabled: z.boolean().default(false),
+          endpoint: z.string().url().default("http://localhost:8781/api/v1/results/ingest"),
+          apiTokenRef: z.string().default(""),
+          sendFindings: z.boolean().default(true),
+          sendEvidenceMetadata: z.boolean().default(true)
+        })
+        .default({})
+    })
+    .default({}),
   policies: z
     .object({
       allowProductionActiveDast: z.boolean().default(false),

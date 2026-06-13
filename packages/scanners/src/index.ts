@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import {
   createFindingFingerprint,
   evaluateGate,
+  requiredScannerTools,
   redactSecrets,
   type DataClassification,
   type Finding,
@@ -37,12 +38,11 @@ export interface ToolchainDoctorResult {
 }
 
 export const defaultToolChecks: Array<{ name: string; command: string; args: string[] }> = [
-  { name: "Docker", command: "docker", args: ["--version"] },
-  { name: "Docker Compose", command: "docker", args: ["compose", "version"] },
-  { name: "Gitleaks", command: "gitleaks", args: ["version"] },
-  { name: "Semgrep", command: "semgrep", args: ["--version"] },
-  { name: "Trivy", command: "trivy", args: ["--version"] },
-  { name: "Redocly", command: "npx", args: ["--yes", "@redocly/cli@latest", "--version"] }
+  ...requiredScannerTools.map((tool) => ({
+    name: tool.name,
+    command: tool.command,
+    args: tool.args
+  }))
 ];
 
 export async function runToolchainDoctor(
@@ -386,6 +386,41 @@ const checkDefinitions: Record<string, CheckDefinition> = {
       `${evidenceBase}.json`
     ]
   },
+  "syft:sbom": {
+    tool: "syft",
+    type: "sca",
+    executionMode: "container",
+    evidenceExtensions: ["cyclonedx.json"],
+    buildCommand: ({ evidenceBase }) => [
+      "syft",
+      projectMountTarget,
+      "-o",
+      "cyclonedx-json",
+      "--file",
+      `${evidenceBase}.cyclonedx.json`
+    ]
+  },
+  "grype:sbom": {
+    tool: "grype",
+    type: "sca",
+    executionMode: "container",
+    evidenceExtensions: ["json"],
+    buildCommand: ({ evidenceBase }) => ["grype", projectMountTarget, "-o", "json", "--file", `${evidenceBase}.json`]
+  },
+  "osv:dependencies": {
+    tool: "osv-scanner",
+    type: "sca",
+    executionMode: "container",
+    evidenceExtensions: ["json"],
+    buildCommand: ({ evidenceBase }) => ["osv-scanner", "--format", "json", "--output", `${evidenceBase}.json`, projectMountTarget]
+  },
+  "iac:checkov": {
+    tool: "checkov",
+    type: "iac",
+    executionMode: "container",
+    evidenceExtensions: ["json"],
+    buildCommand: ({ evidenceBase }) => ["checkov", "-d", projectMountTarget, "-o", "json", "--output-file-path", `${evidenceBase}.json`]
+  },
   "zap:baseline": {
     tool: "zap",
     type: "dast",
@@ -427,10 +462,15 @@ const internalCheckTypes: Record<string, FindingType> = {
   sbom: "sca",
   "threat-model": "documentation",
   "data-classification": "configuration",
+  "privacy-impact": "documentation",
   "audit-logging": "configuration",
   auth: "configuration",
+  authorization: "configuration",
   encryption: "configuration",
   retention: "configuration",
+  "logging-redaction": "configuration",
+  "telemetry-export": "configuration",
+  "license-policy": "configuration",
   secrets: "secret"
 };
 
@@ -906,6 +946,28 @@ async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep
       return checkOpenApiPath(plan, step, "/health");
     case "api:ready":
       return checkOpenApiPath(plan, step, "/ready");
+    case "telemetry-export":
+      return checkOpenApiPath(plan, step, "/api/v1/results/ingest");
+    case "privacy-impact":
+      return checkDocumentationKeywords(plan, step, ["privacy", "data protection", "personal data", "health-data"]);
+    case "threat-model":
+      return checkDocumentationKeywords(plan, step, ["threat", "abuse", "risk", "attack"]);
+    case "data-classification":
+      return checkProjectDataClassification(plan, step);
+    case "audit-logging":
+      return checkDocumentationKeywords(plan, step, ["audit", "requestId", "retention"]);
+    case "auth":
+      return checkDocumentationKeywords(plan, step, ["authentication", "auth"]);
+    case "authorization":
+      return checkDocumentationKeywords(plan, step, ["authorization", "role", "permission"]);
+    case "encryption":
+      return checkDocumentationKeywords(plan, step, ["encryption", "tls", "secret"]);
+    case "retention":
+      return checkDocumentationKeywords(plan, step, ["retention", "cleanup", "expiry"]);
+    case "logging-redaction":
+      return checkDocumentationKeywords(plan, step, ["redact", "redaction", "log"]);
+    case "license-policy":
+      return checkDocumentationKeywords(plan, step, ["license", "sbom", "supply-chain"]);
     case "env-example":
       return checkEnvExample(plan, step);
     case "forbidden-files":
@@ -1020,6 +1082,56 @@ async function checkOpenApiPath(plan: ScanExecutionPlan, step: ScanExecutionStep
       description: `The API contract must document ${apiPath}.`,
       filePath: "openapi/openapi.json",
       recommendation: `Add ${apiPath} to openapi/openapi.json.`
+    })
+  ];
+}
+
+async function checkProjectDataClassification(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const classification = plan.project.dataClassification ?? "internal";
+
+  if (classification === "health-data" || classification === "sensitive") {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "medium",
+      title: "Healthcare reference scan requires sensitive data classification",
+      description: `Current data classification is '${classification}'.`,
+      recommendation: "Set project dataClassification to health-data or sensitive for healthcare reference scans."
+    })
+  ];
+}
+
+async function checkDocumentationKeywords(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  keywords: string[]
+): Promise<Finding[]> {
+  const documents = ["docs/security.md", "docs/architecture.md", "docs/operations.md", "docs/observability.md", "docs/runbook.md"];
+  const combined: string[] = [];
+
+  for (const relativePath of documents) {
+    try {
+      combined.push(await readFile(path.join(plan.project.path, relativePath), "utf8"));
+    } catch {
+      // Missing canonical docs are reported by the documentation check.
+    }
+  }
+
+  const haystack = combined.join("\n").toLowerCase();
+  const matched = keywords.some((keyword) => haystack.includes(keyword.toLowerCase()));
+
+  if (matched) {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "medium",
+      title: `Missing evidence for ${step.checkId}`,
+      description: `Canonical documentation does not mention any of: ${keywords.join(", ")}.`,
+      recommendation: `Document ${step.checkId} controls in the active documentation set.`
     })
   ];
 }

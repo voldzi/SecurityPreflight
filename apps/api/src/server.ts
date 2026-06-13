@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Queue } from "bullmq";
-import { defaultScanProfiles } from "@security-preflight/core";
+import { defaultScanProfiles, requiredScannerTools } from "@security-preflight/core";
 import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
 
 export interface CreateServerOptions {
@@ -41,6 +41,42 @@ const scanPlanRequestSchema = z.object({
     })
     .optional()
 });
+
+const resultEnvelopeSchema = z
+  .object({
+    schemaVersion: z.literal("security-preflight.result.v1"),
+    envelopeId: z.string().min(1).optional(),
+    generatedAt: z.string().datetime(),
+    producer: z.object({
+      name: z.string().min(1),
+      version: z.string().min(1)
+    }),
+    project: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      dataClassification: dataClassificationSchema
+    }).passthrough(),
+    scanRun: z.object({
+      id: z.string().min(1),
+      status: z.enum(["queued", "running", "completed", "failed", "cancelled"]),
+      gateResult: z.enum(["pass", "warning", "fail", "error"])
+    }).passthrough(),
+    profile: z.object({
+      id: z.string().min(1),
+      name: z.string().min(1),
+      checks: z.array(z.string())
+    }).passthrough(),
+    gate: z.object({
+      result: z.enum(["pass", "warning", "fail", "error"]),
+      blockingReasons: z.array(z.string())
+    }).passthrough(),
+    findings: z.array(z.object({}).passthrough()),
+    evidence: z.object({
+      findingCount: z.number().int().min(0),
+      redacted: z.literal(true)
+    }).passthrough()
+  })
+  .passthrough();
 
 export function createServer(options: CreateServerOptions = {}): FastifyInstance {
   let scanQueue: ScanQueue | null = options.scanQueue ?? null;
@@ -113,6 +149,14 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     data: defaultScanProfiles
   }));
 
+  server.get("/api/v1/toolchain/requirements", async () => ({
+    data: requiredScannerTools,
+    meta: {
+      total: requiredScannerTools.length,
+      healthcareRequired: requiredScannerTools.filter((tool) => tool.requiredForHealthcare).length
+    }
+  }));
+
   server.post("/api/v1/scans/plan", async (request, reply) => {
     const result = buildPlanFromRequest(request.body, request.id);
 
@@ -172,6 +216,38 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   });
 
   server.get("/api/v1/toolchain/doctor", async () => runToolchainDoctor());
+
+  server.post("/api/v1/results/ingest", async (request, reply) => {
+    const parsed = resultEnvelopeSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid central result envelope.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
+    }
+
+    const material = JSON.stringify({
+      projectId: parsed.data.project.id,
+      scanRunId: parsed.data.scanRun.id,
+      generatedAt: parsed.data.generatedAt,
+      gate: parsed.data.gate.result
+    });
+    const envelopeId = parsed.data.envelopeId ?? `spr_${createHash("sha256").update(material).digest("hex").slice(0, 24)}`;
+
+    return reply.status(202).send({
+      data: {
+        status: "accepted",
+        envelopeId,
+        scanRunId: parsed.data.scanRun.id,
+        receivedAt: new Date().toISOString()
+      }
+    });
+  });
 
   return server;
 }

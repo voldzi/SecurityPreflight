@@ -36,6 +36,7 @@ describe("scan job execution", () => {
       await expect(access(result.reportPaths.executionResult)).resolves.toBeUndefined();
       await expect(access(result.reportPaths.json)).resolves.toBeUndefined();
       await expect(access(result.reportPaths.markdown)).resolves.toBeUndefined();
+      await expect(access(result.reportPaths.centralEnvelope)).resolves.toBeUndefined();
     } finally {
       await rm(reportsRoot, { recursive: true, force: true });
     }

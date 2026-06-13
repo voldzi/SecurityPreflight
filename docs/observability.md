@@ -29,6 +29,17 @@ and structured logs, then add OpenTelemetry spans for API requests, queue jobs,
 scanner execution, parsing, normalization, gate evaluation, and report
 generation.
 
+## Result Telemetry
+
+SecurityPreflight emits a redacted `security-preflight.result.v1` central result
+envelope for completed scan jobs. The envelope is written next to local reports
+as `central-result-envelope.json` and can be accepted by
+`POST /api/v1/results/ingest` for central evidence storage.
+
+Result telemetry is evidence exchange, not behavioral tracking. It must not
+include secrets, production `.env` values, private keys, request payloads, or
+raw scanner output.
+
 ## Observability Stack
 
 OpenTelemetry is the preferred standard. If this project uses something else,
