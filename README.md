@@ -59,6 +59,12 @@ Preview a scan execution plan without running scanners:
 pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run
 ```
 
+Queue a supported internal scan through the API and worker:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan --project . --profile documentation-compliance
+```
+
 Basic configuration is described in `docs/operations.md`; `.env.example` lists
 every environment variable.
 

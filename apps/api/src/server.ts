@@ -3,11 +3,17 @@ import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
+import { Queue } from "bullmq";
 import { defaultScanProfiles } from "@security-preflight/core";
-import { buildScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
+import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
 
 export interface CreateServerOptions {
   logger?: boolean;
+  scanQueue?: ScanQueue;
+}
+
+export interface ScanQueue {
+  add(name: string, data: unknown, options?: Record<string, unknown>): Promise<{ id?: string | number }>;
 }
 
 const dataClassificationSchema = z.enum(["public", "internal", "confidential", "sensitive", "health-data"]);
@@ -37,6 +43,7 @@ const scanPlanRequestSchema = z.object({
 });
 
 export function createServer(options: CreateServerOptions = {}): FastifyInstance {
+  let scanQueue: ScanQueue | null = options.scanQueue ?? null;
   const server = Fastify({
     logger: options.logger ?? true,
     genReqId: (request) => request.headers["x-request-id"]?.toString() ?? `req_${randomUUID()}`
@@ -107,41 +114,119 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   }));
 
   server.post("/api/v1/scans/plan", async (request, reply) => {
-    const parsed = scanPlanRequestSchema.safeParse(request.body);
+    const result = buildPlanFromRequest(request.body, request.id);
 
-    if (!parsed.success) {
-      return reply.status(400).send({
+    if ("error" in result) {
+      return reply.status(result.statusCode).send(result.error);
+    }
+
+    return result.plan;
+  });
+
+  server.post("/api/v1/scans/queue", async (request, reply) => {
+    const result = buildPlanFromRequest(request.body, request.id);
+
+    if ("error" in result) {
+      return reply.status(result.statusCode).send(result.error);
+    }
+
+    if (result.plan.blocked) {
+      return reply.status(409).send({
         error: {
-          code: "VALIDATION_ERROR",
-          message: "Invalid scan plan request.",
-          details: parsed.error.flatten(),
+          code: "SCAN_PLAN_BLOCKED",
+          message: "Scan plan is blocked by guardrails and cannot be queued.",
+          details: [result.plan],
           requestId: request.id
         }
       });
     }
 
-    const profile = defaultScanProfiles.find((candidate) => candidate.id === parsed.data.profileId);
+    scanQueue ??= new Queue(process.env.SCAN_QUEUE_NAME ?? "security-preflight-scans", {
+      connection: {
+        url: process.env.REDIS_URL ?? "redis://localhost:6379/0"
+      }
+    });
 
-    if (!profile) {
-      return reply.status(404).send({
-        error: {
-          code: "PROFILE_NOT_FOUND",
-          message: `Scan profile '${parsed.data.profileId}' was not found.`,
-          requestId: request.id
-        }
-      });
-    }
+    const job = await scanQueue.add(
+      "scan.execute",
+      {
+        plan: result.plan,
+        requestId: request.id,
+        queuedAt: new Date().toISOString()
+      },
+      {
+        jobId: result.plan.scanRunId,
+        removeOnComplete: 100,
+        removeOnFail: 100
+      }
+    );
 
-    return buildScanExecutionPlan({
-      scanRunId: parsed.data.scanRunId,
-      project: parsed.data.project,
-      profile,
-      dast: parsed.data.dast,
-      reportsRoot: parsed.data.reportsRoot ?? process.env.REPORTS_PATH ?? "/reports"
+    return reply.status(202).send({
+      data: {
+        jobId: String(job.id ?? result.plan.scanRunId),
+        scanRunId: result.plan.scanRunId,
+        status: "queued",
+        plan: result.plan
+      }
     });
   });
 
   server.get("/api/v1/toolchain/doctor", async () => runToolchainDoctor());
 
   return server;
+}
+
+function buildPlanFromRequest(body: unknown, requestId: string):
+  | { plan: ScanExecutionPlan }
+  | {
+      statusCode: number;
+      error: {
+        error: {
+          code: string;
+          message: string;
+          details?: unknown[];
+          requestId: string;
+        };
+      };
+    } {
+  const parsed = scanPlanRequestSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return {
+      statusCode: 400,
+      error: {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid scan plan request.",
+          details: [parsed.error.flatten()],
+          requestId
+        }
+      }
+    };
+  }
+
+  const profile = defaultScanProfiles.find((candidate) => candidate.id === parsed.data.profileId);
+
+  if (!profile) {
+    return {
+      statusCode: 404,
+      error: {
+        error: {
+          code: "PROFILE_NOT_FOUND",
+          message: `Scan profile '${parsed.data.profileId}' was not found.`,
+          requestId
+        }
+      }
+    };
+  }
+
+  return {
+    plan: buildScanExecutionPlan({
+      scanRunId: parsed.data.scanRunId,
+      project: parsed.data.project,
+      profile,
+      dast: parsed.data.dast,
+      reportsRoot: parsed.data.reportsRoot ?? process.env.REPORTS_PATH ?? "/reports"
+    })
+  };
 }

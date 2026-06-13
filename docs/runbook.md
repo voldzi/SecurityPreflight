@@ -35,6 +35,16 @@ symptoms, diagnosis, fix, verification.
 - If a DAST target is unavailable, verify it is a permitted localhost or
   allowlisted staging host before retrying.
 
+## Scan Evidence Is Missing or Skipped
+
+- Check `REPORTS_PATH/<scanRunId>/execution-result.json`.
+- Confirm the worker is running and consuming the `security-preflight-scans`
+  queue.
+- Internal check evidence should have one JSON file per step.
+- Skipped external scanner steps are blocking evidence until the isolated
+  scanner-toolbox runner is implemented and enabled.
+- Do not treat a skipped external scanner step as a production pass.
+
 ## High Latency
 
 - Identify whether latency is API request handling, queue wait time, scanner

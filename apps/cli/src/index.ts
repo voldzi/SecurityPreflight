@@ -89,16 +89,8 @@ program
       allowHost: string[];
       dryRun: boolean;
     }) => {
-      if (!options.dryRun) {
-        process.stderr.write(
-          `Scan queueing is scaffolded but not implemented yet: ${options.project} (${options.profile}). Use --dry-run to preview the execution plan.\n`
-        );
-        process.exitCode = 3;
-        return;
-      }
-
       const projectPath = path.resolve(invocationCwd, options.project);
-      const plan = await postJson<{ blocked?: boolean }>("/api/v1/scans/plan", {
+      const payload = {
         profileId: options.profile,
         project: {
           id: projectPath,
@@ -113,11 +105,15 @@ program
                 allowActiveScan: options.allowActiveDast
               }
             : undefined
-      });
+      };
+      const response = await postJson<{ blocked?: boolean }>(
+        options.dryRun ? "/api/v1/scans/plan" : "/api/v1/scans/queue",
+        payload
+      );
 
-      process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
 
-      if (plan.blocked) {
+      if (response.blocked) {
         process.exitCode = 2;
       }
     }

@@ -41,6 +41,7 @@ CLI wrapper examples:
 pnpm --filter @security-preflight/cli preflight status
 pnpm --filter @security-preflight/cli preflight doctor
 pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run
+pnpm --filter @security-preflight/cli preflight scan --project . --profile documentation-compliance
 ```
 
 Controlled local DAST dry-run example:
@@ -59,6 +60,17 @@ It returns the planned commands, evidence paths, read-only project mount,
 network mode, and any guardrail block reasons.
 When invoked through pnpm, the CLI resolves relative `--project` paths against
 the original shell directory, not the CLI package directory.
+
+Without `--dry-run`, the CLI calls `POST /api/v1/scans/queue`. The API only
+queues unblocked plans. The worker currently executes internal documentation,
+OpenAPI, configuration, and forbidden-file checks and writes evidence under
+`REPORTS_PATH/<scanRunId>/`. External scanner commands are recorded as skipped
+blocking evidence until the isolated scanner-toolbox runner is implemented.
+
+When the worker runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
+directory containing the projects to scan. The worker mounts it read-only at
+`PROJECTS_ROOT_CONTAINER` and maps queued host paths under that root into the
+container path before reading project files.
 
 ### Test, Lint, Typecheck
 
@@ -99,6 +111,8 @@ table and must stay in sync.
 | `DATABASE_URL` | yes | unset | PostgreSQL connection string |
 | `REDIS_URL` | yes | unset | Redis connection string |
 | `REPORTS_PATH` | yes | `/reports` | Container path for generated reports and evidence |
+| `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker worker may read |
+| `PROJECTS_ROOT_CONTAINER` | no | `/workspace/projects` | Container mount path for `PROJECTS_ROOT_HOST` |
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |
 | `ALLOW_DOCKER_SOCKET` | no | `false` | Explicit opt-in for future Docker socket based scanning |
 | `ALLOW_ACTIVE_DAST` | no | `false` | Enables controlled active DAST profiles |

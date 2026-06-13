@@ -99,6 +99,12 @@ intended command argument array, read-only project mount, evidence paths,
 network mode, and guardrails. A plan with blocked guardrails must not be queued
 or executed by the worker.
 
+The worker can execute internal documentation, OpenAPI, configuration, and
+forbidden-file checks. External scanner commands are not treated as successful
+unless an isolated runner actually executes them and writes evidence. Until the
+scanner-toolbox runner is implemented, skipped external steps create blocking
+tooling evidence rather than a false pass.
+
 ## Controlled DAST and Penetration Testing
 
 SecurityPreflight may run safe, controlled DAST and penetration-test readiness

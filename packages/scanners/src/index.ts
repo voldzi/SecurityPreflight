@@ -1,7 +1,18 @@
 import { execFile } from "node:child_process";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { DataClassification, FindingType, ScanProfile } from "@security-preflight/core";
+import {
+  createFindingFingerprint,
+  evaluateGate,
+  redactSecrets,
+  type DataClassification,
+  type Finding,
+  type FindingType,
+  type GateEvaluation,
+  type ScanProfile,
+  type Severity
+} from "@security-preflight/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -136,6 +147,7 @@ export interface ScanExecutionPlan {
   profile: {
     id: string;
     name: string;
+    failThreshold: Exclude<Severity, "info">;
     timeoutSeconds: number;
     allowActiveDast: boolean;
     allowProductionTargets: boolean;
@@ -509,6 +521,7 @@ export function buildScanExecutionPlan(input: BuildScanExecutionPlanInput): Scan
     profile: {
       id: input.profile.id,
       name: input.profile.name,
+      failThreshold: input.profile.failThreshold,
       timeoutSeconds: input.profile.timeoutSeconds,
       allowActiveDast: input.profile.allowActiveDast,
       allowProductionTargets: input.profile.allowProductionTargets
@@ -645,4 +658,535 @@ function sanitizeFilePart(value: string): string {
 
 function sanitizeId(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "check";
+}
+
+export type ScanExecutionStatus = "completed" | "failed";
+export type ScanStepExecutionStatus = "passed" | "failed" | "skipped" | "blocked" | "error";
+
+export interface ScanStepExecutionResult {
+  stepId: string;
+  checkId: string;
+  status: ScanStepExecutionStatus;
+  startedAt: string;
+  finishedAt: string;
+  evidencePath: string;
+  findings: Finding[];
+  message: string;
+}
+
+export interface ScanExecutionResult {
+  scanRunId: string;
+  status: ScanExecutionStatus;
+  startedAt: string;
+  finishedAt: string;
+  evidenceRoot: string;
+  stepResults: ScanStepExecutionResult[];
+  findings: Finding[];
+  gate: GateEvaluation;
+}
+
+export interface ExecuteScanPlanOptions {
+  runExternalCommands?: boolean;
+  treatSkippedExternalChecksAsFindings?: boolean;
+}
+
+const mandatoryDocumentationFiles = [
+  "README.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".env.example",
+  "docs/README.md",
+  "docs/architecture.md",
+  "docs/api.md",
+  "docs/security.md",
+  "docs/operations.md",
+  "docs/observability.md",
+  "docs/runbook.md"
+];
+
+const singleDocumentChecks: Record<string, string[]> = {
+  readme: ["README.md"],
+  operations: ["docs/operations.md"],
+  security: ["docs/security.md"],
+  observability: ["docs/observability.md"],
+  runbook: ["docs/runbook.md"],
+  adr: ["docs/adr"]
+};
+
+const ignoredWalkSegments = new Set([
+  ".git",
+  ".next",
+  ".chroma-state",
+  ".turbo",
+  "coverage",
+  "dist",
+  "build",
+  "node_modules"
+]);
+
+const forbiddenFileNames = new Set([".env", ".env.local", ".env.production", "id_rsa", "id_dsa"]);
+const forbiddenFileExtensions = new Set([".key", ".p12", ".pfx", ".pem"]);
+
+export async function executeScanPlan(
+  plan: ScanExecutionPlan,
+  options: ExecuteScanPlanOptions = {}
+): Promise<ScanExecutionResult> {
+  const startedAt = new Date().toISOString();
+  await mkdir(plan.evidenceRoot, { recursive: true });
+
+  if (plan.blocked) {
+    const stepResults = await Promise.all(plan.steps.map((step) => writeBlockedStepEvidence(plan, step)));
+    const findings = stepResults.flatMap((result) => result.findings);
+    const gate = evaluateGate(findings, plan.profile, plan.project.dataClassification ?? "internal");
+
+    return {
+      scanRunId: plan.scanRunId,
+      status: "failed",
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      evidenceRoot: plan.evidenceRoot,
+      stepResults,
+      findings,
+      gate
+    };
+  }
+
+  const stepResults: ScanStepExecutionResult[] = [];
+
+  for (const step of plan.steps) {
+    stepResults.push(await executeStep(plan, step, options));
+  }
+
+  const findings = stepResults.flatMap((result) => result.findings);
+  const gate = evaluateGate(findings, plan.profile, plan.project.dataClassification ?? "internal");
+  const hasErrors = stepResults.some((result) => result.status === "error" || result.status === "blocked");
+
+  return {
+    scanRunId: plan.scanRunId,
+    status: hasErrors ? "failed" : "completed",
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    evidenceRoot: plan.evidenceRoot,
+    stepResults,
+    findings,
+    gate
+  };
+}
+
+async function executeStep(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  options: ExecuteScanPlanOptions
+): Promise<ScanStepExecutionResult> {
+  const startedAt = new Date().toISOString();
+  const evidencePath = primaryEvidencePath(step);
+
+  try {
+    if (step.executionMode === "internal") {
+      const findings = await runInternalCheck(plan, step);
+      const result: ScanStepExecutionResult = {
+        stepId: step.id,
+        checkId: step.checkId,
+        status: findings.length > 0 ? "failed" : "passed",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        evidencePath,
+        findings,
+        message: findings.length > 0 ? "Internal check produced findings." : "Internal check passed."
+      };
+      await writeStepEvidence(plan, step, result);
+      return result;
+    }
+
+    if (!options.runExternalCommands) {
+      const findings =
+        options.treatSkippedExternalChecksAsFindings ?? true
+          ? [
+              createExecutionFinding(plan, step, {
+                severity: "high",
+                title: `Scanner step '${step.checkId}' was not executed`,
+                description:
+                  "The execution adapter for external scanner commands is disabled. Production evidence requires this step to run in an isolated scanner runner.",
+                recommendation: "Enable an isolated scanner runner for this tool before relying on the scan result."
+              })
+            ]
+          : [];
+      const result: ScanStepExecutionResult = {
+        stepId: step.id,
+        checkId: step.checkId,
+        status: "skipped",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        evidencePath,
+        findings,
+        message: "External scanner command was skipped by execution policy."
+      };
+      await writeStepEvidence(plan, step, result);
+      return result;
+    }
+
+    const result: ScanStepExecutionResult = {
+      stepId: step.id,
+      checkId: step.checkId,
+      status: "skipped",
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      evidencePath,
+      findings: [
+        createExecutionFinding(plan, step, {
+          severity: "high",
+          title: `Scanner step '${step.checkId}' needs an isolated runner`,
+          description: "Direct host execution is intentionally not implemented for scanner commands.",
+          recommendation: "Run external scanners through the constrained scanner-toolbox adapter."
+        })
+      ],
+      message: "External scanner runner is not implemented yet."
+    };
+    await writeStepEvidence(plan, step, result);
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const result: ScanStepExecutionResult = {
+      stepId: step.id,
+      checkId: step.checkId,
+      status: "error",
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      evidencePath,
+      findings: [
+        createExecutionFinding(plan, step, {
+          severity: "high",
+          title: `Scanner step '${step.checkId}' failed`,
+          description: message,
+          recommendation: "Inspect step evidence and rerun after fixing the scanner or project configuration."
+        })
+      ],
+      message
+    };
+    await writeStepEvidence(plan, step, result);
+    return result;
+  }
+}
+
+async function writeBlockedStepEvidence(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<ScanStepExecutionResult> {
+  const now = new Date().toISOString();
+  const blocked = step.blockedReasons.length > 0;
+  const result: ScanStepExecutionResult = {
+    stepId: step.id,
+    checkId: step.checkId,
+    status: blocked ? "blocked" : "skipped",
+    startedAt: now,
+    finishedAt: now,
+    evidencePath: primaryEvidencePath(step),
+    findings: blocked
+      ? [
+          createExecutionFinding(plan, step, {
+            severity: "high",
+            title: `Scanner step '${step.checkId}' was blocked by guardrails`,
+            description: step.blockedReasons.join(" "),
+            recommendation: "Adjust the scan request or profile so guardrails allow this step."
+          })
+        ]
+      : [],
+    message: blocked ? step.blockedReasons.join(" ") : "Plan execution halted because another step was blocked by guardrails."
+  };
+  await writeStepEvidence(plan, step, result);
+  return result;
+}
+
+async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  switch (step.checkId) {
+    case "documentation":
+      return checkPathsExist(plan, step, mandatoryDocumentationFiles, "Mandatory documentation is missing.");
+    case "openapi":
+      return checkOpenApiDocument(plan, step);
+    case "api:error-response":
+      return checkOpenApiErrorResponse(plan, step);
+    case "api:health":
+      return checkOpenApiPath(plan, step, "/health");
+    case "api:ready":
+      return checkOpenApiPath(plan, step, "/ready");
+    case "env-example":
+      return checkEnvExample(plan, step);
+    case "forbidden-files":
+      return checkForbiddenFiles(plan, step);
+    default:
+      {
+        const requiredPaths = singleDocumentChecks[step.checkId];
+
+        if (requiredPaths) {
+          return checkPathsExist(plan, step, requiredPaths, `Required ${step.checkId} documentation is missing.`);
+        }
+      }
+
+      return [
+        createExecutionFinding(plan, step, {
+          severity: "medium",
+          title: `Internal check '${step.checkId}' is not implemented`,
+          description: "The scan profile references an internal check that does not have an executor yet.",
+          recommendation: "Add an executor for this check or remove it from production profiles."
+        })
+      ];
+  }
+}
+
+async function checkPathsExist(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  relativePaths: string[],
+  description: string
+): Promise<Finding[]> {
+  const findings: Finding[] = [];
+
+  for (const relativePath of relativePaths) {
+    const absolutePath = path.join(plan.project.path, relativePath);
+
+    try {
+      await stat(absolutePath);
+    } catch {
+      findings.push(
+        createExecutionFinding(plan, step, {
+          severity: "medium",
+          title: `Missing required path: ${relativePath}`,
+          description,
+          filePath: relativePath,
+          recommendation: `Create ${relativePath} or update the scan profile if this project intentionally does not use it.`
+        })
+      );
+    }
+  }
+
+  return findings;
+}
+
+async function checkOpenApiDocument(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const openApi = await readOpenApi(plan);
+
+  if (!openApi.ok) {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "OpenAPI JSON contract is missing or invalid",
+        description: openApi.message,
+        filePath: "openapi/openapi.json",
+        recommendation: "Add a valid JSON-first OpenAPI contract at openapi/openapi.json."
+      })
+    ];
+  }
+
+  return [];
+}
+
+async function checkOpenApiErrorResponse(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const openApi = await readOpenApi(plan);
+
+  if (!openApi.ok) {
+    return checkOpenApiDocument(plan, step);
+  }
+
+  const errorProperties = openApi.document?.components?.schemas?.ErrorResponse?.properties?.error?.properties;
+  const missing = ["code", "message", "requestId"].filter((property) => !errorProperties?.[property]);
+
+  if (missing.length === 0) {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "high",
+      title: "OpenAPI ErrorResponse is missing required fields",
+      description: `Missing fields: ${missing.join(", ")}.`,
+      filePath: "openapi/openapi.json",
+      recommendation: "Define ErrorResponse.error.code, ErrorResponse.error.message, and ErrorResponse.error.requestId."
+    })
+  ];
+}
+
+async function checkOpenApiPath(plan: ScanExecutionPlan, step: ScanExecutionStep, apiPath: string): Promise<Finding[]> {
+  const openApi = await readOpenApi(plan);
+
+  if (!openApi.ok) {
+    return checkOpenApiDocument(plan, step);
+  }
+
+  if (openApi.document?.paths?.[apiPath]) {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "high",
+      title: `OpenAPI contract is missing ${apiPath}`,
+      description: `The API contract must document ${apiPath}.`,
+      filePath: "openapi/openapi.json",
+      recommendation: `Add ${apiPath} to openapi/openapi.json.`
+    })
+  ];
+}
+
+async function checkEnvExample(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const envExamplePath = path.join(plan.project.path, ".env.example");
+
+  try {
+    const content = await readFile(envExamplePath, "utf8");
+    const suspicious = content
+      .split(/\r?\n/)
+      .filter((line) => /^[A-Z0-9_]+=.+/.test(line))
+      .filter((line) => !/=$/.test(line))
+      .filter((line) => !/(example|placeholder|changeme|development|localhost|false|true|info|none|\/reports)/i.test(line));
+
+    if (suspicious.length === 0) {
+      return [];
+    }
+
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: ".env.example may contain concrete secret-like values",
+        description: `Suspicious assignments: ${suspicious.map((line) => line.split("=")[0]).join(", ")}.`,
+        filePath: ".env.example",
+        recommendation: "Replace concrete values with safe placeholders and keep real secrets outside Git."
+      })
+    ];
+  } catch {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "medium",
+        title: "Missing .env.example",
+        description: "The project should document required configuration using safe placeholder values.",
+        filePath: ".env.example",
+        recommendation: "Add .env.example and keep it aligned with operations documentation."
+      })
+    ];
+  }
+}
+
+async function checkForbiddenFiles(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const forbidden = await findForbiddenFiles(plan.project.path);
+
+  return forbidden.map((relativePath) =>
+    createExecutionFinding(plan, step, {
+      severity: "critical",
+      title: `Forbidden sensitive file present: ${relativePath}`,
+      description: "The project contains a file name that commonly holds secrets or private keys.",
+      filePath: relativePath,
+      recommendation: "Remove the file from the repository and rotate any exposed credentials if it was committed."
+    })
+  );
+}
+
+async function findForbiddenFiles(root: string): Promise<string[]> {
+  const findings: string[] = [];
+
+  async function walk(directory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (ignoredWalkSegments.has(entry.name)) {
+        continue;
+      }
+
+      const absolutePath = path.join(directory, entry.name);
+      const relativePath = path.relative(root, absolutePath);
+
+      if (entry.isDirectory()) {
+        await walk(absolutePath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      if (forbiddenFileNames.has(entry.name) || forbiddenFileExtensions.has(path.extname(entry.name))) {
+        findings.push(relativePath);
+      }
+    }
+  }
+
+  await walk(root);
+  return findings.sort();
+}
+
+async function readOpenApi(plan: ScanExecutionPlan): Promise<{ ok: true; document: Record<string, any> } | { ok: false; message: string }> {
+  const openApiPath = path.join(plan.project.path, "openapi/openapi.json");
+
+  try {
+    const raw = await readFile(openApiPath, "utf8");
+    return { ok: true, document: JSON.parse(raw) as Record<string, any> };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function writeStepEvidence(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  result: ScanStepExecutionResult
+): Promise<void> {
+  const payload = {
+    scanRunId: plan.scanRunId,
+    step,
+    result: {
+      ...result,
+      findings: result.findings.map((finding) => ({
+        ...finding,
+        evidence: redactSecrets(finding.evidence)
+      }))
+    }
+  };
+
+  await writeFile(primaryEvidencePath(step), `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
+}
+
+export async function writeExecutionResultEvidence(result: ScanExecutionResult): Promise<string> {
+  const outputPath = path.join(result.evidenceRoot, "execution-result.json");
+  await mkdir(result.evidenceRoot, { recursive: true });
+  await writeFile(outputPath, `${redactSecrets(JSON.stringify(result, null, 2))}\n`, "utf8");
+  return outputPath;
+}
+
+function primaryEvidencePath(step: ScanExecutionStep): string {
+  return step.evidencePaths[0] ?? path.join(process.cwd(), `${step.id}.json`);
+}
+
+function createExecutionFinding(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  input: {
+    severity: Severity;
+    title: string;
+    description: string;
+    recommendation: string;
+    filePath?: string | null;
+  }
+): Finding {
+  const filePath = input.filePath ?? null;
+  const fingerprint = createFindingFingerprint({
+    tool: step.tool,
+    type: step.type,
+    ruleId: step.checkId,
+    filePath,
+    title: input.title
+  });
+
+  return {
+    id: `finding_${fingerprint.slice(0, 16)}`,
+    scanRunId: plan.scanRunId,
+    tool: step.tool,
+    type: step.type,
+    severity: input.severity,
+    title: input.title,
+    description: input.description,
+    evidence: redactSecrets(`${step.checkId}: ${input.description}`),
+    filePath,
+    line: null,
+    endpoint: null,
+    cwe: null,
+    cve: null,
+    owasp: null,
+    recommendation: input.recommendation,
+    status: "open",
+    fingerprint
+  };
 }

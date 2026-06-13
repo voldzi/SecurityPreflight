@@ -51,6 +51,7 @@ The API uses path versioning:
 | GET | `/api/v1/projects` | List registered local projects |
 | GET | `/api/v1/scan-profiles` | List built-in scan profiles |
 | POST | `/api/v1/scans/plan` | Build a guarded scan execution plan without running scanners |
+| POST | `/api/v1/scans/queue` | Queue an unblocked scan execution plan for worker execution |
 | GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
 
 ## Error Responses
@@ -103,6 +104,24 @@ paths against the directory where the CLI command was invoked.
 Guardrail failures, such as an active DAST target outside the allowlist, return
 HTTP 200 with `blocked: true` and concrete `blockedReasons`. Invalid requests
 and unknown scan profiles still use `ErrorResponse`.
+
+### Queue a scan
+
+```bash
+curl -X POST http://localhost:8781/api/v1/scans/queue \
+  -H 'content-type: application/json' \
+  -d '{
+    "profileId": "documentation-compliance",
+    "project": {
+      "id": "local-demo",
+      "name": "Local Demo",
+      "path": "/path/to/project"
+    }
+  }'
+```
+
+Only unblocked plans are queued. A blocked plan returns HTTP 409 with
+`SCAN_PLAN_BLOCKED` and the guarded plan in `details`.
 
 ### Toolchain doctor
 

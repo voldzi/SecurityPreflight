@@ -196,6 +196,66 @@
         }
       }
     },
+    "/api/v1/scans/queue": {
+      "post": {
+        "summary": "Queue an unblocked scan execution plan",
+        "operationId": "queueScanExecution",
+        "tags": ["Scans"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Scan plan accepted and queued for worker execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanQueueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan queue request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Requested scan profile was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Scan plan is blocked by guardrails and cannot be queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/toolchain/doctor": {
       "get": {
         "summary": "Check local scanner and runtime tool availability",
@@ -518,13 +578,17 @@
       },
       "ScanExecutionPlanProfile": {
         "type": "object",
-        "required": ["id", "name", "timeoutSeconds", "allowActiveDast", "allowProductionTargets"],
+        "required": ["id", "name", "failThreshold", "timeoutSeconds", "allowActiveDast", "allowProductionTargets"],
         "properties": {
           "id": {
             "type": "string"
           },
           "name": {
             "type": "string"
+          },
+          "failThreshold": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
           },
           "timeoutSeconds": {
             "type": "integer",
@@ -535,6 +599,34 @@
           },
           "allowProductionTargets": {
             "type": "boolean"
+          }
+        }
+      },
+      "ScanQueueResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueuedScan"
+          }
+        }
+      },
+      "QueuedScan": {
+        "type": "object",
+        "required": ["jobId", "scanRunId", "status", "plan"],
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "scanRunId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued"]
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ScanExecutionPlan"
           }
         }
       },

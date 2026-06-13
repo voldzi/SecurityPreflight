@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { defaultScanProfiles } from "@security-preflight/core";
-import { buildScanExecutionPlan, evaluateDastGuardrails } from "./index.js";
+import { buildScanExecutionPlan, evaluateDastGuardrails, executeScanPlan, writeExecutionResultEvidence } from "./index.js";
 
 const profile = (id: string) => {
   const match = defaultScanProfiles.find((candidate) => candidate.id === id);
@@ -83,5 +86,61 @@ describe("scan execution planner", () => {
 
     expect(guardrails.allowed).toBe(false);
     expect(guardrails.reasons).toContain("Active DAST host 'example.com' is not in the allowed host list.");
+  });
+
+  it("executes internal documentation checks and writes evidence", async () => {
+    const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
+
+    try {
+      const plan = buildScanExecutionPlan({
+        scanRunId: "scan_docs",
+        project: {
+          id: "project_1",
+          name: "SecurityPreflight",
+          path: path.resolve("../..")
+        },
+        profile: profile("documentation-compliance"),
+        reportsRoot
+      });
+      const result = await executeScanPlan(plan);
+      const resultPath = await writeExecutionResultEvidence(result);
+      const resultJson = JSON.parse(await readFile(resultPath, "utf8")) as { gate: { result: string } };
+
+      expect(result.status).toBe("completed");
+      expect(result.findings).toHaveLength(0);
+      expect(result.gate.result).toBe("pass");
+      expect(resultJson.gate.result).toBe("pass");
+    } finally {
+      await rm(reportsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("does not execute unblocked steps when guardrails block the plan", async () => {
+    const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
+
+    try {
+      const plan = buildScanExecutionPlan({
+        scanRunId: "scan_blocked",
+        project: {
+          id: "project_1",
+          name: "SecurityPreflight",
+          path: path.resolve("../..")
+        },
+        profile: profile("controlled-dast-local"),
+        dast: {
+          allowActiveScan: true,
+          targetUrl: "https://example.com"
+        },
+        reportsRoot
+      });
+      const result = await executeScanPlan(plan);
+
+      expect(result.status).toBe("failed");
+      expect(result.stepResults.find((step) => step.checkId === "zap:baseline")?.status).toBe("blocked");
+      expect(result.stepResults.find((step) => step.checkId === "api:health")?.status).toBe("skipped");
+      expect(result.findings).toHaveLength(1);
+    } finally {
+      await rm(reportsRoot, { recursive: true, force: true });
+    }
   });
 });

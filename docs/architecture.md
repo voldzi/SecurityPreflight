@@ -47,8 +47,9 @@ flowchart LR
   toolchain health, and settings.
 - `apps/api`: Fastify REST API, OpenAPI JSON-first contract, input validation,
   persistence, scan orchestration endpoints, and report download endpoints.
-- `apps/worker`: scan orchestration, scanner execution, timeout handling, log
-  streaming, raw output capture, finding normalization, and report generation.
+- `apps/worker`: scan orchestration, guarded plan consumption, internal check
+  execution, timeout handling, evidence capture, finding normalization, and
+  report generation.
 - `apps/cli`: thin local client for stack lifecycle, doctor checks, scans,
   reports, and automation-friendly exit codes.
 - `packages/core`: shared types, Zod schemas, detector logic, finding model,
@@ -67,9 +68,10 @@ flowchart LR
 3. A scan request creates a `ScanRun` and queues work in Redis.
 4. The API builds a scan execution plan with command argument arrays, evidence
    paths, read-only project mounts, network mode, and guardrail decisions.
-5. The worker mounts the target project read-only into the scanner execution
-   environment and runs checks according to the selected profile.
-6. Tool outputs are redacted, stored under the report volume, parsed, and
+5. The worker consumes unblocked queued plans and executes supported internal
+   checks. Unsupported external scanner commands are recorded as skipped
+   blocking evidence until the isolated scanner-toolbox runner is available.
+6. Check outputs are redacted, stored under the report volume, parsed, and
    normalized into the shared `Finding` model.
 7. The gate evaluator maps findings to `PASS`, `WARNING`, `FAIL`, or `ERROR`.
 8. Markdown and JSON reports are generated and exposed through the API, UI, and

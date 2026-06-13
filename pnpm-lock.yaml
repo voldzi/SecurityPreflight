@@ -35,6 +35,9 @@ importers:
       '@security-preflight/scanners':
         specifier: workspace:*
         version: link:../../packages/scanners
+      bullmq:
+        specifier: ^5.56.7
+        version: 5.78.0
       fastify:
         specifier: ^5.3.3
         version: 5.8.5

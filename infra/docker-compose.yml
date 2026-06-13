@@ -45,11 +45,14 @@ services:
       DATABASE_URL: postgresql://security_preflight:security_preflight@postgres:5432/security_preflight
       REDIS_URL: redis://redis:6379/0
       REPORTS_PATH: /reports
+      PROJECTS_ROOT_HOST: ${PROJECTS_ROOT_HOST:-${PWD}}
+      PROJECTS_ROOT_CONTAINER: ${PROJECTS_ROOT_CONTAINER:-/workspace/projects}
       SCANNER_NETWORK_MODE: none
       ALLOW_DOCKER_SOCKET: "false"
       ALLOW_ACTIVE_DAST: "false"
     volumes:
       - security_preflight_reports:/reports
+      - ${PROJECTS_ROOT_HOST:-${PWD}}:${PROJECTS_ROOT_CONTAINER:-/workspace/projects}:ro
     depends_on:
       - postgres
       - redis
@@ -84,6 +87,8 @@ services:
       - no-new-privileges:true
     read_only: true
     network_mode: none
+    volumes:
+      - ${PROJECTS_ROOT_HOST:-${PWD}}:${PROJECTS_ROOT_CONTAINER:-/workspace/projects}:ro
 
 volumes:
   security_preflight_postgres:
