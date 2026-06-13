@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.venv/
+.chroma-state/
+node_modules/
+dist/
+build/
+coverage/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

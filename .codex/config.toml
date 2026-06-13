@@ -1,0 +1,9 @@
+[mcp_servers.chroma-dev]
+command = "/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev-mcp.sh"
+args = [
+    "--root",
+    "/Users/voldzi/Documents/Development/18 2026/SecurityPreflight",
+]
+
+[mcp_servers.chroma-dev.env]
+PYTHONUNBUFFERED = "1"

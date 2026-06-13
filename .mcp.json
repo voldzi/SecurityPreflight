@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "chroma-dev": {
+      "command": "/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev-mcp.sh",
+      "args": [
+        "--root",
+        "/Users/voldzi/Documents/Development/18 2026/SecurityPreflight"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
