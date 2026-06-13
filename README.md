@@ -29,15 +29,28 @@ CODEX and Claude Code, following the central application standards
 
 ## Run Locally
 
-The application implementation has not been scaffolded yet. The always
-available repository validation command is:
+Install dependencies:
 
 ```bash
-bash scripts/validate-skeleton.sh
+pnpm install
 ```
 
-After the application stack is scaffolded, the canonical local runtime will be
-Docker Desktop and Docker Compose with the Web UI on `http://localhost:8780`.
+Run the local Web UI and API during development:
+
+```bash
+pnpm dev:web
+pnpm dev:api
+```
+
+The Web UI runs on `http://localhost:8780`; the API runs on
+`http://localhost:8781`.
+
+Run the Docker Desktop stack:
+
+```bash
+docker compose up -d
+```
+
 Basic configuration is described in `docs/operations.md`; `.env.example` lists
 every environment variable.
 
@@ -46,10 +59,8 @@ every environment variable.
 1. Review `AGENTS.md` and `CLAUDE.md`.
 2. Review the initial architecture in `docs/architecture.md` and
    `docs/adr/0001-initial-architecture.md`.
-3. Scaffold the pnpm workspace, Docker Compose stack, API, worker, Web UI, and
-   CLI according to the architecture.
-4. Add the real build, run, test, lint, and typecheck commands here and in the
-   agent instruction files once they exist.
+3. Install dependencies with `pnpm install`.
+4. Run `pnpm validate`.
 5. Start local Chroma on the development workstation if it is not already
    running, then reindex this repository:
 
@@ -73,11 +84,11 @@ The machine-readable API contract, when the app provides a REST API, is
 ## Validation
 
 ```bash
-bash scripts/validate-skeleton.sh
+pnpm validate
 ```
 
-CI (`.github/workflows/ci.yml`) runs the skeleton validation, OpenAPI lint,
-and a secret scan; add stack-specific jobs as the application grows.
+CI (`.github/workflows/ci.yml`) runs skeleton validation, dependency install,
+typecheck, tests, build, OpenAPI lint, and a secret scan.
 
 ## Retrieval Workflow
 

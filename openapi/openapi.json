@@ -85,6 +85,96 @@
           }
         }
       }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "summary": "List registered projects",
+        "operationId": "listProjects",
+        "tags": ["Projects"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Registered projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid projects request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scan-profiles": {
+      "get": {
+        "summary": "List built-in scan profiles",
+        "operationId": "listScanProfiles",
+        "tags": ["Scans"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Available scan profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanProfileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan profile request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/toolchain/doctor": {
+      "get": {
+        "summary": "Check local scanner and runtime tool availability",
+        "operationId": "getToolchainDoctor",
+        "tags": ["Toolchain"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Toolchain diagnostic result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolchainDoctorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid toolchain doctor request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -108,6 +198,194 @@
           "timestamp": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "repositoryUrl",
+          "defaultBranch",
+          "technologyStack",
+          "dataClassification",
+          "owner",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "repositoryUrl": {
+            "type": ["string", "null"]
+          },
+          "defaultBranch": {
+            "type": ["string", "null"]
+          },
+          "technologyStack": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataClassification": {
+            "type": "string",
+            "enum": ["public", "internal", "confidential", "sensitive", "health-data"]
+          },
+          "owner": {
+            "type": ["string", "null"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "required": ["total"],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "ScanProfile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "checks",
+          "failThreshold",
+          "allowActiveDast",
+          "allowProductionTargets",
+          "timeoutSeconds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failThreshold": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          },
+          "allowActiveDast": {
+            "type": "boolean"
+          },
+          "allowProductionTargets": {
+            "type": "boolean"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "ScanProfileListResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanProfile"
+            }
+          }
+        }
+      },
+      "ToolchainDoctorResponse": {
+        "type": "object",
+        "required": ["checkedAt", "tools", "summary"],
+        "properties": {
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCheck"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "required": ["available", "missing", "error"],
+            "properties": {
+              "available": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "error": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "ToolCheck": {
+        "type": "object",
+        "required": ["name", "command", "status", "version", "message"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["available", "missing", "error"]
+          },
+          "version": {
+            "type": ["string", "null"]
+          },
+          "message": {
+            "type": ["string", "null"]
           }
         }
       },
@@ -149,6 +427,18 @@
     {
       "name": "System",
       "description": "System endpoints used for health, readiness and diagnostics."
+    },
+    {
+      "name": "Projects",
+      "description": "Local project registration and metadata."
+    },
+    {
+      "name": "Scans",
+      "description": "Scan profiles and scan run orchestration."
+    },
+    {
+      "name": "Toolchain",
+      "description": "Local scanner and runtime diagnostics."
     }
   ]
 }

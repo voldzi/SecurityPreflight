@@ -17,12 +17,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
       - name: Validate skeleton
         run: bash scripts/validate-skeleton.sh
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
       - name: Lint OpenAPI
         if: ${{ hashFiles('openapi/openapi.json') != '' }}
-        run: npx --yes @redocly/cli@latest lint openapi/openapi.json
+        run: pnpm lint:openapi
 
   secret-scan:
     runs-on: ubuntu-latest
@@ -36,8 +56,3 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # TODO: add stack-specific jobs once the application stack is chosen:
-  # install, lint, type-check, test, build, dependency scan, and docker
-  # build when the project uses containers. See ci-cd-standards.md in the
-  # chromadb tooling repository (docs/standards/).

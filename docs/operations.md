@@ -6,38 +6,57 @@
 
 - macOS with Docker Desktop installed and running.
 - Docker Compose available through Docker Desktop.
-- Node.js and pnpm for local development after the application workspace is
-  scaffolded.
+- Node.js 22 or newer.
+- pnpm 10.
 - Local Chroma tooling for retrieval-assisted development.
 
 ### Setup
 
 ```bash
+pnpm install
 bash scripts/validate-skeleton.sh
 ```
-
-Application setup commands will be added after the pnpm workspace and Docker
-Compose stack are scaffolded.
 
 ### Run
 
 ```bash
-bash scripts/validate-skeleton.sh
+pnpm dev:web
+pnpm dev:api
+pnpm dev:worker
 ```
 
-The planned local runtime is Docker Compose with Web UI on
-`http://localhost:8780` and API on `http://localhost:8781`. The exact
-`docker compose` command will be documented after `infra/docker-compose.yml`
-exists.
+The Web UI runs on `http://localhost:8780`; the API runs on
+`http://localhost:8781`.
+
+Docker Desktop stack:
+
+```bash
+docker compose up -d
+docker compose down
+```
+
+CLI wrapper examples:
+
+```bash
+pnpm --filter @security-preflight/cli preflight status
+pnpm --filter @security-preflight/cli preflight doctor
+```
 
 ### Test, Lint, Typecheck
 
 ```bash
 bash scripts/validate-skeleton.sh
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm lint:openapi
 ```
 
-Stack-specific test, lint, and typecheck commands will be added when the
-workspace packages exist.
+Combined local validation:
+
+```bash
+pnpm validate
+```
 
 ## Deployment
 
@@ -87,7 +106,7 @@ table and must stay in sync.
   `~/SecurityPreflight/reports` on the host.
 - PostgreSQL stores scan history, findings, settings, and audit events.
 - Backup requires copying both the PostgreSQL volume/export and report storage
-  volume. Exact commands will be added after Compose volumes are defined.
+  volume.
 
 ## Operational Limits and Scaling
 
@@ -105,5 +124,4 @@ Start with `docs/runbook.md` for incident scenarios.
 ## Rollback
 
 MVP rollback means stopping the Compose stack and returning to the previous
-local git revision or previous container images. Exact commands will be added
-after the stack is implemented.
+local git revision or previous container images.

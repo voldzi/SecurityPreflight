@@ -45,10 +45,22 @@ Project name:
   - PostgreSQL for durable local history
   - Redis for queue and scan state
   - Docker Desktop and Docker Compose for local runtime
-- The application workspace has not been scaffolded yet, so stack-specific
-  commands are not available until the relevant package files exist.
+- The application workspace is scaffolded with Web UI, API, worker, CLI, and
+  shared packages.
 - The always-available scaffold validation command is:
   - `bash scripts/validate-skeleton.sh`
+- Stack commands:
+  - `pnpm install`
+  - `pnpm dev:web`
+  - `pnpm dev:api`
+  - `pnpm dev:worker`
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm lint:openapi`
+  - `pnpm validate`
+  - `docker compose up -d`
+  - `docker compose down`
 - Planned local ports:
   - Web UI: `http://localhost:8780`
   - API: `http://localhost:8781`
@@ -56,8 +68,6 @@ Project name:
   - PostgreSQL
   - Redis
   - scanner-toolbox container/service
-- Add exact run/build/test/lint/typecheck commands here after the application
-  workspace is scaffolded.
 - If retrieval depends on a repo-local Chroma scope, mention `.chroma-dev.yaml`.
 
 ## Permissions
@@ -106,8 +116,12 @@ chromadb tooling repository under `docs/standards/`. Binding summary:
 
 - Always available baseline:
   - `bash scripts/validate-skeleton.sh`
-- Stack-specific validation commands will be added after the application
-  workspace exists.
+- Workspace checks:
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm lint:openapi`
+  - `pnpm validate`
 - If retrieval scope changed, include:
   - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" reindex --root .`
 - If Chroma-dependent retrieval behavior changed, include:

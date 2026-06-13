@@ -1,0 +1,91 @@
+name: security-preflight
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    environment:
+      APP_ENV: development
+      WEB_PORT: "8780"
+      NEXT_PUBLIC_API_URL: http://localhost:8781
+    ports:
+      - "8780:8780"
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    environment:
+      APP_ENV: development
+      APP_PORT: "8781"
+      DATABASE_URL: postgresql://security_preflight:security_preflight@postgres:5432/security_preflight
+      REDIS_URL: redis://redis:6379/0
+      REPORTS_PATH: /reports
+      SCANNER_NETWORK_MODE: none
+      ALLOW_DOCKER_SOCKET: "false"
+      ALLOW_ACTIVE_DAST: "false"
+      DAST_ALLOWED_HOSTS: localhost,127.0.0.1,host.docker.internal
+    ports:
+      - "8781:8781"
+    volumes:
+      - security_preflight_reports:/reports
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://security_preflight:security_preflight@postgres:5432/security_preflight
+      REDIS_URL: redis://redis:6379/0
+      REPORTS_PATH: /reports
+      SCANNER_NETWORK_MODE: none
+      ALLOW_DOCKER_SOCKET: "false"
+      ALLOW_ACTIVE_DAST: "false"
+    volumes:
+      - security_preflight_reports:/reports
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: security_preflight
+      POSTGRES_USER: security_preflight
+      POSTGRES_PASSWORD: security_preflight
+    ports:
+      - "8782:5432"
+    volumes:
+      - security_preflight_postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "8783:6379"
+    volumes:
+      - security_preflight_cache:/data
+
+  scanner-toolbox:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.scanner-toolbox
+    command: ["sleep", "infinity"]
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    network_mode: none
+
+volumes:
+  security_preflight_postgres:
+  security_preflight_reports:
+  security_preflight_cache:

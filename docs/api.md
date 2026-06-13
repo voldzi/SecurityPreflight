@@ -48,6 +48,9 @@ The API uses path versioning:
 | --- | --- | --- |
 | GET | `/health` | Health check |
 | GET | `/ready` | Readiness check |
+| GET | `/api/v1/projects` | List registered local projects |
+| GET | `/api/v1/scan-profiles` | List built-in scan profiles |
+| GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
 
 ## Error Responses
 
@@ -70,6 +73,18 @@ All errors use the unified format:
 
 ```bash
 curl http://localhost:8781/health
+```
+
+### Scan profiles
+
+```bash
+curl http://localhost:8781/api/v1/scan-profiles
+```
+
+### Toolchain doctor
+
+```bash
+curl http://localhost:8781/api/v1/toolchain/doctor
 ```
 
 ## Client Generation
