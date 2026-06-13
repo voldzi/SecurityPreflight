@@ -55,7 +55,8 @@ flowchart LR
 - `packages/core`: shared types, Zod schemas, detector logic, finding model,
   severity mapping, gate evaluation, redaction utilities, and audit events.
 - `packages/scanners`: adapters and parsers for Gitleaks, Semgrep, Trivy,
-  OpenAPI validation, documentation compliance, and later ZAP/SBOM tooling.
+  Syft, Grype, OSV Scanner, Checkov, Redocly OpenAPI validation,
+  documentation compliance, and controlled ZAP baseline evidence.
 - `packages/report`: Markdown, JSON, and later SARIF/SBOM report generation.
 - `packages/config`: global and per-project configuration schemas.
 
@@ -69,8 +70,9 @@ flowchart LR
 4. The API builds a scan execution plan with command argument arrays, evidence
    paths, read-only project mounts, network mode, and guardrail decisions.
 5. The worker consumes unblocked queued plans and executes supported internal
-   checks. Unsupported external scanner commands are recorded as skipped
-   blocking evidence until the isolated scanner-toolbox runner is available.
+   checks plus external scanner commands through the configured runner. Missing
+   tools, non-zero scanner failures without parseable findings, or disabled
+   runner policy create blocking tooling evidence.
 6. Check outputs are redacted, stored under the report volume, parsed, and
    normalized into the shared `Finding` model.
 7. The gate evaluator maps findings to `PASS`, `WARNING`, `FAIL`, or `ERROR`.
@@ -92,7 +94,7 @@ flowchart LR
 ## External Systems and Integrations
 
 - Required local dependencies: Docker Desktop, Docker Compose, PostgreSQL,
-  Redis, and scanner tooling packaged in local containers.
+  Redis, and scanner tooling packaged in the worker/scanner-toolbox images.
 - Optional network access: vulnerability database updates for dependency
   scanners and explicitly allowed local/staging DAST targets.
 - Future integrations: DefectDojo/Security Assurance Platform export, CI/CD
@@ -114,8 +116,9 @@ flowchart LR
 - Primary deployment is Docker Desktop on a developer MacBook.
 - The stack is started with Docker Compose and exposes the Web UI at
   `http://localhost:8780`.
-- MVP scanner execution uses a constrained scanner-toolbox model and does not
-  mount `/var/run/docker.sock` by default.
+- Scanner execution uses the worker container by default and can use the
+  constrained scanner-toolbox Docker runner when explicitly configured. The
+  default Compose worker does not mount `/var/run/docker.sock`.
 - If future image or compose scanning requires Docker socket access, that mode
   must be explicit, documented as higher risk, and isolated from the default
   profile.

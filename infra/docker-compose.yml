@@ -48,6 +48,9 @@ services:
       PROJECTS_ROOT_HOST: ${PROJECTS_ROOT_HOST:-${PWD}}
       PROJECTS_ROOT_CONTAINER: ${PROJECTS_ROOT_CONTAINER:-/workspace/projects}
       SCANNER_NETWORK_MODE: none
+      SCANNER_RUNNER_ENABLED: "true"
+      SCANNER_RUNNER_MODE: direct
+      SCANNER_TOOLBOX_IMAGE: security-preflight/scanner-toolbox:local
       ALLOW_DOCKER_SOCKET: "false"
       ALLOW_ACTIVE_DAST: "false"
     volumes:
@@ -77,6 +80,7 @@ services:
       - security_preflight_cache:/data
 
   scanner-toolbox:
+    image: security-preflight/scanner-toolbox:local
     build:
       context: ..
       dockerfile: infra/Dockerfile.scanner-toolbox

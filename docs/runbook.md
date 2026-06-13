@@ -41,8 +41,11 @@ symptoms, diagnosis, fix, verification.
 - Confirm the worker is running and consuming the `security-preflight-scans`
   queue.
 - Internal check evidence should have one JSON file per step.
-- Skipped external scanner steps are blocking evidence until the isolated
-  scanner-toolbox runner is implemented and enabled.
+- External scanner steps write raw scanner evidence plus
+  `<check>.command.json` and `<check>.execution.json` metadata.
+- If an external scanner step is skipped, confirm `SCANNER_RUNNER_ENABLED` is
+  not `false` and the scanner binary is present in the worker or selected
+  scanner-toolbox image.
 - Do not treat a skipped external scanner step as a production pass.
 
 ## High Latency

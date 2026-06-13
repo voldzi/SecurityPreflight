@@ -1,6 +1,8 @@
-FROM alpine:3.21
-
-RUN apk add --no-cache bash ca-certificates curl git jq
+FROM node:26-bookworm-slim
 
 WORKDIR /workspace
+
+COPY infra/install-scanners.sh /tmp/install-scanners.sh
+RUN bash /tmp/install-scanners.sh && rm /tmp/install-scanners.sh
+
 CMD ["sleep", "infinity"]

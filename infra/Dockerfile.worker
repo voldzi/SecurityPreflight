@@ -1,7 +1,10 @@
-FROM node:22-alpine
+FROM node:26-bookworm-slim
 
 WORKDIR /app
-RUN corepack enable
+RUN npm install -g pnpm@10.33.0
+
+COPY infra/install-scanners.sh infra/install-scanners.sh
+RUN bash infra/install-scanners.sh
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/worker/package.json apps/worker/package.json

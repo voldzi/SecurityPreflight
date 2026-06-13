@@ -30,7 +30,11 @@ export interface ExecuteScanJobResult {
 
 export async function executeScanJob(input: ExecuteScanJobInput): Promise<ExecuteScanJobResult> {
   const plan = mapProjectPathForWorker(input.plan);
-  const execution = await executeScanPlan(plan);
+  const execution = await executeScanPlan(plan, {
+    runExternalCommands: process.env.SCANNER_RUNNER_ENABLED !== "false",
+    externalRunner: process.env.SCANNER_RUNNER_MODE === "docker" ? "docker" : "direct",
+    scannerImage: process.env.SCANNER_TOOLBOX_IMAGE
+  });
   const executionResult = await writeExecutionResultEvidence(execution);
   const reportPaths = await writeReports(plan, execution);
 

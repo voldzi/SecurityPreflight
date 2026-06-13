@@ -94,8 +94,10 @@ containers should drop unnecessary capabilities, avoid privileged mode, avoid
 the Docker socket, and disable network access unless a check explicitly needs
 it.
 
-The MVP execution model uses a constrained scanner-toolbox container or service
-instead of giving the worker broad Docker socket access. Any future Docker
+The default execution model runs scanner commands inside the constrained worker
+container with a read-only project mount. A Docker runner can use the
+scanner-toolbox image for per-step isolation when explicitly configured. The
+default Compose worker does not receive `/var/run/docker.sock`. Any Docker
 socket mode is an explicit higher-risk configuration and must be documented in
 `docs/operations.md`.
 
@@ -104,11 +106,12 @@ intended command argument array, read-only project mount, evidence paths,
 network mode, and guardrails. A plan with blocked guardrails must not be queued
 or executed by the worker.
 
-The worker can execute internal documentation, OpenAPI, configuration, and
-forbidden-file checks. External scanner commands are not treated as successful
-unless an isolated runner actually executes them and writes evidence. Until the
-scanner-toolbox runner is implemented, skipped external steps create blocking
-tooling evidence rather than a false pass.
+The worker executes internal documentation, OpenAPI, configuration, and
+forbidden-file checks, plus configured external scanner commands. External
+scanner commands are not treated as successful unless a runner executes them
+and writes evidence. Disabled runner policy, unavailable scanner binaries, or
+scanner execution failures create blocking tooling evidence rather than a false
+pass.
 
 ## Controlled DAST and Penetration Testing
 

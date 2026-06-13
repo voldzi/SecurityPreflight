@@ -41,9 +41,9 @@ const tools = [
   { name: "Semgrep", status: "container", version: "scanner-toolbox" },
   { name: "Trivy", status: "container", version: "scanner-toolbox" },
   { name: "OpenAPI", status: "available", version: "Redocly" },
-  { name: "Syft SBOM", status: "missing", version: "required" },
-  { name: "Grype / OSV", status: "missing", version: "required" },
-  { name: "Checkov IaC", status: "missing", version: "required" },
+  { name: "Syft SBOM", status: "container", version: "scanner-toolbox" },
+  { name: "Grype / OSV", status: "container", version: "scanner-toolbox" },
+  { name: "Checkov IaC", status: "container", version: "scanner-toolbox" },
   { name: "Central results API", status: "available", version: "v1 envelope" }
 ];
 

@@ -40,8 +40,8 @@ Project name:
 - Selected implementation stack:
   - pnpm workspaces with `apps/` and `packages/`
   - Next.js, React, TypeScript, Tailwind CSS, shadcn/ui for the Web UI
-  - Node.js, TypeScript, Fastify, Zod, OpenAPI JSON-first for the API
-  - Node.js worker with Redis-backed queue processing
+  - Node.js 26, TypeScript, Fastify, Zod, OpenAPI JSON-first for the API
+  - Node.js 26 worker with Redis-backed queue processing
   - PostgreSQL for durable local history
   - Redis for queue and scan state
   - Docker Desktop and Docker Compose for local runtime

@@ -115,6 +115,64 @@ describe("scan execution planner", () => {
     }
   });
 
+  it("executes external commands directly and normalizes scanner evidence", async () => {
+    const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
+    const projectRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-project-"));
+
+    try {
+      const plan = buildScanExecutionPlan({
+        scanRunId: "scan_external_semgrep",
+        project: {
+          id: "project_1",
+          name: "External",
+          path: projectRoot
+        },
+        profile: {
+          id: "external-test",
+          name: "external-test",
+          description: "External runner test profile.",
+          checks: ["semgrep"],
+          failThreshold: "medium",
+          allowActiveDast: false,
+          allowProductionTargets: false,
+          timeoutSeconds: 60
+        },
+        reportsRoot
+      });
+      const rawEvidencePath = plan.steps[0]?.evidencePaths[0];
+
+      if (!rawEvidencePath) {
+        throw new Error("Missing test evidence path");
+      }
+
+      const command = [
+        process.execPath,
+        "-e",
+        "require('node:fs').writeFileSync(process.argv[1], JSON.stringify({results:[{check_id:'test.rule',path:'src/app.ts',start:{line:7},extra:{severity:'ERROR',message:'Unsafe test pattern'}}]}))",
+        rawEvidencePath
+      ];
+      const externalPlan = {
+        ...plan,
+        steps: plan.steps.map((step) => ({ ...step, command }))
+      };
+      const result = await executeScanPlan(externalPlan, { runExternalCommands: true, externalRunner: "direct" });
+      const rawEvidence = JSON.parse(await readFile(rawEvidencePath, "utf8")) as { results: unknown[] };
+      const executionEvidencePath = result.stepResults[0]?.evidencePath;
+
+      expect(result.status).toBe("completed");
+      expect(result.findings).toHaveLength(1);
+      expect(result.findings[0]?.tool).toBe("semgrep");
+      expect(result.findings[0]?.severity).toBe("high");
+      expect(result.findings[0]?.filePath).toBe("src/app.ts");
+      expect(rawEvidence.results).toHaveLength(1);
+      expect(executionEvidencePath).toContain("semgrep.execution.json");
+      await expect(readFile(executionEvidencePath ?? "", "utf8")).resolves.toContain("Unsafe test pattern");
+    } finally {
+      await rm(reportsRoot, { recursive: true, force: true });
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("does not execute unblocked steps when guardrails block the plan", async () => {
     const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
 

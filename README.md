@@ -28,7 +28,8 @@ CODEX and Claude Code, following the central application standards
 - Worker: Node.js, TypeScript, Redis-backed queue, scanner orchestration.
 - Data: PostgreSQL for scan history, Redis for queue and scan state.
 - Runtime: Docker Desktop with Docker Compose.
-- Scanner execution: MVP uses a constrained scanner-toolbox container model
+- Scanner execution: worker/container runner for Gitleaks, Semgrep, Trivy,
+  Syft, Grype, OSV Scanner, Checkov, Redocly, and controlled ZAP planning,
   without mounting the Docker socket by default.
 
 ## Run Locally
@@ -61,7 +62,7 @@ Preview a scan execution plan without running scanners:
 pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run
 ```
 
-Queue a supported internal scan through the API and worker:
+Queue a supported scan through the API and worker:
 
 ```bash
 pnpm --filter @security-preflight/cli preflight scan --project . --profile documentation-compliance

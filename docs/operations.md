@@ -6,7 +6,7 @@
 
 - macOS with Docker Desktop installed and running.
 - Docker Compose available through Docker Desktop.
-- Node.js 22 or newer.
+- Node.js 26 or newer.
 - pnpm 10.
 - Local Chroma tooling for retrieval-assisted development.
 
@@ -63,10 +63,11 @@ When invoked through pnpm, the CLI resolves relative `--project` paths against
 the original shell directory, not the CLI package directory.
 
 Without `--dry-run`, the CLI calls `POST /api/v1/scans/queue`. The API only
-queues unblocked plans. The worker currently executes internal documentation,
-OpenAPI, configuration, and forbidden-file checks and writes evidence under
-`REPORTS_PATH/<scanRunId>/`. External scanner commands are recorded as skipped
-blocking evidence until the isolated scanner-toolbox runner is implemented.
+queues unblocked plans. The worker executes internal documentation, OpenAPI,
+configuration, and forbidden-file checks plus configured external scanner
+commands, then writes evidence under `REPORTS_PATH/<scanRunId>/`. Missing
+scanner binaries, disabled runner policy, or scanner execution errors create
+blocking tooling evidence rather than a false pass.
 
 When the worker runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
 directory containing the projects to scan. The worker mounts it read-only at
@@ -120,6 +121,9 @@ table and must stay in sync.
 | `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker worker may read |
 | `PROJECTS_ROOT_CONTAINER` | no | `/workspace/projects` | Container mount path for `PROJECTS_ROOT_HOST` |
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |
+| `SCANNER_RUNNER_ENABLED` | no | `true` | Enables worker execution of planned external scanner commands |
+| `SCANNER_RUNNER_MODE` | no | `direct` | `direct` runs scanners inside the worker; `docker` runs them through Docker with the scanner-toolbox image |
+| `SCANNER_TOOLBOX_IMAGE` | no | `security-preflight/scanner-toolbox:local` | Image used by the Docker scanner runner |
 | `ALLOW_DOCKER_SOCKET` | no | `false` | Explicit opt-in for future Docker socket based scanning |
 | `ALLOW_ACTIVE_DAST` | no | `false` | Enables controlled active DAST profiles |
 | `DAST_ALLOWED_HOSTS` | no | `localhost,127.0.0.1,host.docker.internal` | Comma-separated active DAST allowlist |
@@ -133,8 +137,9 @@ table and must stay in sync.
 
 - Docker Desktop and Docker Compose.
 - PostgreSQL and Redis services from the local Compose stack.
-- Scanner tools packaged in local containers: Gitleaks, Semgrep, Trivy, and an
-  OpenAPI validator/linter.
+- Scanner tools packaged in local containers: Gitleaks, Semgrep, Trivy, Syft,
+  Grype, OSV Scanner, Checkov, Redocly/OpenAPI tooling, and optional ZAP
+  baseline planning for controlled DAST.
 - Optional scanner network access for vulnerability database updates.
 - Optional controlled DAST target on localhost or allowlisted staging hosts.
 

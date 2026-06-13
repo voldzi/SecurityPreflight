@@ -725,9 +725,25 @@ export interface ScanExecutionResult {
   gate: GateEvaluation;
 }
 
+export type ExternalRunnerMode = "direct" | "docker";
+
 export interface ExecuteScanPlanOptions {
   runExternalCommands?: boolean;
   treatSkippedExternalChecksAsFindings?: boolean;
+  externalRunner?: ExternalRunnerMode;
+  scannerImage?: string;
+  dockerCommand?: string;
+}
+
+interface CommandRunResult {
+  runner: ExternalRunnerMode;
+  command: string[];
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  stdout: string;
+  stderr: string;
+  errorMessage: string | null;
 }
 
 const mandatoryDocumentationFiles = [
@@ -819,7 +835,7 @@ async function executeStep(
   options: ExecuteScanPlanOptions
 ): Promise<ScanStepExecutionResult> {
   const startedAt = new Date().toISOString();
-  const evidencePath = primaryEvidencePath(step);
+  const evidencePath = stepResultEvidencePath(step);
 
   try {
     if (step.executionMode === "internal") {
@@ -833,6 +849,28 @@ async function executeStep(
         evidencePath,
         findings,
         message: findings.length > 0 ? "Internal check produced findings." : "Internal check passed."
+      };
+      await writeStepEvidence(plan, step, result);
+      return result;
+    }
+
+    if (!step.command || step.status === "blocked") {
+      const result: ScanStepExecutionResult = {
+        stepId: step.id,
+        checkId: step.checkId,
+        status: "blocked",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        evidencePath,
+        findings: [
+          createExecutionFinding(plan, step, {
+            severity: "high",
+            title: `Scanner step '${step.checkId}' was blocked by guardrails`,
+            description: step.blockedReasons.join(" ") || "The scanner step has no executable command.",
+            recommendation: "Adjust the scan request or profile so guardrails allow this step."
+          })
+        ],
+        message: step.blockedReasons.join(" ") || "External scanner command is not available."
       };
       await writeStepEvidence(plan, step, result);
       return result;
@@ -865,22 +903,38 @@ async function executeStep(
       return result;
     }
 
+    const commandResult = await runExternalScannerCommand(plan, step, options);
+    await writeExternalCommandEvidence(plan, step, commandResult);
+    const findings = await parseExternalFindings(plan, step, commandResult);
+    const executionFinding =
+      commandResult.timedOut || (commandResult.exitCode !== 0 && findings.length === 0)
+        ? createExecutionFinding(plan, step, {
+            severity: "high",
+            title: `Scanner step '${step.checkId}' failed`,
+            description:
+              commandResult.errorMessage ||
+              firstNonEmptyLine(commandResult.stderr) ||
+              firstNonEmptyLine(commandResult.stdout) ||
+              `Scanner exited with code ${commandResult.exitCode ?? "unknown"}.`,
+            recommendation: "Inspect command evidence and rerun after fixing the scanner or project configuration.",
+            evidence: [commandResult.stderr, commandResult.stdout].filter(Boolean).join("\n")
+          })
+        : null;
+    const allFindings = executionFinding ? [...findings, executionFinding] : findings;
     const result: ScanStepExecutionResult = {
       stepId: step.id,
       checkId: step.checkId,
-      status: "skipped",
+      status: commandResult.timedOut || commandResult.exitCode !== 0 ? "failed" : allFindings.length > 0 ? "failed" : "passed",
       startedAt,
       finishedAt: new Date().toISOString(),
       evidencePath,
-      findings: [
-        createExecutionFinding(plan, step, {
-          severity: "high",
-          title: `Scanner step '${step.checkId}' needs an isolated runner`,
-          description: "Direct host execution is intentionally not implemented for scanner commands.",
-          recommendation: "Run external scanners through the constrained scanner-toolbox adapter."
-        })
-      ],
-      message: "External scanner runner is not implemented yet."
+      findings: allFindings,
+      message:
+        commandResult.exitCode === 0
+          ? allFindings.length > 0
+            ? "External scanner completed and produced findings."
+            : "External scanner completed without findings."
+          : "External scanner completed with a non-zero exit status."
     };
     await writeStepEvidence(plan, step, result);
     return result;
@@ -917,7 +971,7 @@ async function writeBlockedStepEvidence(plan: ScanExecutionPlan, step: ScanExecu
     status: blocked ? "blocked" : "skipped",
     startedAt: now,
     finishedAt: now,
-    evidencePath: primaryEvidencePath(step),
+    evidencePath: stepResultEvidencePath(step),
     findings: blocked
       ? [
           createExecutionFinding(plan, step, {
@@ -932,6 +986,512 @@ async function writeBlockedStepEvidence(plan: ScanExecutionPlan, step: ScanExecu
   };
   await writeStepEvidence(plan, step, result);
   return result;
+}
+
+async function runExternalScannerCommand(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  options: ExecuteScanPlanOptions
+): Promise<CommandRunResult> {
+  const runner = options.externalRunner ?? resolveExternalRunnerMode();
+
+  if (runner === "docker") {
+    return runDockerScannerCommand(plan, step, options);
+  }
+
+  return runDirectScannerCommand(plan, step);
+}
+
+function resolveExternalRunnerMode(): ExternalRunnerMode {
+  return process.env.SCANNER_RUNNER_MODE === "docker" ? "docker" : "direct";
+}
+
+async function runDirectScannerCommand(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<CommandRunResult> {
+  if (!step.command?.[0]) {
+    return emptyCommandFailure("direct", [], "Scanner command is missing.");
+  }
+
+  const command = materializeDirectCommand(plan, step);
+  return runCommand("direct", command, {
+    cwd: step.projectMount.sourcePath,
+    timeoutSeconds: step.timeoutSeconds
+  });
+}
+
+async function runDockerScannerCommand(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  options: ExecuteScanPlanOptions
+): Promise<CommandRunResult> {
+  if (!step.command?.[0]) {
+    return emptyCommandFailure("docker", [], "Scanner command is missing.");
+  }
+
+  const dockerCommand = options.dockerCommand ?? process.env.DOCKER_COMMAND ?? "docker";
+  const scannerImage =
+    step.tool === "zap"
+      ? process.env.ZAP_DOCKER_IMAGE ?? "ghcr.io/zaproxy/zaproxy:stable"
+      : options.scannerImage ?? process.env.SCANNER_TOOLBOX_IMAGE ?? "security-preflight/scanner-toolbox:local";
+  const networkMode =
+    step.networkMode === "restricted"
+      ? process.env.SCANNER_RESTRICTED_NETWORK_MODE ?? "bridge"
+      : process.env.SCANNER_DISABLED_NETWORK_MODE ?? "none";
+  const command = [
+    dockerCommand,
+    "run",
+    "--rm",
+    "--network",
+    networkMode,
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges:true",
+    "--read-only",
+    "--tmpfs",
+    "/tmp:rw,nosuid,nodev,size=512m",
+    "--tmpfs",
+    "/home/scanner/.cache:rw,nosuid,nodev,size=512m",
+    "--volume",
+    `${step.projectMount.sourcePath}:${projectMountTarget}:ro`,
+    "--volume",
+    `${plan.evidenceRoot}:${evidenceMountTarget}:rw`,
+    "--workdir",
+    "/workspace",
+    scannerImage,
+    ...step.command
+  ];
+
+  return runCommand("docker", command, {
+    cwd: plan.project.path,
+    timeoutSeconds: step.timeoutSeconds + 30
+  });
+}
+
+function materializeDirectCommand(plan: ScanExecutionPlan, step: ScanExecutionStep): string[] {
+  return (step.command ?? []).map((argument) =>
+    argument.replaceAll(projectMountTarget, step.projectMount.sourcePath).replaceAll(evidenceMountTarget, plan.evidenceRoot)
+  );
+}
+
+async function runCommand(
+  runner: ExternalRunnerMode,
+  command: string[],
+  options: { cwd: string; timeoutSeconds: number }
+): Promise<CommandRunResult> {
+  const [executable, ...args] = command;
+
+  if (!executable) {
+    return emptyCommandFailure(runner, command, "Scanner command is missing.");
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync(executable, args, {
+      cwd: options.cwd,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CI: "true",
+        NO_COLOR: "1",
+        SEMGREP_SEND_METRICS: "off",
+        TRIVY_NO_PROGRESS: "true",
+        CHECKOV_NO_GUIDE: "true"
+      },
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: options.timeoutSeconds * 1000
+    });
+
+    return {
+      runner,
+      command,
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      stdout: String(stdout ?? ""),
+      stderr: String(stderr ?? ""),
+      errorMessage: null
+    };
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException & {
+      stdout?: string | Buffer;
+      stderr?: string | Buffer;
+      code?: string | number;
+      signal?: string;
+      killed?: boolean;
+    };
+    const code = typeof nodeError.code === "number" ? nodeError.code : null;
+    const timedOut = nodeError.killed === true || nodeError.signal === "SIGTERM";
+
+    return {
+      runner,
+      command,
+      exitCode: code,
+      signal: nodeError.signal ?? null,
+      timedOut,
+      stdout: bufferToString(nodeError.stdout),
+      stderr: bufferToString(nodeError.stderr),
+      errorMessage: nodeError.message
+    };
+  }
+}
+
+function emptyCommandFailure(runner: ExternalRunnerMode, command: string[], message: string): CommandRunResult {
+  return {
+    runner,
+    command,
+    exitCode: null,
+    signal: null,
+    timedOut: false,
+    stdout: "",
+    stderr: "",
+    errorMessage: message
+  };
+}
+
+async function writeExternalCommandEvidence(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  result: CommandRunResult
+): Promise<void> {
+  const payload = {
+    scanRunId: plan.scanRunId,
+    stepId: step.id,
+    checkId: step.checkId,
+    tool: step.tool,
+    runner: result.runner,
+    command: result.command,
+    exitCode: result.exitCode,
+    signal: result.signal,
+    timedOut: result.timedOut,
+    generatedEvidencePaths: await existingEvidencePaths(step.evidencePaths),
+    stdout: truncateEvidence(result.stdout),
+    stderr: truncateEvidence(result.stderr),
+    errorMessage: result.errorMessage
+  };
+
+  await writeFile(commandEvidencePath(step), `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
+}
+
+async function parseExternalFindings(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  commandResult: CommandRunResult
+): Promise<Finding[]> {
+  const documents = await readJsonEvidenceDocuments(step, commandResult);
+
+  if (documents.length === 0) {
+    return [];
+  }
+
+  switch (step.tool) {
+    case "gitleaks":
+      return documents.flatMap((document) => parseGitleaksFindings(plan, step, document));
+    case "semgrep":
+      return documents.flatMap((document) => parseSemgrepFindings(plan, step, document));
+    case "trivy":
+      return documents.flatMap((document) => parseTrivyFindings(plan, step, document));
+    case "grype":
+      return documents.flatMap((document) => parseGrypeFindings(plan, step, document));
+    case "osv-scanner":
+      return documents.flatMap((document) => parseOsvFindings(plan, step, document));
+    case "checkov":
+      return documents.flatMap((document) => parseCheckovFindings(plan, step, document));
+    case "redocly":
+      return documents.flatMap((document) => parseRedoclyFindings(plan, step, document));
+    case "zap":
+      return documents.flatMap((document) => parseZapFindings(plan, step, document));
+    default:
+      return [];
+  }
+}
+
+async function readJsonEvidenceDocuments(step: ScanExecutionStep, commandResult: CommandRunResult): Promise<unknown[]> {
+  const documents: unknown[] = [];
+
+  for (const evidencePath of step.evidencePaths) {
+    if (!evidencePath.endsWith(".json")) {
+      continue;
+    }
+
+    try {
+      documents.push(JSON.parse(await readFile(evidencePath, "utf8")));
+    } catch {
+      // Some tools only write evidence on findings. Command metadata remains available.
+    }
+  }
+
+  if (documents.length === 0) {
+    const inline = commandResult.stdout.trim();
+
+    if (inline.startsWith("{") || inline.startsWith("[")) {
+      try {
+        documents.push(JSON.parse(inline));
+      } catch {
+        // Non-JSON stdout is retained in command evidence.
+      }
+    }
+  }
+
+  return documents;
+}
+
+function parseGitleaksFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const leaks = Array.isArray(document) ? document : [];
+
+  return leaks.map((leak) => {
+    const item = asRecord(leak);
+    const ruleId = stringValue(item.RuleID) ?? stringValue(item.ruleId) ?? step.checkId;
+    const filePath = normalizeExternalFilePath(plan, stringValue(item.File) ?? stringValue(item.file));
+
+    return createExecutionFinding(plan, step, {
+      severity: "critical",
+      title: `Secret detected by ${ruleId}`,
+      description: stringValue(item.Description) ?? "Gitleaks detected a secret-like value.",
+      filePath,
+      line: numberValue(item.StartLine) ?? numberValue(item.startLine),
+      ruleId,
+      recommendation: "Remove the secret, rotate the credential, and keep the replacement outside Git.",
+      evidence: JSON.stringify(redactObject(item))
+    });
+  });
+}
+
+function parseSemgrepFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const root = asRecord(document);
+  const results = arrayValue(root.results);
+
+  return results.map((result) => {
+    const item = asRecord(result);
+    const extra = asRecord(item.extra);
+    const metadata = asRecord(extra.metadata);
+    const ruleId = stringValue(item.check_id) ?? step.checkId;
+    const message = stringValue(extra.message) ?? stringValue(item.message) ?? "Semgrep finding";
+
+    return createExecutionFinding(plan, step, {
+      severity: normalizeSeverity(stringValue(extra.severity), "medium"),
+      title: message,
+      description: message,
+      filePath: normalizeExternalFilePath(plan, stringValue(item.path)),
+      line: numberValue(asRecord(item.start).line),
+      ruleId,
+      cwe: stringListValue(metadata.cwe),
+      owasp: stringListValue(metadata.owasp),
+      recommendation: stringValue(metadata.fix) ?? "Review the Semgrep finding and remediate the affected code.",
+      evidence: JSON.stringify(redactObject({ check_id: ruleId, path: item.path, start: item.start, extra }))
+    });
+  });
+}
+
+function parseTrivyFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const root = asRecord(document);
+  const results = arrayValue(root.Results);
+  const findings: Finding[] = [];
+
+  for (const result of results) {
+    const item = asRecord(result);
+    const target = normalizeExternalFilePath(plan, stringValue(item.Target));
+
+    for (const vulnerability of arrayValue(item.Vulnerabilities)) {
+      const vuln = asRecord(vulnerability);
+      const id = stringValue(vuln.VulnerabilityID) ?? step.checkId;
+      const packageName = stringValue(vuln.PkgName) ?? "package";
+      findings.push(
+        createExecutionFinding(plan, step, {
+          severity: normalizeSeverity(stringValue(vuln.Severity), "medium"),
+          title: `${id} in ${packageName}`,
+          description: stringValue(vuln.Title) ?? stringValue(vuln.Description) ?? `Trivy reported ${id}.`,
+          filePath: target,
+          ruleId: id,
+          cve: id.startsWith("CVE-") ? id : null,
+          recommendation: stringValue(vuln.FixedVersion)
+            ? `Upgrade ${packageName} to ${vuln.FixedVersion} or later.`
+            : "Review the vulnerable dependency and apply the vendor remediation.",
+          evidence: JSON.stringify(redactObject(vuln))
+        })
+      );
+    }
+
+    for (const misconfiguration of arrayValue(item.Misconfigurations)) {
+      const misconfig = asRecord(misconfiguration);
+      const id = stringValue(misconfig.ID) ?? step.checkId;
+      findings.push(
+        createExecutionFinding(plan, step, {
+          severity: normalizeSeverity(stringValue(misconfig.Severity), "medium"),
+          title: stringValue(misconfig.Title) ?? `Container misconfiguration ${id}`,
+          description: stringValue(misconfig.Message) ?? stringValue(misconfig.Description) ?? `Trivy reported ${id}.`,
+          filePath: normalizeExternalFilePath(plan, stringValue(misconfig.FilePath)) ?? target,
+          line: numberValue(misconfig.StartLine),
+          ruleId: id,
+          recommendation: stringValue(misconfig.Resolution) ?? "Review the misconfiguration and harden the affected file.",
+          evidence: JSON.stringify(redactObject(misconfig))
+        })
+      );
+    }
+
+    for (const secret of arrayValue(item.Secrets)) {
+      const secretRecord = asRecord(secret);
+      const id = stringValue(secretRecord.RuleID) ?? step.checkId;
+      findings.push(
+        createExecutionFinding(plan, step, {
+          severity: "critical",
+          title: stringValue(secretRecord.Title) ?? `Secret detected by ${id}`,
+          description: stringValue(secretRecord.Match) ?? "Trivy detected a secret-like value.",
+          filePath: normalizeExternalFilePath(plan, stringValue(secretRecord.FilePath)) ?? target,
+          line: numberValue(secretRecord.StartLine),
+          ruleId: id,
+          recommendation: "Remove the secret, rotate the credential, and keep the replacement outside Git.",
+          evidence: JSON.stringify(redactObject(secretRecord))
+        })
+      );
+    }
+  }
+
+  return findings;
+}
+
+function parseGrypeFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const root = asRecord(document);
+
+  return arrayValue(root.matches).map((match) => {
+    const item = asRecord(match);
+    const vulnerability = asRecord(item.vulnerability);
+    const artifact = asRecord(item.artifact);
+    const id = stringValue(vulnerability.id) ?? step.checkId;
+    const packageName = stringValue(artifact.name) ?? "package";
+    const location = asRecord(arrayValue(artifact.locations)[0]);
+
+    return createExecutionFinding(plan, step, {
+      severity: normalizeSeverity(stringValue(vulnerability.severity), "medium"),
+      title: `${id} in ${packageName}`,
+      description: stringValue(vulnerability.description) ?? `Grype reported ${id}.`,
+      filePath: normalizeExternalFilePath(plan, stringValue(location.path)),
+      ruleId: id,
+      cve: id.startsWith("CVE-") ? id : null,
+      recommendation: stringValue(vulnerability.fix?.versions?.[0])
+        ? `Upgrade ${packageName} to ${String(vulnerability.fix.versions[0])} or later.`
+        : "Review the vulnerable dependency and apply the vendor remediation.",
+      evidence: JSON.stringify(redactObject({ vulnerability, artifact }))
+    });
+  });
+}
+
+function parseOsvFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const root = asRecord(document);
+  const findings: Finding[] = [];
+
+  for (const result of arrayValue(root.results)) {
+    const resultRecord = asRecord(result);
+    const source = asRecord(resultRecord.source);
+
+    for (const packageResult of arrayValue(resultRecord.packages)) {
+      const packageRecord = asRecord(packageResult);
+      const packageInfo = asRecord(packageRecord.package);
+      const packageName = stringValue(packageInfo.name) ?? "package";
+
+      for (const vulnerability of arrayValue(packageRecord.vulnerabilities)) {
+        const vuln = asRecord(vulnerability);
+        const id = stringValue(vuln.id) ?? step.checkId;
+        findings.push(
+          createExecutionFinding(plan, step, {
+            severity: normalizeOsvSeverity(vuln),
+            title: `${id} in ${packageName}`,
+            description: stringValue(vuln.summary) ?? stringValue(vuln.details) ?? `OSV Scanner reported ${id}.`,
+            filePath: normalizeExternalFilePath(plan, stringValue(source.path)),
+            ruleId: id,
+            cve: id.startsWith("CVE-") ? id : null,
+            recommendation: "Upgrade or replace the affected dependency according to OSV advisory guidance.",
+            evidence: JSON.stringify(redactObject({ package: packageInfo, vulnerability: vuln }))
+          })
+        );
+      }
+    }
+  }
+
+  return findings;
+}
+
+function parseCheckovFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const failedChecks = collectCheckovFailedChecks(document);
+
+  return failedChecks.map((check) => {
+    const item = asRecord(check);
+    const fileRange = arrayValue(item.file_line_range);
+    const ruleId = stringValue(item.check_id) ?? step.checkId;
+
+    return createExecutionFinding(plan, step, {
+      severity: normalizeSeverity(stringValue(item.severity), "medium"),
+      title: stringValue(item.check_name) ?? `Checkov policy ${ruleId} failed`,
+      description: stringValue(item.check_name) ?? `Checkov reported ${ruleId}.`,
+      filePath: normalizeExternalFilePath(plan, stringValue(item.file_path) ?? stringValue(item.file_abs_path)),
+      line: numberValue(fileRange[0]),
+      ruleId,
+      recommendation: stringValue(item.guideline) ?? "Review the infrastructure policy failure and harden the configuration.",
+      evidence: JSON.stringify(redactObject(item))
+    });
+  });
+}
+
+function collectCheckovFailedChecks(document: unknown): unknown[] {
+  if (Array.isArray(document)) {
+    return document.flatMap((entry) => collectCheckovFailedChecks(entry));
+  }
+
+  const root = asRecord(document);
+  const results = asRecord(root.results);
+  const failed = arrayValue(results.failed_checks);
+
+  if (failed.length > 0) {
+    return failed;
+  }
+
+  return arrayValue(root.failed_checks);
+}
+
+function parseRedoclyFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const problems = Array.isArray(document) ? document : arrayValue(asRecord(document).problems);
+
+  return problems.map((problem) => {
+    const item = asRecord(problem);
+    const location = asRecord(arrayValue(item.location)[0]);
+    const source = asRecord(location.source);
+    const ruleId = stringValue(item.ruleId) ?? step.checkId;
+
+    return createExecutionFinding(plan, step, {
+      severity: normalizeSeverity(stringValue(item.severity), "medium"),
+      title: stringValue(item.message) ?? `OpenAPI lint issue ${ruleId}`,
+      description: stringValue(item.message) ?? `Redocly reported ${ruleId}.`,
+      filePath: normalizeExternalFilePath(plan, stringValue(source.absoluteRef) ?? stringValue(source.ref)),
+      line: numberValue(location.line),
+      ruleId,
+      recommendation: "Update the OpenAPI JSON contract to satisfy the lint rule.",
+      evidence: JSON.stringify(redactObject(item))
+    });
+  });
+}
+
+function parseZapFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const root = asRecord(document);
+  const findings: Finding[] = [];
+
+  for (const site of arrayValue(root.site)) {
+    for (const alert of arrayValue(asRecord(site).alerts)) {
+      const item = asRecord(alert);
+      const ruleId = stringValue(item.pluginid) ?? step.checkId;
+      findings.push(
+        createExecutionFinding(plan, step, {
+          severity: normalizeZapSeverity(stringValue(item.riskcode) ?? stringValue(item.riskdesc)),
+          title: stringValue(item.alert) ?? `ZAP alert ${ruleId}`,
+          description: stringValue(item.desc) ?? stringValue(item.riskdesc) ?? `ZAP reported ${ruleId}.`,
+          endpoint: stringValue(asRecord(arrayValue(item.instances)[0]).uri),
+          ruleId,
+          cwe: stringValue(item.cweid),
+          recommendation: stringValue(item.solution) ?? "Review and remediate the DAST finding.",
+          evidence: JSON.stringify(redactObject(item))
+        })
+      );
+    }
+  }
+
+  return findings;
 }
 
 async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
@@ -1248,7 +1808,7 @@ async function writeStepEvidence(
     }
   };
 
-  await writeFile(primaryEvidencePath(step), `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
+  await writeFile(result.evidencePath, `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
 }
 
 export async function writeExecutionResultEvidence(result: ScanExecutionResult): Promise<string> {
@@ -1262,6 +1822,190 @@ function primaryEvidencePath(step: ScanExecutionStep): string {
   return step.evidencePaths[0] ?? path.join(process.cwd(), `${step.id}.json`);
 }
 
+function stepResultEvidencePath(step: ScanExecutionStep): string {
+  if (step.executionMode === "internal") {
+    return primaryEvidencePath(step);
+  }
+
+  return path.join(path.dirname(primaryEvidencePath(step)), `${sanitizeFilePart(step.checkId)}.execution.json`);
+}
+
+function commandEvidencePath(step: ScanExecutionStep): string {
+  return path.join(path.dirname(primaryEvidencePath(step)), `${sanitizeFilePart(step.checkId)}.command.json`);
+}
+
+async function existingEvidencePaths(evidencePaths: string[]): Promise<string[]> {
+  const existing: string[] = [];
+
+  for (const evidencePath of evidencePaths) {
+    try {
+      await stat(evidencePath);
+      existing.push(evidencePath);
+    } catch {
+      // Missing raw scanner evidence is represented by command status and findings.
+    }
+  }
+
+  return existing;
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, any>) : {};
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stringValue(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return null;
+}
+
+function stringListValue(value: unknown): string | null {
+  if (Array.isArray(value)) {
+    const values = value.map((item) => stringValue(item)).filter((item): item is string => item !== null);
+    return values.length > 0 ? values.join(", ") : null;
+  }
+
+  return stringValue(value);
+}
+
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function bufferToString(value: string | Buffer | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  return Buffer.isBuffer(value) ? value.toString("utf8") : value;
+}
+
+function firstNonEmptyLine(value: string): string | null {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) ?? null;
+}
+
+function truncateEvidence(value: string, maxLength = 12_000): string {
+  const redacted = redactSecrets(value);
+
+  if (redacted.length <= maxLength) {
+    return redacted;
+  }
+
+  return `${redacted.slice(0, maxLength)}\n...[truncated]`;
+}
+
+function redactObject(value: unknown): unknown {
+  return JSON.parse(redactSecrets(JSON.stringify(value)));
+}
+
+function normalizeSeverity(value: string | null, fallback: Severity): Severity {
+  const normalized = value?.toLowerCase().trim();
+
+  switch (normalized) {
+    case "critical":
+    case "crit":
+      return "critical";
+    case "high":
+    case "error":
+    case "fail":
+    case "failed":
+      return "high";
+    case "medium":
+    case "moderate":
+    case "warning":
+    case "warn":
+      return "medium";
+    case "low":
+      return "low";
+    case "info":
+    case "informational":
+    case "passed":
+      return "info";
+    default:
+      return fallback;
+  }
+}
+
+function normalizeOsvSeverity(vulnerability: Record<string, any>): Severity {
+  const severity = stringValue(vulnerability.database_specific?.severity);
+
+  if (severity) {
+    return normalizeSeverity(severity, "medium");
+  }
+
+  const cvssSeverity = arrayValue(vulnerability.severity)
+    .map((entry) => stringValue(asRecord(entry).score))
+    .find(Boolean);
+
+  if (!cvssSeverity) {
+    return "medium";
+  }
+
+  const cvssScore = Number.parseFloat(cvssSeverity.split("/").pop() ?? cvssSeverity);
+
+  if (!Number.isFinite(cvssScore)) {
+    return "medium";
+  }
+
+  if (cvssScore >= 9) return "critical";
+  if (cvssScore >= 7) return "high";
+  if (cvssScore >= 4) return "medium";
+  return "low";
+}
+
+function normalizeZapSeverity(value: string | null): Severity {
+  if (!value) {
+    return "medium";
+  }
+
+  if (value === "3") return "high";
+  if (value === "2") return "medium";
+  if (value === "1") return "low";
+  if (value === "0") return "info";
+  return normalizeSeverity(value.split(/\s|\(/)[0] ?? value, "medium");
+}
+
+function normalizeExternalFilePath(plan: ScanExecutionPlan, value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const withoutMount = value.startsWith(projectMountTarget)
+    ? path.relative(projectMountTarget, value)
+    : value.startsWith(stepProjectPrefix(plan))
+      ? path.relative(plan.project.path, value)
+      : value;
+
+  const normalized = withoutMount.replaceAll("\\", "/").replace(/^\/+/, "");
+  return normalized || null;
+}
+
+function stepProjectPrefix(plan: ScanExecutionPlan): string {
+  return path.resolve(plan.project.path);
+}
+
 function createExecutionFinding(
   plan: ScanExecutionPlan,
   step: ScanExecutionStep,
@@ -1270,15 +2014,24 @@ function createExecutionFinding(
     title: string;
     description: string;
     recommendation: string;
+    ruleId?: string | null;
     filePath?: string | null;
+    line?: number | null;
+    endpoint?: string | null;
+    cwe?: string | null;
+    cve?: string | null;
+    owasp?: string | null;
+    evidence?: string | null;
   }
 ): Finding {
   const filePath = input.filePath ?? null;
   const fingerprint = createFindingFingerprint({
     tool: step.tool,
     type: step.type,
-    ruleId: step.checkId,
+    ruleId: input.ruleId ?? step.checkId,
     filePath,
+    line: input.line ?? null,
+    endpoint: input.endpoint ?? null,
     title: input.title
   });
 
@@ -1290,13 +2043,13 @@ function createExecutionFinding(
     severity: input.severity,
     title: input.title,
     description: input.description,
-    evidence: redactSecrets(`${step.checkId}: ${input.description}`),
+    evidence: redactSecrets(input.evidence ?? `${step.checkId}: ${input.description}`),
     filePath,
-    line: null,
-    endpoint: null,
-    cwe: null,
-    cve: null,
-    owasp: null,
+    line: input.line ?? null,
+    endpoint: input.endpoint ?? null,
+    cwe: input.cwe ?? null,
+    cve: input.cve ?? null,
+    owasp: input.owasp ?? null,
     recommendation: input.recommendation,
     status: "open",
     fingerprint

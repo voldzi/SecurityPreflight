@@ -45,6 +45,13 @@ export const projectConfigSchema = z.object({
 export const globalConfigSchema = z.object({
   defaultReportsPath: z.string().default("/reports"),
   toolExecutionMode: z.enum(["docker", "host"]).default("docker"),
+  scannerRunner: z
+    .object({
+      enabled: z.boolean().default(true),
+      mode: z.enum(["direct", "docker"]).default("direct"),
+      toolboxImage: z.string().default("security-preflight/scanner-toolbox:local")
+    })
+    .default({}),
   defectDojo: z
     .object({
       enabled: z.boolean().default(false),
