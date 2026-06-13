@@ -94,12 +94,23 @@ instead of giving the worker broad Docker socket access. Any future Docker
 socket mode is an explicit higher-risk configuration and must be documented in
 `docs/operations.md`.
 
+Scan execution planning happens before scanner execution. Plans record the
+intended command argument array, read-only project mount, evidence paths,
+network mode, and guardrails. A plan with blocked guardrails must not be queued
+or executed by the worker.
+
 ## Controlled DAST and Penetration Testing
 
 SecurityPreflight may run safe, controlled DAST and penetration-test readiness
 checks against applications owned by the user. Active DAST is disabled by
 default and allowed only for localhost, `127.0.0.1`,
 `host.docker.internal`, or explicitly allowlisted staging hosts.
+
+The `controlled-dast-local` profile is the first controlled DAST profile. It
+plans an OWASP ZAP baseline only when active scanning is explicitly enabled in
+the request and the target URL is local or allowlisted. URLs with embedded
+credentials, non-HTTP protocols, non-allowlisted hosts, and production-like
+hostnames are blocked by the plan guardrails by default.
 
 The tool must not implement or enable brute-force attacks, denial-of-service
 tests, exploit chaining, authentication bypass attempts, data exfiltration, or

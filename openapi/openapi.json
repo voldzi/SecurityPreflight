@@ -146,6 +146,56 @@
         }
       }
     },
+    "/api/v1/scans/plan": {
+      "post": {
+        "summary": "Build a guarded scan execution plan without running scanners",
+        "operationId": "createScanExecutionPlan",
+        "tags": ["Scans"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Execution plan. Guardrail failures are represented by blocked=true and blockedReasons.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanExecutionPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan plan request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Requested scan profile was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/toolchain/doctor": {
       "get": {
         "summary": "Check local scanner and runtime tool availability",
@@ -224,7 +274,8 @@
             "type": "string"
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Absolute host path to the project directory."
           },
           "repositoryUrl": {
             "type": ["string", "null"]
@@ -333,6 +384,297 @@
           }
         }
       },
+      "ScanPlanRequest": {
+        "type": "object",
+        "required": ["project"],
+        "properties": {
+          "scanRunId": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string",
+            "default": "fast-local"
+          },
+          "reportsRoot": {
+            "type": "string",
+            "default": "/reports"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ScanPlanProject"
+          },
+          "dast": {
+            "$ref": "#/components/schemas/DastPolicyRequest"
+          }
+        }
+      },
+      "ScanPlanProject": {
+        "type": "object",
+        "required": ["id", "name", "path"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute host path to the project directory."
+          },
+          "dataClassification": {
+            "type": "string",
+            "enum": ["public", "internal", "confidential", "sensitive", "health-data"],
+            "default": "internal"
+          }
+        }
+      },
+      "DastPolicyRequest": {
+        "type": "object",
+        "properties": {
+          "targetUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "allowedHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ["localhost", "127.0.0.1", "host.docker.internal"]
+          },
+          "excludedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowActiveScan": {
+            "type": "boolean",
+            "default": false
+          },
+          "allowProductionTargets": {
+            "type": "boolean",
+            "default": false
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "ScanExecutionPlan": {
+        "type": "object",
+        "required": [
+          "id",
+          "scanRunId",
+          "createdAt",
+          "project",
+          "profile",
+          "blocked",
+          "blockedReasons",
+          "evidenceRoot",
+          "policy",
+          "steps"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scanRunId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ScanPlanProject"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ScanExecutionPlanProfile"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "blockedReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidenceRoot": {
+            "type": "string"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ScanPlanPolicy"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanExecutionStep"
+            }
+          }
+        }
+      },
+      "ScanExecutionPlanProfile": {
+        "type": "object",
+        "required": ["id", "name", "timeoutSeconds", "allowActiveDast", "allowProductionTargets"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "allowActiveDast": {
+            "type": "boolean"
+          },
+          "allowProductionTargets": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanPlanPolicy": {
+        "type": "object",
+        "required": ["defaultNetworkMode", "allowedDastHosts", "activeDastTarget"],
+        "properties": {
+          "defaultNetworkMode": {
+            "type": "string",
+            "enum": ["disabled", "restricted"]
+          },
+          "allowedDastHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "activeDastTarget": {
+            "type": ["string", "null"],
+            "format": "uri"
+          }
+        }
+      },
+      "ScanExecutionStep": {
+        "type": "object",
+        "required": [
+          "id",
+          "checkId",
+          "tool",
+          "type",
+          "status",
+          "executionMode",
+          "command",
+          "timeoutSeconds",
+          "networkMode",
+          "evidencePaths",
+          "projectMount",
+          "guardrails",
+          "blockedReasons"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "sast",
+              "sca",
+              "secret",
+              "container",
+              "iac",
+              "dast",
+              "openapi",
+              "documentation",
+              "configuration",
+              "tooling"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["planned", "blocked"]
+          },
+          "executionMode": {
+            "type": "string",
+            "enum": ["container", "internal"]
+          },
+          "command": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "networkMode": {
+            "type": "string",
+            "enum": ["disabled", "restricted"]
+          },
+          "evidencePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "projectMount": {
+            "$ref": "#/components/schemas/ScanProjectMount"
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/ScanStepGuardrails"
+          },
+          "blockedReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ScanProjectMount": {
+        "type": "object",
+        "required": ["sourcePath", "targetPath", "readOnly"],
+        "properties": {
+          "sourcePath": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanStepGuardrails": {
+        "type": "object",
+        "required": ["dropCapabilities", "privileged", "dockerSocket", "activeDast"],
+        "properties": {
+          "dropCapabilities": {
+            "type": "boolean"
+          },
+          "privileged": {
+            "type": "boolean"
+          },
+          "dockerSocket": {
+            "type": "boolean"
+          },
+          "activeDast": {
+            "type": "boolean"
+          }
+        }
+      },
       "ToolchainDoctorResponse": {
         "type": "object",
         "required": ["checkedAt", "tools", "summary"],
@@ -406,11 +748,19 @@
                 "examples": ["Invalid request data."]
               },
               "details": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                }
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                ]
               },
               "requestId": {
                 "type": "string",

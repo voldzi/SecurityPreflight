@@ -11,6 +11,9 @@
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@security-preflight/core": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.8.3",
     "vitest": "^3.2.2"

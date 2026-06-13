@@ -1,12 +1,40 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
+import { z } from "zod";
 import { defaultScanProfiles } from "@security-preflight/core";
-import { runToolchainDoctor } from "@security-preflight/scanners";
+import { buildScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
 
 export interface CreateServerOptions {
   logger?: boolean;
 }
+
+const dataClassificationSchema = z.enum(["public", "internal", "confidential", "sensitive", "health-data"]);
+
+const scanPlanRequestSchema = z.object({
+  scanRunId: z.string().min(1).optional(),
+  profileId: z.string().min(1).default("fast-local"),
+  reportsRoot: z.string().min(1).optional(),
+  project: z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    path: z.string().min(1).refine((value) => path.isAbsolute(value), {
+      message: "Project path must be absolute."
+    }),
+    dataClassification: dataClassificationSchema.default("internal")
+  }),
+  dast: z
+    .object({
+      targetUrl: z.string().url().optional(),
+      allowedHosts: z.array(z.string().min(1)).optional(),
+      excludedPaths: z.array(z.string().min(1)).optional(),
+      allowActiveScan: z.boolean().optional(),
+      allowProductionTargets: z.boolean().optional(),
+      timeoutSeconds: z.number().int().positive().optional()
+    })
+    .optional()
+});
 
 export function createServer(options: CreateServerOptions = {}): FastifyInstance {
   const server = Fastify({
@@ -77,6 +105,41 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   server.get("/api/v1/scan-profiles", async () => ({
     data: defaultScanProfiles
   }));
+
+  server.post("/api/v1/scans/plan", async (request, reply) => {
+    const parsed = scanPlanRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid scan plan request.",
+          details: parsed.error.flatten(),
+          requestId: request.id
+        }
+      });
+    }
+
+    const profile = defaultScanProfiles.find((candidate) => candidate.id === parsed.data.profileId);
+
+    if (!profile) {
+      return reply.status(404).send({
+        error: {
+          code: "PROFILE_NOT_FOUND",
+          message: `Scan profile '${parsed.data.profileId}' was not found.`,
+          requestId: request.id
+        }
+      });
+    }
+
+    return buildScanExecutionPlan({
+      scanRunId: parsed.data.scanRunId,
+      project: parsed.data.project,
+      profile,
+      dast: parsed.data.dast,
+      reportsRoot: parsed.data.reportsRoot ?? process.env.REPORTS_PATH ?? "/reports"
+    });
+  });
 
   server.get("/api/v1/toolchain/doctor", async () => runToolchainDoctor());
 

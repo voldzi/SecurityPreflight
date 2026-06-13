@@ -65,12 +65,14 @@ flowchart LR
    repository files such as `package.json`, `Dockerfile`, `pyproject.toml`, or
    `Package.swift`.
 3. A scan request creates a `ScanRun` and queues work in Redis.
-4. The worker mounts the target project read-only into the scanner execution
+4. The API builds a scan execution plan with command argument arrays, evidence
+   paths, read-only project mounts, network mode, and guardrail decisions.
+5. The worker mounts the target project read-only into the scanner execution
    environment and runs checks according to the selected profile.
-5. Tool outputs are redacted, stored under the report volume, parsed, and
+6. Tool outputs are redacted, stored under the report volume, parsed, and
    normalized into the shared `Finding` model.
-6. The gate evaluator maps findings to `PASS`, `WARNING`, `FAIL`, or `ERROR`.
-7. Markdown and JSON reports are generated and exposed through the API, UI, and
+7. The gate evaluator maps findings to `PASS`, `WARNING`, `FAIL`, or `ERROR`.
+8. Markdown and JSON reports are generated and exposed through the API, UI, and
    CLI.
 
 ## Databases and Storage
@@ -124,3 +126,5 @@ chains, brute force attacks, denial-of-service tests, authentication bypass
 attempts, data exfiltration, or scanning of third-party/public targets. Active
 DAST is disabled by default and can only run against localhost,
 `127.0.0.1`, `host.docker.internal`, or explicitly allowlisted staging hosts.
+The `controlled-dast-local` profile plans OWASP ZAP baseline checks only after
+both the profile and request explicitly enable active DAST.

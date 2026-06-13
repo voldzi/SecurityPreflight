@@ -144,6 +144,17 @@ export const defaultScanProfiles: ScanProfile[] = [
     timeoutSeconds: 900
   },
   {
+    id: "controlled-dast-local",
+    name: "controlled-dast-local",
+    description:
+      "Controlled OWASP ZAP baseline profile for localhost or explicitly allowlisted staging targets owned by the user.",
+    checks: ["api:health", "api:ready", "zap:baseline"],
+    failThreshold: "high",
+    allowActiveDast: true,
+    allowProductionTargets: false,
+    timeoutSeconds: 1200
+  },
+  {
     id: "container-security",
     name: "container-security",
     description: "Dockerfile, image, and container misconfiguration readiness checks.",

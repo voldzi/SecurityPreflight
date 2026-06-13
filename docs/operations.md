@@ -40,7 +40,25 @@ CLI wrapper examples:
 ```bash
 pnpm --filter @security-preflight/cli preflight status
 pnpm --filter @security-preflight/cli preflight doctor
+pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run
 ```
+
+Controlled local DAST dry-run example:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan \
+  --project . \
+  --profile controlled-dast-local \
+  --dast-target http://localhost:3000 \
+  --allow-active-dast \
+  --dry-run
+```
+
+The dry-run command calls `POST /api/v1/scans/plan`. It does not run scanners.
+It returns the planned commands, evidence paths, read-only project mount,
+network mode, and any guardrail block reasons.
+When invoked through pnpm, the CLI resolves relative `--project` paths against
+the original shell directory, not the CLI package directory.
 
 ### Test, Lint, Typecheck
 
@@ -114,8 +132,11 @@ table and must stay in sync.
 - Scanner workloads are CPU, memory, and I/O intensive. Profiles must define
   timeouts and should avoid running unnecessary tools.
 - Default scanner project mounts are read-only.
+- Scan execution planning blocks active DAST unless it is enabled by both the
+  selected profile and request.
 - Active DAST is disabled by default and must be explicitly enabled per safe
-  target/profile.
+  target/profile. The default allowlist is `localhost`, `127.0.0.1`, and
+  `host.docker.internal`.
 
 ## Troubleshooting
 

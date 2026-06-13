@@ -14,6 +14,8 @@ CODEX and Claude Code, following the central application standards
 - Security and configuration preflight checks.
 - Deployment readiness checks for local, CI, and production-oriented workflows.
 - Evidence-oriented reporting for issues, risks, and remediation status.
+- Guarded scan execution planning with read-only mounts, evidence paths, and
+  explicit controlled DAST allowlists.
 - Chroma-assisted development through the local `chromadb` tooling repository.
 
 ## Technology Stack
@@ -49,6 +51,12 @@ Run the Docker Desktop stack:
 
 ```bash
 docker compose up -d
+```
+
+Preview a scan execution plan without running scanners:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run
 ```
 
 Basic configuration is described in `docs/operations.md`; `.env.example` lists

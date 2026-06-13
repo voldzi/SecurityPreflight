@@ -50,6 +50,7 @@ The API uses path versioning:
 | GET | `/ready` | Readiness check |
 | GET | `/api/v1/projects` | List registered local projects |
 | GET | `/api/v1/scan-profiles` | List built-in scan profiles |
+| POST | `/api/v1/scans/plan` | Build a guarded scan execution plan without running scanners |
 | GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
 
 ## Error Responses
@@ -81,6 +82,28 @@ curl http://localhost:8781/health
 curl http://localhost:8781/api/v1/scan-profiles
 ```
 
+### Scan execution plan
+
+```bash
+curl -X POST http://localhost:8781/api/v1/scans/plan \
+  -H 'content-type: application/json' \
+  -d '{
+    "profileId": "fast-local",
+    "project": {
+      "id": "local-demo",
+      "name": "Local Demo",
+      "path": "/path/to/project"
+    }
+  }'
+```
+
+`project.path` must be an absolute host path. CLI dry-run resolves relative
+paths against the directory where the CLI command was invoked.
+
+Guardrail failures, such as an active DAST target outside the allowlist, return
+HTTP 200 with `blocked: true` and concrete `blockedReasons`. Invalid requests
+and unknown scan profiles still use `ErrorResponse`.
+
 ### Toolchain doctor
 
 ```bash
@@ -106,5 +129,5 @@ The OpenAPI specification is validated in the CI pipeline
 - YAML, if generated later, is export-only.
 - Do not add undocumented endpoints.
 - All errors use `ErrorResponse`.
-- Active DAST controls and scanner safety decisions belong in the API contract
-  when those endpoints are implemented.
+- Active DAST controls and scanner safety decisions are represented in the scan
+  execution plan contract before scanner execution is enabled.

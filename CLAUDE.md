@@ -59,6 +59,7 @@ Project name:
   - `pnpm build`
   - `pnpm lint:openapi`
   - `pnpm validate`
+  - `pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run`
   - `docker compose up -d`
   - `docker compose down`
 - Planned local ports:
