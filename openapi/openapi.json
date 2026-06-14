@@ -20,7 +20,9 @@
       "get": {
         "summary": "Health check",
         "operationId": "getHealth",
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -50,7 +52,9 @@
       "get": {
         "summary": "Readiness check",
         "operationId": "getReadiness",
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -90,7 +94,9 @@
       "get": {
         "summary": "List registered projects",
         "operationId": "listProjects",
-        "tags": ["Projects"],
+        "tags": [
+          "Projects"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -120,7 +126,9 @@
       "get": {
         "summary": "List built-in scan profiles",
         "operationId": "listScanProfiles",
-        "tags": ["Scans"],
+        "tags": [
+          "Scans"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -150,7 +158,9 @@
       "post": {
         "summary": "Build a guarded scan execution plan without running scanners",
         "operationId": "createScanExecutionPlan",
-        "tags": ["Scans"],
+        "tags": [
+          "Scans"
+        ],
         "security": [],
         "requestBody": {
           "required": true,
@@ -200,7 +210,9 @@
       "post": {
         "summary": "Queue an unblocked scan execution plan",
         "operationId": "queueScanExecution",
-        "tags": ["Scans"],
+        "tags": [
+          "Scans"
+        ],
         "security": [],
         "requestBody": {
           "required": true,
@@ -260,7 +272,9 @@
       "get": {
         "summary": "List scan runs with local report evidence",
         "operationId": "listScanRuns",
-        "tags": ["Scans"],
+        "tags": [
+          "Scans"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -290,7 +304,9 @@
       "get": {
         "summary": "Get scan run detail and redacted evidence manifest",
         "operationId": "getScanRunDetail",
-        "tags": ["Scans"],
+        "tags": [
+          "Scans"
+        ],
         "security": [],
         "parameters": [
           {
@@ -341,7 +357,9 @@
       "get": {
         "summary": "Get a redacted scan report artifact",
         "operationId": "getScanRunReport",
-        "tags": ["Scans"],
+        "tags": [
+          "Scans"
+        ],
         "security": [],
         "parameters": [
           {
@@ -359,7 +377,10 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["markdown", "json"],
+              "enum": [
+                "markdown",
+                "json"
+              ],
               "default": "markdown"
             }
           }
@@ -402,7 +423,9 @@
       "get": {
         "summary": "Check local scanner and runtime tool availability",
         "operationId": "getToolchainDoctor",
-        "tags": ["Toolchain"],
+        "tags": [
+          "Toolchain"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -432,7 +455,9 @@
       "get": {
         "summary": "List required scanner and evidence tooling",
         "operationId": "listToolchainRequirements",
-        "tags": ["Toolchain"],
+        "tags": [
+          "Toolchain"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -462,7 +487,9 @@
       "post": {
         "summary": "Accept a redacted SecurityPreflight result envelope for central storage",
         "operationId": "ingestResultEnvelope",
-        "tags": ["Results"],
+        "tags": [
+          "Results"
+        ],
         "security": [],
         "requestBody": {
           "required": true,
@@ -497,25 +524,192 @@
           }
         }
       }
+    },
+    "/api/v1/reports/export": {
+      "post": {
+        "summary": "Export a scan run report as PDF or PPTX",
+        "operationId": "exportScanRunReport",
+        "tags": [
+          "Reports"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Base64 encoded report export payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportExportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid report export request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/akb/status": {
+      "get": {
+        "summary": "Check AKB integration configuration and boundaries",
+        "operationId": "getAkbIntegrationStatus",
+        "tags": [
+          "AKB"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "AKB integration status without secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid AKB status request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/akb/ai/ask": {
+      "post": {
+        "summary": "Ask AKB a cited question scoped to a scan run",
+        "operationId": "askAkbAboutScanRun",
+        "tags": [
+          "AKB"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AkbAskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "AKB cited answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbAskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid AKB AI request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "AKB request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AKB is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
       "HealthResponse": {
         "type": "object",
-        "required": ["status", "service", "version", "timestamp"],
+        "required": [
+          "status",
+          "service",
+          "version",
+          "timestamp"
+        ],
         "properties": {
           "status": {
             "type": "string",
-            "examples": ["ok"]
+            "examples": [
+              "ok"
+            ]
           },
           "service": {
             "type": "string",
-            "examples": ["security-preflight"]
+            "examples": [
+              "security-preflight"
+            ]
           },
           "version": {
             "type": "string",
-            "examples": ["1.0.0"]
+            "examples": [
+              "1.0.0"
+            ]
           },
           "timestamp": {
             "type": "string",
@@ -550,10 +744,16 @@
             "description": "Absolute host path to the project directory."
           },
           "repositoryUrl": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "defaultBranch": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "technologyStack": {
             "type": "array",
@@ -563,10 +763,19 @@
           },
           "dataClassification": {
             "type": "string",
-            "enum": ["public", "internal", "confidential", "sensitive", "health-data"]
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "sensitive",
+              "health-data"
+            ]
           },
           "owner": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "createdAt": {
             "type": "string",
@@ -580,7 +789,10 @@
       },
       "ProjectListResponse": {
         "type": "object",
-        "required": ["data", "meta"],
+        "required": [
+          "data",
+          "meta"
+        ],
         "properties": {
           "data": {
             "type": "array",
@@ -590,7 +802,9 @@
           },
           "meta": {
             "type": "object",
-            "required": ["total"],
+            "required": [
+              "total"
+            ],
             "properties": {
               "total": {
                 "type": "integer",
@@ -630,7 +844,12 @@
           },
           "failThreshold": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"]
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
           },
           "allowActiveDast": {
             "type": "boolean"
@@ -646,7 +865,9 @@
       },
       "ScanProfileListResponse": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
           "data": {
             "type": "array",
@@ -658,7 +879,9 @@
       },
       "ScanPlanRequest": {
         "type": "object",
-        "required": ["project"],
+        "required": [
+          "project"
+        ],
         "properties": {
           "scanRunId": {
             "type": "string"
@@ -681,7 +904,11 @@
       },
       "ScanPlanProject": {
         "type": "object",
-        "required": ["id", "name", "path"],
+        "required": [
+          "id",
+          "name",
+          "path"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -695,7 +922,13 @@
           },
           "dataClassification": {
             "type": "string",
-            "enum": ["public", "internal", "confidential", "sensitive", "health-data"],
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "sensitive",
+              "health-data"
+            ],
             "default": "internal"
           }
         }
@@ -712,7 +945,11 @@
             "items": {
               "type": "string"
             },
-            "default": ["localhost", "127.0.0.1", "host.docker.internal"]
+            "default": [
+              "localhost",
+              "127.0.0.1",
+              "host.docker.internal"
+            ]
           },
           "excludedPaths": {
             "type": "array",
@@ -790,7 +1027,14 @@
       },
       "ScanExecutionPlanProfile": {
         "type": "object",
-        "required": ["id", "name", "failThreshold", "timeoutSeconds", "allowActiveDast", "allowProductionTargets"],
+        "required": [
+          "id",
+          "name",
+          "failThreshold",
+          "timeoutSeconds",
+          "allowActiveDast",
+          "allowProductionTargets"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -800,7 +1044,12 @@
           },
           "failThreshold": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"]
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
           },
           "timeoutSeconds": {
             "type": "integer",
@@ -816,7 +1065,9 @@
       },
       "ScanQueueResponse": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
           "data": {
             "$ref": "#/components/schemas/QueuedScan"
@@ -825,7 +1076,12 @@
       },
       "QueuedScan": {
         "type": "object",
-        "required": ["jobId", "scanRunId", "status", "plan"],
+        "required": [
+          "jobId",
+          "scanRunId",
+          "status",
+          "plan"
+        ],
         "properties": {
           "jobId": {
             "type": "string"
@@ -835,7 +1091,9 @@
           },
           "status": {
             "type": "string",
-            "enum": ["queued"]
+            "enum": [
+              "queued"
+            ]
           },
           "plan": {
             "$ref": "#/components/schemas/ScanExecutionPlan"
@@ -844,11 +1102,18 @@
       },
       "ScanPlanPolicy": {
         "type": "object",
-        "required": ["defaultNetworkMode", "allowedDastHosts", "activeDastTarget"],
+        "required": [
+          "defaultNetworkMode",
+          "allowedDastHosts",
+          "activeDastTarget"
+        ],
         "properties": {
           "defaultNetworkMode": {
             "type": "string",
-            "enum": ["disabled", "restricted"]
+            "enum": [
+              "disabled",
+              "restricted"
+            ]
           },
           "allowedDastHosts": {
             "type": "array",
@@ -857,7 +1122,10 @@
             }
           },
           "activeDastTarget": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uri"
           }
         }
@@ -906,14 +1174,23 @@
           },
           "status": {
             "type": "string",
-            "enum": ["planned", "blocked"]
+            "enum": [
+              "planned",
+              "blocked"
+            ]
           },
           "executionMode": {
             "type": "string",
-            "enum": ["container", "internal"]
+            "enum": [
+              "container",
+              "internal"
+            ]
           },
           "command": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             }
@@ -924,7 +1201,10 @@
           },
           "networkMode": {
             "type": "string",
-            "enum": ["disabled", "restricted"]
+            "enum": [
+              "disabled",
+              "restricted"
+            ]
           },
           "evidencePaths": {
             "type": "array",
@@ -948,7 +1228,11 @@
       },
       "ScanProjectMount": {
         "type": "object",
-        "required": ["sourcePath", "targetPath", "readOnly"],
+        "required": [
+          "sourcePath",
+          "targetPath",
+          "readOnly"
+        ],
         "properties": {
           "sourcePath": {
             "type": "string"
@@ -963,7 +1247,12 @@
       },
       "ScanStepGuardrails": {
         "type": "object",
-        "required": ["dropCapabilities", "privileged", "dockerSocket", "activeDast"],
+        "required": [
+          "dropCapabilities",
+          "privileged",
+          "dockerSocket",
+          "activeDast"
+        ],
         "properties": {
           "dropCapabilities": {
             "type": "boolean"
@@ -981,7 +1270,10 @@
       },
       "ScanRunListResponse": {
         "type": "object",
-        "required": ["data", "meta"],
+        "required": [
+          "data",
+          "meta"
+        ],
         "properties": {
           "data": {
             "type": "array",
@@ -991,7 +1283,10 @@
           },
           "meta": {
             "type": "object",
-            "required": ["total", "reportsPath"],
+            "required": [
+              "total",
+              "reportsPath"
+            ],
             "properties": {
               "total": {
                 "type": "integer",
@@ -1006,7 +1301,9 @@
       },
       "ScanRunDetailResponse": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ScanRunDetail"
@@ -1015,18 +1312,29 @@
       },
       "ScanRunReportResponse": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
           "data": {
             "type": "object",
-            "required": ["scanRunId", "format", "fileName", "contentType", "content"],
+            "required": [
+              "scanRunId",
+              "format",
+              "fileName",
+              "contentType",
+              "content"
+            ],
             "properties": {
               "scanRunId": {
                 "type": "string"
               },
               "format": {
                 "type": "string",
-                "enum": ["markdown", "json"]
+                "enum": [
+                  "markdown",
+                  "json"
+                ]
               },
               "fileName": {
                 "type": "string"
@@ -1070,11 +1378,24 @@
           },
           "status": {
             "type": "string",
-            "enum": ["queued", "running", "completed", "failed", "cancelled", "unknown"]
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "unknown"
+            ]
           },
           "gateResult": {
             "type": "string",
-            "enum": ["pass", "warning", "fail", "error", "unknown"]
+            "enum": [
+              "pass",
+              "warning",
+              "fail",
+              "error",
+              "unknown"
+            ]
           },
           "project": {
             "$ref": "#/components/schemas/ScanRunProject"
@@ -1083,15 +1404,24 @@
             "$ref": "#/components/schemas/ScanRunProfile"
           },
           "startedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "finishedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "durationMs": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "minimum": 0
           },
           "findingCount": {
@@ -1113,7 +1443,11 @@
           },
           {
             "type": "object",
-            "required": ["gate", "findings", "steps"],
+            "required": [
+              "gate",
+              "findings",
+              "steps"
+            ],
             "properties": {
               "gate": {
                 "$ref": "#/components/schemas/ScanRunGate"
@@ -1136,7 +1470,11 @@
       },
       "ScanRunProject": {
         "type": "object",
-        "required": ["id", "name", "dataClassification"],
+        "required": [
+          "id",
+          "name",
+          "dataClassification"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1151,7 +1489,10 @@
       },
       "ScanRunProfile": {
         "type": "object",
-        "required": ["id", "name"],
+        "required": [
+          "id",
+          "name"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1163,7 +1504,13 @@
       },
       "SeveritySummary": {
         "type": "object",
-        "required": ["critical", "high", "medium", "low", "info"],
+        "required": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
         "properties": {
           "critical": {
             "type": "integer",
@@ -1189,7 +1536,14 @@
       },
       "ScanRunEvidence": {
         "type": "object",
-        "required": ["root", "files", "hasExecutionResult", "hasJsonReport", "hasMarkdownReport", "hasCentralEnvelope"],
+        "required": [
+          "root",
+          "files",
+          "hasExecutionResult",
+          "hasJsonReport",
+          "hasMarkdownReport",
+          "hasCentralEnvelope"
+        ],
         "properties": {
           "root": {
             "type": "string"
@@ -1216,11 +1570,20 @@
       },
       "ScanRunGate": {
         "type": "object",
-        "required": ["result", "blockingReasons"],
+        "required": [
+          "result",
+          "blockingReasons"
+        ],
         "properties": {
           "result": {
             "type": "string",
-            "enum": ["pass", "warning", "fail", "error", "unknown"]
+            "enum": [
+              "pass",
+              "warning",
+              "fail",
+              "error",
+              "unknown"
+            ]
           },
           "blockingReasons": {
             "type": "array",
@@ -1232,7 +1595,18 @@
       },
       "ScanRunFinding": {
         "type": "object",
-        "required": ["id", "tool", "type", "severity", "title", "filePath", "line", "endpoint", "status", "recommendation"],
+        "required": [
+          "id",
+          "tool",
+          "type",
+          "severity",
+          "title",
+          "filePath",
+          "line",
+          "endpoint",
+          "status",
+          "recommendation"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1250,13 +1624,22 @@
             "type": "string"
           },
           "filePath": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "line": {
-            "type": ["integer", "null"]
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "endpoint": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
@@ -1268,7 +1651,16 @@
       },
       "ScanRunStep": {
         "type": "object",
-        "required": ["stepId", "checkId", "status", "startedAt", "finishedAt", "evidenceFile", "findingCount", "message"],
+        "required": [
+          "stepId",
+          "checkId",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "evidenceFile",
+          "findingCount",
+          "message"
+        ],
         "properties": {
           "stepId": {
             "type": "string"
@@ -1280,28 +1672,44 @@
             "type": "string"
           },
           "startedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "finishedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "evidenceFile": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "findingCount": {
             "type": "integer",
             "minimum": 0
           },
           "message": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "ToolchainDoctorResponse": {
         "type": "object",
-        "required": ["checkedAt", "tools", "summary"],
+        "required": [
+          "checkedAt",
+          "tools",
+          "summary"
+        ],
         "properties": {
           "checkedAt": {
             "type": "string",
@@ -1369,7 +1777,16 @@
       },
       "ToolCheck": {
         "type": "object",
-        "required": ["id", "name", "category", "requiredForHealthcare", "command", "status", "version", "message"],
+        "required": [
+          "id",
+          "name",
+          "category",
+          "requiredForHealthcare",
+          "command",
+          "status",
+          "version",
+          "message"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1402,19 +1819,32 @@
           },
           "status": {
             "type": "string",
-            "enum": ["available", "missing", "error"]
+            "enum": [
+              "available",
+              "missing",
+              "error"
+            ]
           },
           "version": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "message": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
       "ToolRequirementListResponse": {
         "type": "object",
-        "required": ["data", "meta"],
+        "required": [
+          "data",
+          "meta"
+        ],
         "properties": {
           "data": {
             "type": "array",
@@ -1424,7 +1854,10 @@
           },
           "meta": {
             "type": "object",
-            "required": ["total", "healthcareRequired"],
+            "required": [
+              "total",
+              "healthcareRequired"
+            ],
             "properties": {
               "total": {
                 "type": "integer",
@@ -1440,7 +1873,16 @@
       },
       "ToolRequirement": {
         "type": "object",
-        "required": ["id", "name", "category", "requiredForHealthcare", "command", "args", "checks", "purpose"],
+        "required": [
+          "id",
+          "name",
+          "category",
+          "requiredForHealthcare",
+          "command",
+          "args",
+          "checks",
+          "purpose"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -1515,7 +1957,10 @@
           },
           "producer": {
             "type": "object",
-            "required": ["name", "version"],
+            "required": [
+              "name",
+              "version"
+            ],
             "properties": {
               "name": {
                 "type": "string"
@@ -1527,7 +1972,11 @@
           },
           "project": {
             "type": "object",
-            "required": ["id", "name", "dataClassification"],
+            "required": [
+              "id",
+              "name",
+              "dataClassification"
+            ],
             "additionalProperties": true,
             "properties": {
               "id": {
@@ -1538,13 +1987,23 @@
               },
               "dataClassification": {
                 "type": "string",
-                "enum": ["public", "internal", "confidential", "sensitive", "health-data"]
+                "enum": [
+                  "public",
+                  "internal",
+                  "confidential",
+                  "sensitive",
+                  "health-data"
+                ]
               }
             }
           },
           "scanRun": {
             "type": "object",
-            "required": ["id", "status", "gateResult"],
+            "required": [
+              "id",
+              "status",
+              "gateResult"
+            ],
             "additionalProperties": true,
             "properties": {
               "id": {
@@ -1552,17 +2011,32 @@
               },
               "status": {
                 "type": "string",
-                "enum": ["queued", "running", "completed", "failed", "cancelled"]
+                "enum": [
+                  "queued",
+                  "running",
+                  "completed",
+                  "failed",
+                  "cancelled"
+                ]
               },
               "gateResult": {
                 "type": "string",
-                "enum": ["pass", "warning", "fail", "error"]
+                "enum": [
+                  "pass",
+                  "warning",
+                  "fail",
+                  "error"
+                ]
               }
             }
           },
           "profile": {
             "type": "object",
-            "required": ["id", "name", "checks"],
+            "required": [
+              "id",
+              "name",
+              "checks"
+            ],
             "additionalProperties": true,
             "properties": {
               "id": {
@@ -1581,12 +2055,20 @@
           },
           "gate": {
             "type": "object",
-            "required": ["result", "blockingReasons"],
+            "required": [
+              "result",
+              "blockingReasons"
+            ],
             "additionalProperties": true,
             "properties": {
               "result": {
                 "type": "string",
-                "enum": ["pass", "warning", "fail", "error"]
+                "enum": [
+                  "pass",
+                  "warning",
+                  "fail",
+                  "error"
+                ]
               },
               "blockingReasons": {
                 "type": "array",
@@ -1605,7 +2087,10 @@
           },
           "evidence": {
             "type": "object",
-            "required": ["findingCount", "redacted"],
+            "required": [
+              "findingCount",
+              "redacted"
+            ],
             "additionalProperties": true,
             "properties": {
               "findingCount": {
@@ -1622,15 +2107,24 @@
       },
       "ResultIngestResponse": {
         "type": "object",
-        "required": ["data"],
+        "required": [
+          "data"
+        ],
         "properties": {
           "data": {
             "type": "object",
-            "required": ["status", "envelopeId", "scanRunId", "receivedAt"],
+            "required": [
+              "status",
+              "envelopeId",
+              "scanRunId",
+              "receivedAt"
+            ],
             "properties": {
               "status": {
                 "type": "string",
-                "enum": ["accepted"]
+                "enum": [
+                  "accepted"
+                ]
               },
               "envelopeId": {
                 "type": "string"
@@ -1648,19 +2142,29 @@
       },
       "ErrorResponse": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "object",
-            "required": ["code", "message", "requestId"],
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
             "properties": {
               "code": {
                 "type": "string",
-                "examples": ["VALIDATION_ERROR"]
+                "examples": [
+                  "VALIDATION_ERROR"
+                ]
               },
               "message": {
                 "type": "string",
-                "examples": ["Invalid request data."]
+                "examples": [
+                  "Invalid request data."
+                ]
               },
               "details": {
                 "oneOf": [
@@ -1679,9 +2183,430 @@
               },
               "requestId": {
                 "type": "string",
-                "examples": ["req_abc123"]
+                "examples": [
+                  "req_abc123"
+                ]
               }
             }
+          }
+        }
+      },
+      "ReportExportRequest": {
+        "type": "object",
+        "required": [
+          "scanRunId"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "PDF",
+              "PPTX",
+              "pdf",
+              "pptx"
+            ],
+            "default": "PDF"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "cs",
+              "en"
+            ],
+            "default": "cs"
+          },
+          "template": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      },
+      "ReportExportResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReportExport"
+          }
+        }
+      },
+      "ReportExport": {
+        "type": "object",
+        "required": [
+          "reportType",
+          "format",
+          "fileName",
+          "mimeType",
+          "encoding",
+          "content",
+          "contentHash",
+          "generatedAt",
+          "parametersJson"
+        ],
+        "properties": {
+          "reportType": {
+            "type": "string",
+            "enum": [
+              "SECURITY_PREFLIGHT_SCAN"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "PDF",
+              "PPTX"
+            ]
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "base64"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "parametersJson": {
+            "type": "object",
+            "required": [
+              "scanRunId",
+              "projectId",
+              "profileId",
+              "gateResult",
+              "findingCount",
+              "evidenceFiles"
+            ],
+            "properties": {
+              "scanRunId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "gateResult": {
+                "type": "string"
+              },
+              "findingCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "evidenceFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "template": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "AkbStatusResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AkbStatus"
+          }
+        }
+      },
+      "AkbStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "ragConfigured",
+          "publicBaseUrl",
+          "authMode",
+          "syncRequired",
+          "boundaries"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "ragConfigured": {
+            "type": "boolean"
+          },
+          "publicBaseUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "authMode": {
+            "type": "string",
+            "enum": [
+              "caller-bearer",
+              "oidc-client-credentials",
+              "service-token",
+              "none"
+            ]
+          },
+          "syncRequired": {
+            "type": "boolean"
+          },
+          "boundaries": {
+            "type": "object",
+            "required": [
+              "storesPrompts",
+              "storesResponses",
+              "storesChunks",
+              "requiresCitations"
+            ],
+            "properties": {
+              "storesPrompts": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "storesResponses": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "storesChunks": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "requiresCitations": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            }
+          }
+        }
+      },
+      "AkbAskRequest": {
+        "type": "object",
+        "required": [
+          "scanRunId",
+          "question"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 2000
+          },
+          "answerMode": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "responseLanguage": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 12
+          },
+          "maxChunks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "subject": {
+            "$ref": "#/components/schemas/AkbSubject"
+          }
+        }
+      },
+      "AkbSubject": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "userId": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "roles": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          "classificationClearance": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "maxLength": 120
+            }
+          }
+        }
+      },
+      "AkbAskResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AkbAnswer"
+          }
+        }
+      },
+      "AkbAnswer": {
+        "type": "object",
+        "required": [
+          "provider",
+          "scanRunId",
+          "answer",
+          "confidence",
+          "noAnswer",
+          "citations",
+          "warnings",
+          "missingInformation",
+          "usedSourceIds",
+          "correlationId"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "AKB"
+            ]
+          },
+          "scanRunId": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "noAnswer": {
+            "type": "boolean"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AkbCitation"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingInformation": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "usedSourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        }
+      },
+      "AkbCitation": {
+        "type": "object",
+        "required": [
+          "chunkId",
+          "documentId",
+          "documentVersionId",
+          "title",
+          "page",
+          "sectionPath",
+          "openUrl"
+        ],
+        "properties": {
+          "chunkId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "documentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "documentVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "sectionPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "openUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

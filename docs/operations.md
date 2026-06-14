@@ -96,6 +96,15 @@ and `report.md`. A central storage service can implement or call
 `POST /api/v1/results/ingest` using the OpenAPI schema. Do not send raw scanner
 outputs or source code through this endpoint.
 
+The API can export completed scan evidence as STRATOS-style PDF or PPTX
+payloads through `POST /api/v1/reports/export`. Exports are generated from
+redacted report files under `REPORTS_PATH`.
+
+Document-grounded AI uses AKB through `POST /api/v1/akb/ai/ask`. Configure AKB
+only with runtime environment variables. Browser clients must not call AKB
+directly and SecurityPreflight does not store AKB prompts, responses, chunks,
+embeddings, or document text.
+
 ### Test, Lint, Typecheck
 
 ```bash
@@ -158,6 +167,16 @@ table and must stay in sync.
 | `ALLOW_DOCKER_SOCKET` | no | `false` | Explicit opt-in for future Docker socket based scanning |
 | `ALLOW_ACTIVE_DAST` | no | `false` | Enables controlled active DAST profiles |
 | `DAST_ALLOWED_HOSTS` | no | `localhost,127.0.0.1,host.docker.internal` | Comma-separated active DAST allowlist |
+| `SECURITY_PREFLIGHT_AKB_RAG_BASE_URL` | no | unset | AKB RAG API base URL, normally ending in `/api/v1` |
+| `SECURITY_PREFLIGHT_AKB_PUBLIC_BASE_URL` | no | `https://stratos.zeleznalady.cz/akb` | Human-facing AKB URL shown in UI status |
+| `SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN` | no | unset | Compatibility bearer token for AKB when OIDC is unavailable; never commit |
+| `SECURITY_PREFLIGHT_AKB_OIDC_TOKEN_URL` | no | unset | OIDC token endpoint for AKB client credentials |
+| `SECURITY_PREFLIGHT_AKB_OIDC_CLIENT_ID` | no | unset | OIDC client id for AKB service access |
+| `SECURITY_PREFLIGHT_AKB_OIDC_CLIENT_SECRET` | no | unset | OIDC client secret for AKB service access; never commit |
+| `SECURITY_PREFLIGHT_AKB_OIDC_AUDIENCE` | no | `akl-api` | AKB API audience for OIDC client credentials |
+| `SECURITY_PREFLIGHT_AKB_OIDC_SCOPE` | no | `openid profile email` | OIDC scopes requested for AKB service access |
+| `SECURITY_PREFLIGHT_AKB_SYNC_REQUIRED` | no | `false` | Reserved fail-fast flag for future AKB document registration workflows |
+| `SECURITY_PREFLIGHT_TENANT_ID` | no | `default` | Tenant id sent to AKB scoped RAG requests |
 
 ## Health Endpoints
 
@@ -174,6 +193,9 @@ table and must stay in sync.
   for controlled DAST.
 - Optional scanner network access for vulnerability database updates.
 - Optional controlled DAST target on localhost or allowlisted staging hosts.
+- Optional AKB RAG service for STRATOS document-grounded AI. Production should
+  use OIDC client credentials or a controlled backend token, never browser-side
+  direct AKB calls.
 
 ## Backup and Restore
 

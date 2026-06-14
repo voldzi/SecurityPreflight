@@ -26,11 +26,14 @@ stable shared primitives.
 
 Current implementation uses STRATOS components and layout patterns:
 
-- global application shell with left navigation and a compact work surface;
-- `AppShell`, `AppRail`, `WorkspaceSidebar`, `WorkspaceNav`, `Topbar`,
-  `ViewTabs`, `ViewToolbar`, `DataGridShell`, `DataTable`, `StructuredList`,
-  `MetricCard`, `Badge`, `RagBadge`, `SelectField`, and `Button`;
+- global application shell with a shared STRATOS topbar, left navigation, and a
+  compact work surface;
+- `AppShell`, `AppRail`, `WorkspaceSidebar`, `WorkspaceNav`, `GlobalTopbar`,
+  `CommandCenter`, `ViewTabs`, `ViewToolbar`, `DataGridShell`, `DataTable`,
+  `StructuredList`, `MetricCard`, `Badge`, `RagBadge`, `SelectField`, and
+  `Button`;
 - shared `@voldzi/stratos-ui/styles.css` tokens and component classes;
+- hover/focus-only row actions through `StructuredList.actions`;
 - actionable primary controls only when they are wired to API behavior.
 
 The package integration must:

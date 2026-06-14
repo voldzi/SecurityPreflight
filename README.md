@@ -14,6 +14,9 @@ CODEX and Claude Code, following the central application standards
 - Security and configuration preflight checks.
 - Deployment readiness checks for local, CI, and production-oriented workflows.
 - Evidence-oriented reporting for issues, risks, and remediation status.
+- STRATOS-style report exports as redacted PDF and PPTX payloads.
+- Server-side AKB bridge for cited, scan-run-scoped AI questions without
+  storing prompts, answers, chunks, embeddings, or document text locally.
 - Guarded scan execution planning with read-only mounts, evidence paths, and
   explicit controlled DAST allowlists.
 - Healthcare reference profile with SBOM, SCA, SAST, IaC, OpenAPI, privacy,
@@ -23,7 +26,7 @@ CODEX and Claude Code, following the central application standards
 ## Technology Stack
 
 - Monorepo: pnpm workspaces with `apps/` and `packages/`.
-- Web UI: Next.js, React, TypeScript, Tailwind CSS, shadcn/ui.
+- Web UI: Next.js, React, TypeScript, Tailwind CSS, and `@voldzi/stratos-ui`.
 - API: Node.js, TypeScript, Fastify, Zod, OpenAPI JSON-first.
 - Worker: Node.js, TypeScript, Redis-backed queue, scanner orchestration.
 - Data: PostgreSQL for scan history, Redis for queue and scan state.

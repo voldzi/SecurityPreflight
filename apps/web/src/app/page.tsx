@@ -4,19 +4,26 @@ import {
   Activity,
   AlertTriangle,
   Archive,
+  Bot,
   CheckCircle2,
   ClipboardList,
   Database,
+  Download,
   FileJson,
+  FileText,
   FileWarning,
   FolderGit2,
   Gauge,
   History,
   LayoutDashboard,
+  MessageSquareText,
   Play,
+  Presentation,
+  Search,
   ScrollText,
   Settings,
   ShieldCheck,
+  Sparkles,
   TerminalSquare,
   Wrench
 } from "lucide-react";
@@ -25,9 +32,11 @@ import {
   AppShell,
   Badge,
   Button,
+  CommandCenter,
   DataGridShell,
   DataTable,
   DetailSurface,
+  GlobalTopbar,
   IconButton,
   MetricCard,
   ProgressBar,
@@ -35,12 +44,12 @@ import {
   SearchBox,
   SelectField,
   StructuredList,
-  Topbar,
   ViewTabs,
   ViewToolbar,
   WorkspaceNav,
   WorkspaceSidebar,
   type BadgeTone,
+  type CommandCenterItem,
   type DataTableColumn,
   type DetailSurfaceMode,
   type RagStatus,
@@ -155,6 +164,52 @@ interface ScanRunDetail extends ScanRunSummary {
   }>;
 }
 
+interface ReportExportPayload {
+  reportType: "SECURITY_PREFLIGHT_SCAN";
+  format: "PDF" | "PPTX";
+  fileName: string;
+  mimeType: string;
+  encoding: "base64";
+  content: string;
+  contentHash: string;
+  generatedAt: string;
+}
+
+interface AkbStatus {
+  configured: boolean;
+  ragConfigured: boolean;
+  publicBaseUrl: string | null;
+  authMode: "caller-bearer" | "oidc-client-credentials" | "service-token" | "none";
+  syncRequired: boolean;
+  boundaries: {
+    storesPrompts: false;
+    storesResponses: false;
+    storesChunks: false;
+    requiresCitations: true;
+  };
+}
+
+interface AkbAnswer {
+  provider: "AKB";
+  scanRunId: string;
+  answer: string;
+  confidence: number | null;
+  noAnswer: boolean;
+  citations: Array<{
+    chunkId: string | null;
+    documentId: string | null;
+    documentVersionId: string | null;
+    title: string | null;
+    page: number | null;
+    sectionPath: string | null;
+    openUrl: string | null;
+  }>;
+  warnings: string[];
+  missingInformation: string[];
+  usedSourceIds: string[];
+  correlationId: string;
+}
+
 interface ProjectRow {
   id: string;
   name: string;
@@ -263,10 +318,18 @@ const capabilityRows: CapabilityRow[] = [
   {
     id: "reports",
     area: "Reports and evidence",
-    status: "Partial",
-    implemented: "Markdown, JSON, execution-result, central-result envelope files, and live evidence browser.",
-    gap: "No download workflow, SARIF/SBOM export view, or evidence retention controls.",
+    status: "Ready",
+    implemented: "Markdown, JSON, execution-result, central envelope, live evidence browser, and PDF/PPTX export workflow.",
+    gap: "Add SARIF/SBOM export view and evidence retention controls.",
     priority: "P1"
+  },
+  {
+    id: "akb-ai",
+    area: "STRATOS AKB AI bridge",
+    status: "Partial",
+    implemented: "Server-side AKB RAG bridge with cited answers, no prompt/answer/chunk storage, and UI status panel.",
+    gap: "Needs production AKB URL/OIDC configuration and contract tests against live AKB OpenAPI.",
+    priority: "P0"
   },
   {
     id: "telemetry",
@@ -409,6 +472,25 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function downloadBase64File(fileName: string, mimeType: string, content: string): void {
+  const binary = window.atob(content);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  const url = window.URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
@@ -419,8 +501,17 @@ export default function DashboardPage() {
   const [loadingDoctor, setLoadingDoctor] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailMode, setDetailMode] = useState<DetailSurfaceMode>("sidebar");
+  const [exportingFormat, setExportingFormat] = useState<"PDF" | "PPTX" | null>(null);
+  const [exportMessage, setExportMessage] = useState("PDF/PPTX exports use redacted report evidence only.");
+  const [akbStatus, setAkbStatus] = useState<AkbStatus | null>(null);
+  const [akbQuestion, setAkbQuestion] = useState("Shrn vysledek posledniho skenu pro zdravotnicky audit a uved citace.");
+  const [akbAnswer, setAkbAnswer] = useState<AkbAnswer | null>(null);
+  const [akbLoading, setAkbLoading] = useState(false);
+  const [akbMessage, setAkbMessage] = useState("AKB odpovedi se neukladaji v SecurityPreflight.");
   const [scanResult, setScanResult] = useState<ScanActionResult>({
     mode: "plan",
     status: "idle",
@@ -476,6 +567,114 @@ export default function DashboardPage() {
   );
   const criticalGaps = capabilityRows.filter((row) => row.priority === "P0" && row.status !== "Ready").length;
   const scanGate = scanResult.status === "error" || scanResult.blocked ? "Blocked" : scanResult.status === "success" ? "Ready" : "Partial";
+  const commandItems = useMemo<CommandCenterItem[]>(
+    () => [
+      {
+        id: "view-dashboard",
+        type: "dashboard",
+        title: "Dashboard",
+        subtitle: "SecurityPreflight overview",
+        icon: <LayoutDashboard size={18} />,
+        primaryAction: {
+          id: "open",
+          label: "Open",
+          onSelect: () => setActiveView("dashboard")
+        }
+      },
+      {
+        id: "view-capabilities",
+        type: "dashboard",
+        title: "Capability audit",
+        subtitle: `${criticalGaps} P0 gaps`,
+        icon: <Gauge size={18} />,
+        tone: criticalGaps ? "amber" : "green",
+        primaryAction: {
+          id: "open",
+          label: "Open",
+          onSelect: () => setActiveView("capabilities")
+        }
+      },
+      {
+        id: "view-execution",
+        type: "report",
+        title: "Execution and evidence",
+        subtitle: latestRun ? latestRun.id : "No scan evidence loaded",
+        icon: <Archive size={18} />,
+        primaryAction: {
+          id: "open",
+          label: "Open",
+          onSelect: () => setActiveView("execution")
+        }
+      },
+      {
+        id: "view-telemetry",
+        type: "report",
+        title: "Telemetry and AKB",
+        subtitle: akbStatus?.configured ? "AKB configured" : "AKB not configured",
+        icon: <Database size={18} />,
+        tone: akbStatus?.configured ? "green" : "amber",
+        primaryAction: {
+          id: "open",
+          label: "Open",
+          onSelect: () => setActiveView("telemetry")
+        }
+      },
+      {
+        id: "action-run-scan",
+        type: "action",
+        title: "Run scan",
+        subtitle: selectedProfileId,
+        icon: <Play size={18} />,
+        tone: "green",
+        primaryAction: {
+          id: "run",
+          label: "Queue",
+          onSelect: () => void runScan("queue")
+        }
+      },
+      {
+        id: "action-dry-run",
+        type: "action",
+        title: "Dry-run scan plan",
+        subtitle: selectedProfileId,
+        icon: <ClipboardList size={18} />,
+        primaryAction: {
+          id: "plan",
+          label: "Plan",
+          onSelect: () => void runScan("plan")
+        }
+      },
+      {
+        id: "action-export-pdf",
+        type: "report",
+        title: "Export latest report as PDF",
+        subtitle: latestRun?.id ?? "No latest scan run",
+        icon: <FileText size={18} />,
+        tone: latestRun ? "blue" : "amber",
+        primaryAction: {
+          id: "export",
+          label: "Export",
+          disabled: !latestRun,
+          onSelect: () => void exportLatestRun("PDF")
+        }
+      },
+      {
+        id: "action-export-pptx",
+        type: "report",
+        title: "Export latest report as PPTX",
+        subtitle: latestRun?.id ?? "No latest scan run",
+        icon: <Presentation size={18} />,
+        tone: latestRun ? "purple" : "amber",
+        primaryAction: {
+          id: "export",
+          label: "Export",
+          disabled: !latestRun,
+          onSelect: () => void exportLatestRun("PPTX")
+        }
+      }
+    ],
+    [akbStatus?.configured, criticalGaps, latestRun, selectedProfileId]
+  );
 
   const projectColumns = useMemo<Array<DataTableColumn<ProjectRow>>>(
     () => [
@@ -648,11 +847,10 @@ export default function DashboardPage() {
             disabledReason: "Needs persisted findings UI and exception workflow."
           },
           {
-            id: "reports",
-            label: "Report browser",
+            id: "execution",
+            label: "Reports and exports",
             icon: <ScrollText size={16} />,
-            disabled: true,
-            disabledReason: "Basic evidence browser is in Execution; download and retention workflows are pending."
+            active: activeView === "execution"
           }
         ]
       }
@@ -693,6 +891,22 @@ export default function DashboardPage() {
 
   useEffect(() => {
     void refreshScanRuns();
+  }, []);
+
+  useEffect(() => {
+    void refreshAkbStatus();
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen(true);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   async function loadScanRunDetail(scanRunId: string): Promise<ScanRunDetail | null> {
@@ -806,6 +1020,74 @@ export default function DashboardPage() {
     }
   }
 
+  async function refreshAkbStatus() {
+    try {
+      const payload = await fetchJson<{ data: AkbStatus }>(`${apiBaseUrl}/api/v1/akb/status`);
+      setAkbStatus(payload.data);
+    } catch (error) {
+      setAkbStatus(null);
+      setAkbMessage(error instanceof Error ? error.message : "AKB status is not available.");
+    }
+  }
+
+  async function exportLatestRun(format: "PDF" | "PPTX") {
+    if (!latestRun) {
+      setExportMessage("No scan run evidence is loaded yet.");
+      return;
+    }
+
+    setExportingFormat(format);
+    setExportMessage(`Generating ${format} export...`);
+
+    try {
+      const payload = await fetchJson<{ data: ReportExportPayload }>(`${apiBaseUrl}/api/v1/reports/export`, {
+        method: "POST",
+        body: JSON.stringify({
+          scanRunId: latestRun.id,
+          format,
+          locale: "cs"
+        })
+      });
+
+      downloadBase64File(payload.data.fileName, payload.data.mimeType, payload.data.content);
+      setExportMessage(`${format} export generated: ${payload.data.fileName}`);
+    } catch (error) {
+      setExportMessage(error instanceof Error ? error.message : `${format} export failed.`);
+    } finally {
+      setExportingFormat(null);
+    }
+  }
+
+  async function askAkb() {
+    if (!latestRun) {
+      setAkbMessage("No scan run evidence is loaded yet.");
+      return;
+    }
+
+    setAkbLoading(true);
+    setAkbAnswer(null);
+    setAkbMessage("Asking AKB with scan-run scoped metadata and required citations...");
+
+    try {
+      const payload = await fetchJson<{ data: AkbAnswer }>(`${apiBaseUrl}/api/v1/akb/ai/ask`, {
+        method: "POST",
+        body: JSON.stringify({
+          scanRunId: latestRun.id,
+          question: akbQuestion,
+          answerMode: "security_preflight_brief",
+          responseLanguage: "cs"
+        })
+      });
+
+      setAkbAnswer(payload.data);
+      setAkbMessage(payload.data.noAnswer ? "AKB returned an explicit no-answer." : "AKB returned a cited response.");
+    } catch (error) {
+      setAkbMessage(error instanceof Error ? error.message : "AKB request failed.");
+    } finally {
+      setAkbLoading(false);
+    }
+  }
+
   async function runScan(mode: "plan" | "queue") {
     const scanRunId = `scan_ui_${Date.now().toString(36)}`;
     setScanResult({
@@ -899,10 +1181,10 @@ export default function DashboardPage() {
           />
           <MetricCard
             icon={FileJson}
-            label="Central result envelope"
-            value="v1"
-            detail="OpenAPI ingest and redacted worker output exist."
-            tone="warning"
+            label="Reports"
+            value="PDF/PPTX"
+            detail="STRATOS-style redacted exports plus central envelope v1."
+            tone="good"
             chartData={[1, 1, 1, 1, 1]}
           />
         </section>
@@ -977,9 +1259,9 @@ export default function DashboardPage() {
           <div>
             <h2>Celková funkčnost</h2>
             <p>
-              Aplikace má funkční lokální scan pipeline, OpenAPI kontrakt, worker evidence a centrální envelope. Produktově je
-              ale stále na úrovni silnějšího MVP: největší mezery jsou persistentní registry projektů, triage findings,
-              report browser, progress běhů a bezpečnostní hranice pro sdílené/centrální nasazení.
+              Aplikace má funkční lokální scan pipeline, OpenAPI kontrakt, worker evidence, report exporty a AKB bridge podle
+              STRATOS hranic. Největší mezery zůstávají persistentní registry projektů, triage findings, progress běhů,
+              produkční AKB/OIDC konfigurace a bezpečnostní hranice pro sdílené nasazení.
             </p>
           </div>
           <div className="security-progress-card">
@@ -1040,17 +1322,59 @@ export default function DashboardPage() {
             description={latestRun ? `${latestRun.id} · ${formatDuration(latestRun.durationMs)}` : "Run a scan to create report evidence"}
             count={<Badge tone={latestRun ? statusTone(latestRun.gateResult) : "neutral"}>{latestRun ? gateLabel(latestRun.gateResult) : "empty"}</Badge>}
             toolbar={
-              <Button disabled={loadingRuns} onClick={() => refreshScanRuns(latestRun?.id)} size="compact">
-                <History size={14} />
-                Refresh
-              </Button>
+              <span className="security-toolbar-actions">
+                <Button disabled={loadingRuns} onClick={() => refreshScanRuns(latestRun?.id)} size="compact">
+                  <History size={14} />
+                  Refresh
+                </Button>
+                <IconButton
+                  disabled={!latestRun || exportingFormat !== null}
+                  label="Export latest report as PDF"
+                  size="compact"
+                  title="Export redacted PDF report"
+                  onClick={() => exportLatestRun("PDF")}
+                >
+                  <FileText size={14} />
+                </IconButton>
+                <IconButton
+                  disabled={!latestRun || exportingFormat !== null}
+                  label="Export latest report as PPTX"
+                  size="compact"
+                  title="Export redacted PPTX report"
+                  onClick={() => exportLatestRun("PPTX")}
+                >
+                  <Presentation size={14} />
+                </IconButton>
+              </span>
             }
             items={(latestRun?.evidence.files ?? []).map((file) => ({
               id: file,
               title: file,
               leading: file.endsWith(".md") ? <ScrollText size={15} /> : <FileJson size={15} />,
               badges: <Badge tone={file === "central-result-envelope.json" ? "info" : "good"}>{file.endsWith(".json") ? "json" : "markdown"}</Badge>,
-              meta: "REPORTS_PATH evidence"
+              meta: "REPORTS_PATH evidence",
+              actions: latestRun ? (
+                <span className="security-hover-actions">
+                  <IconButton
+                    disabled={exportingFormat !== null}
+                    label={`Export ${file} report as PDF`}
+                    size="compact"
+                    title="Export scan run as PDF"
+                    onClick={() => exportLatestRun("PDF")}
+                  >
+                    <Download size={13} />
+                  </IconButton>
+                  <IconButton
+                    disabled={exportingFormat !== null}
+                    label={`Export ${file} report as PPTX`}
+                    size="compact"
+                    title="Export scan run as PPTX"
+                    onClick={() => exportLatestRun("PPTX")}
+                  >
+                    <Presentation size={13} />
+                  </IconButton>
+                </span>
+              ) : null
             }))}
             emptyLabel="No evidence files found"
             ariaLabel="Latest report evidence"
@@ -1071,6 +1395,10 @@ export default function DashboardPage() {
             ariaLabel="Latest run steps"
             className="security-list-card"
           />
+        </div>
+        <div className="security-result" data-tone={exportingFormat ? "warning" : "good"} role="status">
+          <strong>{exportingFormat ? `Exporting ${exportingFormat}` : "Report exports"}</strong>
+          <p>{exportMessage}</p>
         </div>
       </div>
     );
@@ -1127,6 +1455,96 @@ export default function DashboardPage() {
           ariaLabel="Central telemetry status"
           className="security-list-card"
         />
+        <div className="security-split-grid">
+          <StructuredList
+            title="AKB integration"
+            description="Document-grounded AI boundary for STRATOS"
+            count={<Badge tone={akbStatus?.configured ? "good" : "warning"}>{akbStatus?.configured ? "configured" : "not configured"}</Badge>}
+            toolbar={
+              <Button onClick={refreshAkbStatus} size="compact">
+                <Bot size={14} />
+                Refresh
+              </Button>
+            }
+            items={[
+              {
+                id: "rag",
+                title: "AKB RAG endpoint",
+                leading: <MessageSquareText size={15} />,
+                badges: <Badge tone={akbStatus?.ragConfigured ? "good" : "warning"}>{akbStatus?.ragConfigured ? "ready" : "missing"}</Badge>,
+                meta: akbStatus?.publicBaseUrl ?? "set SECURITY_PREFLIGHT_AKB_RAG_BASE_URL"
+              },
+              {
+                id: "auth",
+                title: "Authentication mode",
+                leading: <ShieldCheck size={15} />,
+                badges: <Badge tone={akbStatus?.authMode === "none" ? "warning" : "good"}>{akbStatus?.authMode ?? "unknown"}</Badge>,
+                meta: "caller bearer, OIDC client credentials, or service token"
+              },
+              {
+                id: "boundaries",
+                title: "SecurityPreflight storage boundary",
+                leading: <Archive size={15} />,
+                badges: <Badge tone="good">no local AI storage</Badge>,
+                meta: "prompts, responses, chunks and embeddings stay in AKB"
+              },
+              {
+                id: "citations",
+                title: "Citations required",
+                leading: <FileJson size={15} />,
+                badges: <Badge tone="good">require_citations</Badge>,
+                meta: "no-answer is machine-readable"
+              }
+            ]}
+            ariaLabel="AKB integration status"
+            className="security-list-card"
+          />
+
+          <DataGridShell
+            title={<strong>Ask AKB about latest scan</strong>}
+            toolbar={<Badge tone={akbStatus?.configured ? "good" : "warning"}>{latestRun?.id ?? "no scan"}</Badge>}
+            className="security-grid-shell"
+          >
+            <div className="security-akb-panel">
+              <label className="security-akb-question">
+                <span>Question</span>
+                <textarea
+                  value={akbQuestion}
+                  onChange={(event) => setAkbQuestion(event.currentTarget.value)}
+                  rows={4}
+                />
+              </label>
+              <div className="security-actions">
+                <Button variant="primary" disabled={!latestRun || akbLoading} onClick={askAkb}>
+                  <Sparkles size={14} />
+                  {akbLoading ? "Asking AKB" : "Ask AKB"}
+                </Button>
+                <Button disabled={akbLoading} onClick={() => setAkbQuestion("Jake jsou hlavni bezpecnostni zavery posledniho skenu a jake evidence je podporuji?")}>
+                  <MessageSquareText size={14} />
+                  Audit prompt
+                </Button>
+              </div>
+              <div className="security-result" data-tone={akbAnswer ? "good" : akbStatus?.configured ? "warning" : "danger"} role="status">
+                <strong>{akbAnswer ? "AKB response" : "AKB status"}</strong>
+                <p>{akbAnswer?.answer ?? akbMessage}</p>
+                {akbAnswer?.confidence != null ? <span>confidence {Math.round(akbAnswer.confidence * 100)}%</span> : null}
+              </div>
+              {akbAnswer?.citations.length ? (
+                <StructuredList
+                  title="Citations"
+                  items={akbAnswer.citations.map((citation, index) => ({
+                    id: citation.chunkId ?? `citation-${index}`,
+                    title: citation.title ?? citation.documentId ?? "AKB citation",
+                    leading: <FileJson size={15} />,
+                    badges: <Badge tone="info">{citation.page ? `page ${citation.page}` : "source"}</Badge>,
+                    meta: citation.sectionPath ?? citation.openUrl ?? citation.chunkId ?? "citation context"
+                  }))}
+                  ariaLabel="AKB citations"
+                />
+              ) : null}
+            </div>
+          </DataGridShell>
+        </div>
       </div>
     );
   }
@@ -1143,7 +1561,7 @@ export default function DashboardPage() {
   return (
     <AppShell
       className="security-shell"
-      topbarPlacement="main"
+      topbarPlacement="global"
       rail={
         <AppRail
           workspaceMark="SP"
@@ -1172,42 +1590,43 @@ export default function DashboardPage() {
         </WorkspaceSidebar>
       }
       topbar={
-        <Topbar
-          breadcrumbs={[
-            { id: "stratos", label: "STRATOS" },
-            { id: "security-preflight", label: "SecurityPreflight" },
-            { id: activeView, label: activeView === "capabilities" ? "Capability audit" : activeView }
+        <GlobalTopbar
+          apps={[
+            { id: "security-preflight", label: "SecurityPreflight", shortLabel: "SP", icon: <ShieldCheck size={15} />, active: true },
+            { id: "projectflow", label: "ProjectFlow", shortLabel: "PF", disabled: true, disabledReason: "External STRATOS app." },
+            { id: "budget", label: "Budget & Contract", shortLabel: "BC", disabled: true, disabledReason: "External STRATOS app." },
+            { id: "akb", label: "AKB", shortLabel: "AKB", disabled: true, disabledReason: akbStatus?.publicBaseUrl ?? "Configure AKB public URL." }
           ]}
-          search={
-            <SearchBox
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onClear={() => setSearchQuery("")}
-              placeholder="Search capabilities"
-              variant="toolbar"
-              ariaLabel="Search capabilities"
-            />
+          labels={{ applications: "STRATOS applications", userMenu: "User menu", settings: "Settings", logout: "Logout" }}
+          context={<span>SecurityPreflight / {activeView === "capabilities" ? "Capability audit" : activeView}</span>}
+          center={
+            <button type="button" className="security-command-trigger" onClick={() => setCommandOpen(true)}>
+              <Search size={15} />
+              <span>Command Center</span>
+              <kbd>Ctrl K</kbd>
+            </button>
           }
-          actions={[
-            {
-              id: "doctor",
-              label: loadingDoctor ? "Checking" : "Doctor",
-              icon: <Wrench size={15} />,
-              onClick: refreshDoctor,
-              disabled: loadingDoctor
-            },
-            {
-              id: "audit",
-              label: "Audit",
-              icon: <Gauge size={15} />,
-              variant: "primary",
-              onClick: () => {
-                setActiveView("capabilities");
-                setDetailOpen(true);
-              }
-            }
-          ]}
-          trailing={<RagBadge status={statusRag(scanGate)} label={scanGate} />}
+          status={<RagBadge status={statusRag(scanGate)} label={scanGate} />}
+          actions={
+            <div className="security-topbar-actions">
+              <Button disabled={loadingDoctor} onClick={refreshDoctor} size="compact">
+                <Wrench size={14} />
+                {loadingDoctor ? "Checking" : "Doctor"}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setActiveView("capabilities");
+                  setDetailOpen(true);
+                }}
+                size="compact"
+              >
+                <Gauge size={14} />
+                Audit
+              </Button>
+            </div>
+          }
+          user={{ name: "Security analyst", initials: "SA", status: akbStatus?.configured ? "AKB ready" : "Local mode" }}
         />
       }
       toolbar={
@@ -1224,7 +1643,19 @@ export default function DashboardPage() {
               onTabChange={(tabId) => setActiveView(tabId as WorkspaceView)}
             />
           }
-          trailing={<Badge tone="warning">healthcare reference requires P0 gap closure</Badge>}
+          trailing={
+            <span className="security-view-toolbar-trailing">
+              <SearchBox
+                value={searchQuery}
+                onChange={setSearchQuery}
+                onClear={() => setSearchQuery("")}
+                placeholder="Filter capabilities"
+                variant="toolbar"
+                ariaLabel="Filter capabilities"
+              />
+              <Badge tone="warning">healthcare reference requires P0 gap closure</Badge>
+            </span>
+          }
         />
       }
     >
@@ -1310,9 +1741,9 @@ export default function DashboardPage() {
           <section>
             <h2>Current assessment</h2>
             <p>
-              SecurityPreflight is beyond a static scaffold, but still below reference-grade healthcare readiness. The scan
-              execution path works; operational product depth is still incomplete around findings, evidence browsing,
-              project registry, progress tracking, and central delivery guarantees.
+              SecurityPreflight is beyond a static scaffold: scan execution, evidence browsing, PDF/PPTX exports and the
+              AKB bridge are wired. Reference-grade healthcare readiness still needs findings triage, project registry,
+              progress tracking, authenticated shared deployment and central delivery guarantees.
             </p>
           </section>
           <StructuredList
@@ -1329,6 +1760,22 @@ export default function DashboardPage() {
           />
         </div>
       </DetailSurface>
+      <CommandCenter
+        open={commandOpen}
+        query={commandQuery}
+        items={commandItems}
+        labels={{
+          title: "SecurityPreflight Command Center",
+          placeholder: "Search views, reports and actions",
+          noResults: "No matching action",
+          open: "Open",
+          close: "Close",
+          actions: "Actions",
+          preview: "STRATOS command surface for navigation, scan execution and report exports."
+        }}
+        onQueryChange={setCommandQuery}
+        onClose={() => setCommandOpen(false)}
+      />
     </AppShell>
   );
 }

@@ -7,6 +7,8 @@ import { z } from "zod";
 import { Queue } from "bullmq";
 import { defaultScanProfiles, requiredScannerTools, type GateResult, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
 import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
+import { AkbIntegrationError, askAkb, getAkbIntegrationStatus } from "./akb.js";
+import { buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
 
 export interface CreateServerOptions {
   logger?: boolean;
@@ -77,6 +79,27 @@ interface ScanRunDetailDto extends ScanRunSummaryDto {
 const dataClassificationSchema = z.enum(["public", "internal", "confidential", "sensitive", "health-data"]);
 const scanRunIdSchema = z.string().min(1).regex(/^[A-Za-z0-9_.:-]+$/, "Scan run ID contains unsupported characters.");
 const reportFormatSchema = z.enum(["markdown", "json"]).default("markdown");
+const reportExportRequestSchema = z.object({
+  scanRunId: scanRunIdSchema,
+  format: z.enum(["PDF", "PPTX", "pdf", "pptx"]).default("PDF"),
+  locale: z.enum(["cs", "en"]).default("cs"),
+  template: z.string().min(1).max(120).optional()
+});
+const akbAskRequestSchema = z.object({
+  scanRunId: scanRunIdSchema,
+  question: z.string().min(3).max(2000),
+  answerMode: z.string().min(1).max(120).optional(),
+  responseLanguage: z.string().min(2).max(12).optional(),
+  maxChunks: z.number().int().min(1).max(30).optional(),
+  subject: z
+    .object({
+      tenantId: z.string().min(1).max(120).optional(),
+      userId: z.string().min(1).max(120).optional(),
+      roles: z.array(z.string().min(1).max(120)).max(30).optional(),
+      classificationClearance: z.array(z.string().min(1).max(120)).max(20).optional()
+    })
+    .optional()
+});
 
 const scanPlanRequestSchema = z.object({
   scanRunId: z.string().min(1).optional(),
@@ -282,6 +305,108 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     return {
       data: report
     };
+  });
+
+  server.post("/api/v1/reports/export", async (request, reply) => {
+    const parsed = reportExportRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid report export request.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
+    }
+
+    const run = await getScanRunDetail(parsed.data.scanRunId);
+
+    if (!run) {
+      return reply.status(404).send({
+        error: {
+          code: "SCAN_RUN_NOT_FOUND",
+          message: "Scan run evidence was not found.",
+          requestId: request.id
+        }
+      });
+    }
+
+    const markdownReport = await readScanRunReport(parsed.data.scanRunId, "markdown");
+    const format = parsed.data.format.toUpperCase() as ScanRunExportFormat;
+    const exported = await buildScanRunReportExport({
+      format,
+      locale: parsed.data.locale,
+      template: parsed.data.template,
+      run,
+      markdownReport: typeof markdownReport?.content === "string" ? markdownReport.content : undefined
+    });
+
+    return {
+      data: exported
+    };
+  });
+
+  server.get("/api/v1/akb/status", async (request) => ({
+    data: getAkbIntegrationStatus(request.headers.authorization?.toString())
+  }));
+
+  server.post("/api/v1/akb/ai/ask", async (request, reply) => {
+    const parsed = akbAskRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid AKB AI request.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
+    }
+
+    const run = await getScanRunDetail(parsed.data.scanRunId);
+
+    if (!run) {
+      return reply.status(404).send({
+        error: {
+          code: "SCAN_RUN_NOT_FOUND",
+          message: "Scan run evidence was not found.",
+          requestId: request.id
+        }
+      });
+    }
+
+    try {
+      const result = await askAkb({
+        question: parsed.data.question,
+        answerMode: parsed.data.answerMode,
+        responseLanguage: parsed.data.responseLanguage,
+        maxChunks: parsed.data.maxChunks,
+        correlationId: request.id,
+        authorization: request.headers.authorization?.toString(),
+        subject: parsed.data.subject,
+        run
+      });
+
+      return {
+        data: result
+      };
+    } catch (error) {
+      if (error instanceof AkbIntegrationError) {
+        return reply.status(error.statusCode).send({
+          error: {
+            code: error.code,
+            message: error.message,
+            details: error.details.length ? error.details : undefined,
+            requestId: request.id
+          }
+        });
+      }
+
+      throw error;
+    }
   });
 
   server.get("/api/v1/toolchain/requirements", async () => ({

@@ -1,10 +1,14 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer } from "./server.js";
 
 describe("api server", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("serves health", async () => {
     const server = createServer({ logger: false });
     const response = await server.inject({ method: "GET", url: "/health" });
@@ -268,6 +272,224 @@ describe("api server", () => {
     }
   });
 
+  it("exports scan run reports as STRATOS-style PDF and PPTX payloads", async () => {
+    await withReportFixture("scan_export_test", async () => {
+      const server = createServer({ logger: false });
+
+      for (const format of ["PDF", "PPTX"] as const) {
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/v1/reports/export",
+          payload: {
+            scanRunId: "scan_export_test",
+            format
+          }
+        });
+        const data = response.json().data;
+        const content = Buffer.from(data.content, "base64");
+
+        expect(response.statusCode).toBe(200);
+        expect(data.reportType).toBe("SECURITY_PREFLIGHT_SCAN");
+        expect(data.format).toBe(format);
+        expect(data.contentHash).toHaveLength(64);
+        expect(content.length).toBeGreaterThan(500);
+        expect(content.subarray(0, format === "PDF" ? 4 : 2).toString()).toBe(format === "PDF" ? "%PDF" : "PK");
+      }
+    });
+  });
+
+  it("reports AKB integration status without exposing secrets", async () => {
+    const previousRagBaseUrl = process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
+    const previousServiceToken = process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN;
+
+    delete process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
+    process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN = "secret-token";
+
+    try {
+      const server = createServer({ logger: false });
+      const response = await server.inject({ method: "GET", url: "/api/v1/akb/status" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        data: {
+          configured: false,
+          ragConfigured: false,
+          authMode: "service-token",
+          boundaries: {
+            storesPrompts: false,
+            storesResponses: false,
+            storesChunks: false,
+            requiresCitations: true
+          }
+        }
+      });
+      expect(JSON.stringify(response.json())).not.toContain("secret-token");
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_AKB_RAG_BASE_URL", previousRagBaseUrl);
+      restoreEnv("SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN", previousServiceToken);
+    }
+  });
+
+  it("bridges scan run questions through AKB RAG without storing the answer", async () => {
+    const previousRagBaseUrl = process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
+    const previousServiceToken = process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN;
+    let outboundPayload: Record<string, unknown> | null = null;
+
+    process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL = "https://akb.example.test/api/v1";
+    process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN = "test-service-token";
+    vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
+      const headers = init?.headers as Record<string, string>;
+      outboundPayload = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(String(input)).toBe("https://akb.example.test/api/v1/rag/query");
+      expect(headers.authorization).toBe("Bearer test-service-token");
+      expect(headers.accept).toBe("application/json");
+      expect(headers["X-AKL-Subject"]).toBe("security-preflight-user");
+      expect(headers["X-AKL-Roles"]).toBe("security-preflight.viewer");
+
+      return new Response(
+        JSON.stringify({
+          answer: "Citovana odpoved z AKB.",
+          confidence: 0.82,
+          no_answer: false,
+          citations: [
+            {
+              chunk_id: "chunk-1",
+              document_id: "doc-1",
+              document_version_id: "version-1",
+              title: "Security report",
+              page: 1,
+              section_path: "Gate",
+              open_url: "/api/v1/citations/chunk-1/open"
+            }
+          ],
+          warnings: []
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    });
+
+    try {
+      await withReportFixture("scan_akb_test", async () => {
+        const server = createServer({ logger: false });
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/v1/akb/ai/ask",
+          payload: {
+            scanRunId: "scan_akb_test",
+            question: "Shrn vysledek skenu pro audit."
+          }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().data).toMatchObject({
+          provider: "AKB",
+          scanRunId: "scan_akb_test",
+          answer: "Citovana odpoved z AKB.",
+          confidence: 0.82,
+          noAnswer: false,
+          citations: [
+            {
+              chunkId: "chunk-1",
+              documentId: "doc-1"
+            }
+          ]
+        });
+        expect(outboundPayload).toMatchObject({
+          query: "Shrn vysledek skenu pro audit.",
+          question: "Shrn vysledek skenu pro audit.",
+          require_citations: true,
+          subject_id: "security-preflight-user",
+          filters: {
+            only_valid: true,
+            classification_max: "health-data",
+            tags: expect.arrayContaining(["stratos", "security-preflight", "security-preflight-scan:scan_akb_test"])
+          },
+          scope: {
+            entity_type: "SecurityScanRun",
+            entity_id: "scan_akb_test"
+          }
+        });
+      });
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_AKB_RAG_BASE_URL", previousRagBaseUrl);
+      restoreEnv("SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN", previousServiceToken);
+    }
+  });
+
+  it("suppresses AKB answers that omit required citations", async () => {
+    const previousRagBaseUrl = process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
+    const previousServiceToken = process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN;
+
+    process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL = "https://akb.example.test/api/v1";
+    process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN = "test-service-token";
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            answer: "Nedolozena odpoved bez citaci.",
+            confidence: 0.5,
+            no_answer: false,
+            citations: []
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+    );
+
+    try {
+      await withReportFixture("scan_akb_uncited_test", async () => {
+        const server = createServer({ logger: false });
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/v1/akb/ai/ask",
+          payload: {
+            scanRunId: "scan_akb_uncited_test",
+            question: "Shrn vysledek skenu."
+          }
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().data).toMatchObject({
+          answer: "",
+          noAnswer: true,
+          warnings: ["AKB response omitted citations; answer suppressed."],
+          missingInformation: ["AKB did not return required citations."]
+        });
+      });
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_AKB_RAG_BASE_URL", previousRagBaseUrl);
+      restoreEnv("SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN", previousServiceToken);
+    }
+  });
+
+  it("fails closed when AKB AI is requested without AKB configuration", async () => {
+    const previousRagBaseUrl = process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
+    const previousAliasRagBaseUrl = process.env.AKL_RAG_BASE_URL;
+
+    delete process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
+    delete process.env.AKL_RAG_BASE_URL;
+
+    try {
+      await withReportFixture("scan_akb_missing_test", async () => {
+        const server = createServer({ logger: false });
+        const response = await server.inject({
+          method: "POST",
+          url: "/api/v1/akb/ai/ask",
+          payload: {
+            scanRunId: "scan_akb_missing_test",
+            question: "Shrn vysledek skenu."
+          }
+        });
+
+        expect(response.statusCode).toBe(503);
+        expect(response.json().error.code).toBe("AKB_NOT_CONFIGURED");
+      });
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_AKB_RAG_BASE_URL", previousRagBaseUrl);
+      restoreEnv("AKL_RAG_BASE_URL", previousAliasRagBaseUrl);
+    }
+  });
+
   it("does not queue a blocked scan plan", async () => {
     const server = createServer({
       logger: false,
@@ -346,3 +568,115 @@ describe("api server", () => {
     });
   });
 });
+
+async function withReportFixture(scanRunId: string, callback: () => Promise<void>): Promise<void> {
+  const previousReportsPath = process.env.REPORTS_PATH;
+  const reportsPath = await mkdtemp(path.join(tmpdir(), "security-preflight-api-test-"));
+  const evidenceRoot = path.join(reportsPath, scanRunId);
+
+  await mkdir(evidenceRoot, { recursive: true });
+  await writeFile(
+    path.join(evidenceRoot, "execution-result.json"),
+    `${JSON.stringify(
+      {
+        scanRunId,
+        status: "completed",
+        startedAt: "2026-01-01T00:00:00.000Z",
+        finishedAt: "2026-01-01T00:00:05.000Z",
+        evidenceRoot,
+        stepResults: [
+          {
+            stepId: "step_01_documentation",
+            checkId: "documentation",
+            status: "passed",
+            startedAt: "2026-01-01T00:00:00.000Z",
+            finishedAt: "2026-01-01T00:00:01.000Z",
+            evidencePath: path.join(evidenceRoot, "documentation.json"),
+            findings: [],
+            message: "Documentation checks passed."
+          }
+        ],
+        findings: [],
+        gate: {
+          result: "pass",
+          blockingReasons: [],
+          summary: {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+            info: 0
+          }
+        }
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+  await writeFile(
+    path.join(evidenceRoot, "report.json"),
+    `${JSON.stringify(
+      {
+        project: {
+          id: "project_test",
+          name: "Test Project",
+          dataClassification: "health-data"
+        },
+        scanRun: {
+          id: scanRunId,
+          projectId: "project_test",
+          profileId: "documentation-compliance",
+          status: "completed",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          finishedAt: "2026-01-01T00:00:05.000Z",
+          gateResult: "pass",
+          summary: {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+            info: 0
+          }
+        },
+        profile: {
+          id: "documentation-compliance",
+          name: "documentation-compliance"
+        },
+        gate: {
+          result: "pass",
+          blockingReasons: [],
+          summary: {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+            info: 0
+          }
+        },
+        findings: []
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+  await writeFile(path.join(evidenceRoot, "report.md"), "# Security Preflight Report\n\nNo findings.\n", "utf8");
+  await writeFile(path.join(evidenceRoot, "central-result-envelope.json"), "{}\n", "utf8");
+  process.env.REPORTS_PATH = reportsPath;
+
+  try {
+    await callback();
+  } finally {
+    restoreEnv("REPORTS_PATH", previousReportsPath);
+    await rm(reportsPath, { recursive: true, force: true });
+  }
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}

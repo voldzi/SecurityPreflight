@@ -20,7 +20,8 @@ payloads.
 
 MVP metrics should cover scan duration, queue wait time, scanner duration,
 scanner exit status, timeout count, finding counts by severity, gate results,
-report generation duration, and API request latency.
+report generation duration, PDF/PPTX export duration, AKB request duration,
+AKB error/no-answer counts, and API request latency.
 
 ## Tracing
 
@@ -28,6 +29,11 @@ OpenTelemetry is the preferred tracing standard. MVP can start with request IDs
 and structured logs, then add OpenTelemetry spans for API requests, queue jobs,
 scanner execution, parsing, normalization, gate evaluation, and report
 generation.
+
+AKB calls must propagate the API request ID as `correlation_id`. Logs may record
+AKB request status, duration, no-answer state, citation count, and error code,
+but must not log full prompts, RAG answers, tokens, document text, or citation
+source context.
 
 ## Result Telemetry
 
@@ -70,4 +76,6 @@ checks.
 The Web UI dashboard shows local scan health: recent scans, gate results,
 critical/high finding counts, scanner availability, failed jobs, and report
 evidence discovered under `REPORTS_PATH`. The Execution view includes a
-read-only evidence manifest and step summary for the latest loaded scan run.
+read-only evidence manifest, hover-only report export actions, and step summary
+for the latest loaded scan run. The Telemetry view shows central envelope and
+AKB integration status.

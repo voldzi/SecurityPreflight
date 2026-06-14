@@ -143,3 +143,15 @@ Central result exchange uses the redacted `security-preflight.result.v1`
 envelope. Central storage must receive findings, summaries, gate results, and
 evidence metadata only; source code and raw scanner outputs remain local unless
 an explicit future export policy allows them.
+
+PDF and PPTX report exports are explicit user actions and are generated from
+redacted `report.md`, `report.json`, step summaries, finding summaries, and the
+evidence manifest. They must not include raw scanner stdout/stderr, full source
+files, secrets, production `.env` values, private keys, or bearer tokens.
+
+AKB is the STRATOS boundary for document-grounded AI. SecurityPreflight calls
+AKB only from the backend and sends scan-run metadata, tags, data
+classification, and a correlation id. SecurityPreflight must not store AKB
+prompts, RAG answers, chunks, embeddings, extracted document text, or citation
+source context. If AKB is not configured or cannot provide a cited answer, the
+API fails closed or returns AKB's explicit no-answer state.

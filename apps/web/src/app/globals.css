@@ -206,6 +206,50 @@ code,
   gap: 8px;
 }
 
+.security-topbar-actions,
+.security-toolbar-actions,
+.security-hover-actions,
+.security-view-toolbar-trailing {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.security-command-trigger {
+  display: inline-flex;
+  width: min(440px, 42vw);
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+  color: var(--stratos-color-muted);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.security-command-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-command-trigger kbd {
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-sm);
+  background: var(--stratos-color-surface-subtle);
+  color: var(--stratos-color-muted);
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 10px;
+}
+
 .security-wide-button {
   width: 100%;
 }
@@ -285,6 +329,24 @@ code,
   white-space: normal;
 }
 
+.security-list-card .stratos-structured-list-title {
+  min-width: 0;
+}
+
+.security-list-card .stratos-structured-list-meta {
+  flex: 1 1 170px;
+  min-width: 90px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.security-list-card .stratos-structured-list-badges,
+.security-list-card .stratos-structured-list-actions {
+  flex: 0 0 auto;
+}
+
 .security-wrap {
   min-width: 0;
   color: var(--stratos-color-text);
@@ -298,6 +360,43 @@ code,
   gap: 8px;
   color: var(--stratos-color-muted);
   font-size: 12px;
+}
+
+.security-akb-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.security-akb-question {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.security-akb-question span {
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.security-akb-question textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+  color: var(--stratos-color-text);
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.security-akb-question textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--stratos-color-primary) 45%, transparent);
+  outline-offset: 1px;
 }
 
 .security-detail-stack {
@@ -362,11 +461,22 @@ code,
   }
 
   .security-shell .stratos-topbar-actions,
+  .security-shell .stratos-global-topbar-right,
   .security-shell .stratos-view-toolbar,
   .security-shell .stratos-view-tabs,
   .security-shell .stratos-view-tabs-list {
     min-width: 0;
     overflow-x: auto;
+  }
+
+  .security-shell .stratos-global-topbar-center {
+    display: none;
+  }
+
+  .security-view-toolbar-trailing {
+    width: 100%;
+    align-items: stretch;
+    flex-wrap: wrap;
   }
 
   .security-shell .stratos-view-tab {

@@ -55,6 +55,9 @@ The API uses path versioning:
 | GET | `/api/v1/scans/runs` | List scan runs discovered under `REPORTS_PATH` |
 | GET | `/api/v1/scans/runs/{scanRunId}` | Get redacted scan run detail, findings summary, steps, and evidence manifest |
 | GET | `/api/v1/scans/runs/{scanRunId}/report` | Read a generated markdown or JSON report artifact |
+| POST | `/api/v1/reports/export` | Export a scan run report as base64 PDF or PPTX |
+| GET | `/api/v1/akb/status` | Report AKB RAG configuration and storage boundaries without secrets |
+| POST | `/api/v1/akb/ai/ask` | Ask AKB a cited, scan-run-scoped question |
 | GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
 | GET | `/api/v1/toolchain/requirements` | List scanner/evidence tools required for healthcare reference coverage |
 | POST | `/api/v1/results/ingest` | Accept a redacted result envelope for central storage |
@@ -140,6 +143,41 @@ The history endpoints are read-only over `REPORTS_PATH`. They expose redacted
 report summaries, step status, finding summaries, and the evidence file
 manifest. They do not expose raw scanner stdout/stderr command evidence.
 
+### Export a PDF or PPTX report
+
+```bash
+curl -X POST http://localhost:8781/api/v1/reports/export \
+  -H 'content-type: application/json' \
+  -d '{
+    "scanRunId": "scan_abc123",
+    "format": "PDF",
+    "locale": "cs"
+  }'
+```
+
+The endpoint follows the STRATOS report export pattern: it returns a base64
+payload with `fileName`, `mimeType`, `contentHash`, and `parametersJson`. The
+export is generated from redacted report evidence only. It does not include raw
+scanner stdout/stderr or source code.
+
+### AKB status and cited AI question
+
+```bash
+curl http://localhost:8781/api/v1/akb/status
+
+curl -X POST http://localhost:8781/api/v1/akb/ai/ask \
+  -H 'content-type: application/json' \
+  -d '{
+    "scanRunId": "scan_abc123",
+    "question": "Shrn vysledek skenu pro zdravotnicky audit a uved citace."
+  }'
+```
+
+AKB is the STRATOS document-grounded AI boundary. SecurityPreflight calls AKB
+only from the backend and sends scan-run metadata, tags, data classification,
+and `require_citations: true`. SecurityPreflight does not store AKB prompts,
+answers, chunks, embeddings, or document text.
+
 ### Toolchain doctor
 
 ```bash
@@ -196,3 +234,5 @@ The OpenAPI specification is validated in the CI pipeline
   execution plan contract before scanner execution is enabled.
 - Central storage integrations should consume `CentralResultEnvelope` through
   the OpenAPI contract instead of scraping reports.
+- STRATOS report exports should use `POST /api/v1/reports/export`; document-
+  grounded AI should use the AKB bridge, not a browser-side LLM call.

@@ -12,7 +12,7 @@ should be fixed first?"
   own projects.
 - Core workflows: register a local project, detect its technology stack, run a
   scan profile, normalize findings, evaluate a release gate, and export
-  Markdown/JSON evidence.
+  Markdown/JSON/PDF/PPTX evidence.
 - Security scope: SAST, secret scanning, dependency scanning, OpenAPI checks,
   documentation compliance, configuration checks, and controlled local DAST.
 - Non-goals: exploit automation, brute force testing, denial-of-service tests,
@@ -38,6 +38,7 @@ flowchart LR
   worker --> toolbox[Scanner Toolbox]
   toolbox --> project[Local Project Mount<br/>read-only]
   worker --> reports[Report Volume]
+  api -. optional cited AI .-> akb[STRATOS AKB RAG]
   worker -. optional controlled DAST .-> target[Allowed Local/Staging Target]
 ```
 
@@ -46,7 +47,8 @@ flowchart LR
 - `apps/web`: Next.js UI for projects, scan runs, findings, reports,
   toolchain health, and settings.
 - `apps/api`: Fastify REST API, OpenAPI JSON-first contract, input validation,
-  persistence, scan orchestration endpoints, and report download endpoints.
+  persistence, scan orchestration endpoints, report export endpoints, and the
+  server-side AKB bridge.
 - `apps/worker`: scan orchestration, guarded plan consumption, internal check
   execution, timeout handling, evidence capture, finding normalization, and
   report generation.
@@ -58,6 +60,8 @@ flowchart LR
   Syft, Grype, OSV Scanner, Checkov, Redocly OpenAPI validation,
   documentation compliance, and controlled ZAP baseline evidence.
 - `packages/report`: Markdown, JSON, and later SARIF/SBOM report generation.
+  The API additionally builds STRATOS-style PDF and PPTX exports from redacted
+  report evidence.
 - `packages/config`: global and per-project configuration schemas.
 
 ## Data Flows
@@ -78,6 +82,11 @@ flowchart LR
 7. The gate evaluator maps findings to `PASS`, `WARNING`, `FAIL`, or `ERROR`.
 8. Markdown and JSON reports are generated and exposed through the API, UI, and
    CLI.
+9. The API can build PDF and PPTX exports from redacted report evidence when a
+   user explicitly requests a report export.
+10. If configured, the API can ask AKB RAG cited questions scoped to a scan run.
+   SecurityPreflight sends metadata and tags only; AKB owns document text,
+   chunks, embeddings, citations, and RAG audit.
 
 ## Databases and Storage
 
@@ -101,8 +110,16 @@ flowchart LR
   scanners and explicitly allowed local/staging DAST targets.
 - STRATOS UI alignment: the Web UI consumes `@voldzi/stratos-ui` through GitHub
   Packages and composes the dashboard from shared STRATOS shell, navigation,
-  table, badge, metric, list, and form primitives. Package credentials must be
-  supplied through local or CI registry configuration, never committed.
+  global topbar, command center, table, badge, metric, list, and form
+  primitives. Package credentials must be supplied through local or CI registry
+  configuration, never committed.
+- STRATOS report pattern: completed scan evidence can be exported as base64 PDF
+  or PPTX payloads with filename, MIME type, hash, generation time, and
+  parameters metadata.
+- STRATOS AKB integration: optional server-side AKB RAG calls provide cited AI
+  answers. Browser clients never call internal AKB services directly, and
+  SecurityPreflight does not store prompts, answers, chunks, embeddings, or
+  document text outside AKB.
 - Future integrations: DefectDojo/Security Assurance Platform export, CI/CD
   templates, SARIF upload, SBOM workflows, and macOS Keychain support through a
   host-side CLI helper.
