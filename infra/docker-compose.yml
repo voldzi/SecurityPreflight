@@ -45,7 +45,9 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_PORT: "8781"
-      DATABASE_URL: postgresql://security_preflight:security_preflight@postgres:5432/security_preflight
+      DATABASE_URL: ${DATABASE_URL:-postgresql://security_preflight:security_preflight@postgres:5432/security_preflight}
+      SECURITY_PREFLIGHT_DB_ENABLED: ${SECURITY_PREFLIGHT_DB_ENABLED:-true}
+      SECURITY_PREFLIGHT_DB_REQUIRED: ${SECURITY_PREFLIGHT_DB_REQUIRED:-false}
       REDIS_URL: redis://redis:6379/0
       REPORTS_PATH: /reports
       PROJECTS_ROOT_CONTAINER: ${PROJECTS_ROOT_CONTAINER:-/workspace/projects}
@@ -112,7 +114,9 @@ services:
       dockerfile: infra/Dockerfile.worker
     environment:
       APP_ENV: ${APP_ENV:-development}
-      DATABASE_URL: postgresql://security_preflight:security_preflight@postgres:5432/security_preflight
+      DATABASE_URL: ${DATABASE_URL:-postgresql://security_preflight:security_preflight@postgres:5432/security_preflight}
+      SECURITY_PREFLIGHT_DB_ENABLED: ${SECURITY_PREFLIGHT_DB_ENABLED:-true}
+      SECURITY_PREFLIGHT_DB_REQUIRED: ${SECURITY_PREFLIGHT_DB_REQUIRED:-false}
       REDIS_URL: redis://redis:6379/0
       REPORTS_PATH: /reports
       PROJECTS_ROOT_HOST: ${PROJECTS_ROOT_HOST:-${PWD}}

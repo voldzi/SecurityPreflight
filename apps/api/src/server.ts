@@ -5,8 +5,16 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import { Queue } from "bullmq";
-import { defaultScanProfiles, requiredScannerTools, type GateResult, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
+import { defaultScanProfiles, requiredScannerTools, type FindingStatus, type GateResult, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
 import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
+import {
+  getPersistedScanRunDetail,
+  getScanRunProgress,
+  listPersistedScanRuns,
+  recordQueuedScan,
+  updateFindingTriage,
+  type PersistedScanRunProgress
+} from "@security-preflight/persistence";
 import { AkbIntegrationError, askAkb, getAkbIntegrationStatus } from "./akb.js";
 import {
   authenticateSecurityPreflightRequest,
@@ -87,6 +95,13 @@ interface ScanRunDetailDto extends ScanRunSummaryDto {
     endpoint: string | null;
     status: string;
     recommendation: string;
+    triageStatus: FindingStatus;
+    triageNote: string | null;
+    triageOwner: string | null;
+    triageDueAt: string | null;
+    triageExpiresAt: string | null;
+    triageUpdatedAt: string | null;
+    triageUpdatedBy: string | null;
   }>;
   steps: Array<{
     stepId: string;
@@ -103,7 +118,16 @@ interface ScanRunDetailDto extends ScanRunSummaryDto {
 const dataClassificationSchema = z.enum(["public", "internal", "confidential", "sensitive", "health-data"]);
 const projectIdSchema = z.string().min(1).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{1,119}$/, "Project ID contains unsupported characters.");
 const scanRunIdSchema = z.string().min(1).regex(/^[A-Za-z0-9_.:-]+$/, "Scan run ID contains unsupported characters.");
+const findingIdSchema = z.string().min(1).max(240).regex(/^[A-Za-z0-9_.:-]+$/, "Finding ID contains unsupported characters.");
 const reportFormatSchema = z.enum(["markdown", "json"]).default("markdown");
+const triageStatusSchema = z.enum(["open", "accepted", "false-positive", "fixed", "suppressed"]);
+const findingTriageRequestSchema = z.object({
+  status: triageStatusSchema,
+  note: z.string().max(4000).nullable().optional(),
+  owner: z.string().max(240).nullable().optional(),
+  dueAt: z.string().datetime().nullable().optional(),
+  expiresAt: z.string().datetime().nullable().optional()
+});
 const projectCreateRequestSchema = z.object({
   id: projectIdSchema.optional(),
   name: z.string().min(1).max(160),
@@ -478,6 +502,100 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     };
   });
 
+  server.get("/api/v1/scans/runs/:scanRunId/progress", async (request, reply) => {
+    const parsed = scanRunIdSchema.safeParse((request.params as { scanRunId?: string }).scanRunId);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid scan run ID.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
+    }
+
+    const persisted = await getScanRunProgress(parsed.data);
+
+    if (persisted.ok && persisted.data) {
+      return {
+        data: persisted.data
+      };
+    }
+
+    const detail = await getEvidenceScanRunDetail(parsed.data);
+
+    if (!detail) {
+      return reply.status(404).send({
+        error: {
+          code: "SCAN_RUN_NOT_FOUND",
+          message: "Scan run progress was not found.",
+          requestId: request.id
+        }
+      });
+    }
+
+    return {
+      data: progressFromDetail(detail)
+    };
+  });
+
+  server.patch("/api/v1/scans/runs/:scanRunId/findings/:findingId/triage", async (request, reply) => {
+    const scanRunId = scanRunIdSchema.safeParse((request.params as { scanRunId?: string }).scanRunId);
+    const findingId = findingIdSchema.safeParse((request.params as { findingId?: string }).findingId);
+    const body = findingTriageRequestSchema.safeParse(request.body);
+
+    if (!scanRunId.success || !findingId.success || !body.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid finding triage request.",
+          details: [
+            scanRunId.success ? null : scanRunId.error.flatten(),
+            findingId.success ? null : findingId.error.flatten(),
+            body.success ? null : body.error.flatten()
+          ].filter(Boolean),
+          requestId: request.id
+        }
+      });
+    }
+
+    const result = await updateFindingTriage(scanRunId.data, findingId.data, {
+      status: body.data.status,
+      note: body.data.note,
+      owner: body.data.owner,
+      dueAt: body.data.dueAt,
+      expiresAt: body.data.expiresAt,
+      actor: request.authContext?.subject ?? request.authContext?.roles[0] ?? "security-preflight-api"
+    });
+
+    if (!result.ok) {
+      return reply.status(503).send({
+        error: {
+          code: "PERSISTENCE_UNAVAILABLE",
+          message: "Finding triage requires PostgreSQL persistence.",
+          details: [{ status: result.status, message: result.message }],
+          requestId: request.id
+        }
+      });
+    }
+
+    if (!result.data) {
+      return reply.status(404).send({
+        error: {
+          code: "FINDING_NOT_FOUND",
+          message: "Finding was not found in persisted scan results.",
+          requestId: request.id
+        }
+      });
+    }
+
+    return {
+      data: result.data
+    };
+  });
+
   server.get("/api/v1/scans/runs/:scanRunId/report", async (request, reply) => {
     const scanRunId = scanRunIdSchema.safeParse((request.params as { scanRunId?: string }).scanRunId);
     const format = reportFormatSchema.safeParse((request.query as { format?: string }).format ?? "markdown");
@@ -672,6 +790,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         removeOnFail: 100
       }
     );
+    await recordQueuedScan(result.plan, request.id);
 
     return reply.status(202).send({
       data: {
@@ -725,6 +844,21 @@ function getReportsPath(): string {
 }
 
 async function listScanRuns(): Promise<ScanRunSummaryDto[]> {
+  const persisted = await listPersistedScanRuns();
+  const evidenceRuns = await listEvidenceScanRuns();
+
+  if (!persisted.ok) {
+    return evidenceRuns;
+  }
+
+  const persistedIds = new Set(persisted.data.map((run) => run.id));
+
+  return [...persisted.data, ...evidenceRuns.filter((run) => !persistedIds.has(run.id))].sort(
+    (left, right) => timestampValue(right.finishedAt ?? right.startedAt) - timestampValue(left.finishedAt ?? left.startedAt)
+  );
+}
+
+async function listEvidenceScanRuns(): Promise<ScanRunSummaryDto[]> {
   const reportsPath = getReportsPath();
   let entries: Array<{ name: string; isDirectory(): boolean }>;
 
@@ -756,6 +890,16 @@ async function listScanRuns(): Promise<ScanRunSummaryDto[]> {
 }
 
 async function getScanRunDetail(scanRunId: string): Promise<ScanRunDetailDto | null> {
+  const persisted = await getPersistedScanRunDetail(scanRunId);
+
+  if (persisted.ok && persisted.data) {
+    return persisted.data;
+  }
+
+  return getEvidenceScanRunDetail(scanRunId);
+}
+
+async function getEvidenceScanRunDetail(scanRunId: string): Promise<ScanRunDetailDto | null> {
   const summary = await readScanRunSummary(scanRunId);
 
   if (!summary) {
@@ -780,7 +924,14 @@ async function getScanRunDetail(scanRunId: string): Promise<ScanRunDetailDto | n
       line: numberValue(item.line),
       endpoint: nullableString(item.endpoint),
       status: stringValue(item.status) ?? "open",
-      recommendation: stringValue(item.recommendation) ?? "Review the finding evidence."
+      recommendation: stringValue(item.recommendation) ?? "Review the finding evidence.",
+      triageStatus: findingStatusValue(item.status) ?? "open",
+      triageNote: null,
+      triageOwner: null,
+      triageDueAt: null,
+      triageExpiresAt: null,
+      triageUpdatedAt: null,
+      triageUpdatedBy: null
     };
   });
   const steps = arrayValue(executionRecord.stepResults).map((step) => {
@@ -807,6 +958,35 @@ async function getScanRunDetail(scanRunId: string): Promise<ScanRunDetailDto | n
     },
     findings,
     steps
+  };
+}
+
+function progressFromDetail(detail: ScanRunDetailDto): PersistedScanRunProgress {
+  const totalSteps = detail.steps.length;
+  const completedSteps = detail.steps.filter((step) => ["passed", "failed", "skipped", "blocked", "error"].includes(step.status)).length;
+  const failedSteps = detail.steps.filter((step) => step.status === "failed" || step.status === "error").length;
+  const blockedSteps = detail.steps.filter((step) => step.status === "blocked").length;
+  const finishedOrStartedAt = detail.finishedAt ?? detail.startedAt ?? new Date().toISOString();
+
+  return {
+    scanRunId: detail.id,
+    status: detail.status,
+    gateResult: detail.gateResult,
+    totalSteps,
+    completedSteps,
+    failedSteps,
+    blockedSteps,
+    findingCount: detail.findingCount,
+    startedAt: detail.startedAt,
+    finishedAt: detail.finishedAt,
+    updatedAt: detail.finishedAt ?? detail.startedAt,
+    events: [
+      {
+        type: "scan.evidence.loaded",
+        message: "Progress was derived from report evidence.",
+        createdAt: finishedOrStartedAt
+      }
+    ]
   };
 }
 
@@ -1025,6 +1205,10 @@ function scanExecutionStatusValue(value: unknown): ScanStatus | null {
 
 function gateResultValue(value: unknown): GateResult | null {
   return value === "pass" || value === "warning" || value === "fail" || value === "error" ? value : null;
+}
+
+function findingStatusValue(value: unknown): FindingStatus | null {
+  return value === "open" || value === "accepted" || value === "false-positive" || value === "fixed" || value === "suppressed" ? value : null;
 }
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {

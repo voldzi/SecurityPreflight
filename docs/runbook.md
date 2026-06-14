@@ -22,7 +22,12 @@ symptoms, diagnosis, fix, verification.
 ## Database Is Unavailable
 
 - `/ready` should return 503.
-- Confirm the PostgreSQL service is running.
+- Confirm the PostgreSQL service is running or, in production on
+  `docker.home.cz`, that `DATABASE_URL` points to the HAProxy endpoint
+  `haproxy.home.cz:5000` with runtime-only credentials.
+- Check `SECURITY_PREFLIGHT_DB_ENABLED` and `SECURITY_PREFLIGHT_DB_REQUIRED`.
+  If DB is disabled, scan report evidence still works but finding triage and
+  live progress persistence return a controlled API error.
 - Check `DATABASE_URL` against `docs/operations.md` and `.env.example`.
 - Restart only the database service when possible, then recheck `/ready`.
 

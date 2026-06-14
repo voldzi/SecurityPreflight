@@ -494,6 +494,7 @@ describe("api server", () => {
       const server = createServer({ logger: false });
       const listResponse = await server.inject({ method: "GET", url: "/api/v1/scans/runs" });
       const detailResponse = await server.inject({ method: "GET", url: `/api/v1/scans/runs/${scanRunId}` });
+      const progressResponse = await server.inject({ method: "GET", url: `/api/v1/scans/runs/${scanRunId}/progress` });
       const reportResponse = await server.inject({ method: "GET", url: `/api/v1/scans/runs/${scanRunId}/report?format=markdown` });
 
       expect(listResponse.statusCode).toBe(200);
@@ -527,6 +528,14 @@ describe("api server", () => {
       expect(detailResponse.statusCode).toBe(200);
       expect(detailResponse.json().data.steps).toHaveLength(1);
       expect(detailResponse.json().data.gate.result).toBe("pass");
+      expect(progressResponse.statusCode).toBe(200);
+      expect(progressResponse.json().data).toMatchObject({
+        scanRunId,
+        status: "completed",
+        gateResult: "pass",
+        totalSteps: 1,
+        completedSteps: 1
+      });
       expect(reportResponse.statusCode).toBe(200);
       expect(reportResponse.json().data.content).toContain("Security Preflight Report");
     } finally {
@@ -537,6 +546,28 @@ describe("api server", () => {
       }
 
       await rm(reportsPath, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a clear error when finding triage is requested without PostgreSQL persistence", async () => {
+    const previousDbEnabled = process.env.SECURITY_PREFLIGHT_DB_ENABLED;
+
+    process.env.SECURITY_PREFLIGHT_DB_ENABLED = "false";
+
+    try {
+      const server = createServer({ logger: false });
+      const response = await server.inject({
+        method: "PATCH",
+        url: "/api/v1/scans/runs/scan_missing/findings/finding_missing/triage",
+        payload: {
+          status: "fixed"
+        }
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json().error.code).toBe("PERSISTENCE_UNAVAILABLE");
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_DB_ENABLED", previousDbEnabled);
     }
   });
 

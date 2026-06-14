@@ -7,6 +7,7 @@ import {
   type ScanExecutionPlan,
   type ScanExecutionResult
 } from "@security-preflight/scanners";
+import { recordCompletedScan, recordFailedScan, recordRunningScan, recordScanStepResult } from "@security-preflight/persistence";
 import { generateCentralResultEnvelope, generateJsonReport, generateMarkdownReport, generateSarifReport } from "@security-preflight/report";
 import type { Project, ScanProfile, ScanRun } from "@security-preflight/core";
 
@@ -34,27 +35,48 @@ export interface ExecuteScanJobResult {
 
 export async function executeScanJob(input: ExecuteScanJobInput): Promise<ExecuteScanJobResult> {
   const plan = mapProjectPathForWorker(input.plan);
-  const execution = await executeScanPlan(plan, {
-    runExternalCommands: process.env.SCANNER_RUNNER_ENABLED !== "false",
-    externalRunner: process.env.SCANNER_RUNNER_MODE === "docker" ? "docker" : "direct",
-    scannerImage: process.env.SCANNER_TOOLBOX_IMAGE
-  });
-  const executionResult = await writeExecutionResultEvidence(execution);
-  const reportPaths = await writeReports(plan, execution);
-  const integrationPaths = await writeIntegrationDeliveries(plan, reportPaths);
 
-  return {
-    scanRunId: plan.scanRunId,
-    status: execution.status,
-    evidenceRoot: plan.evidenceRoot,
-    gateResult: execution.gate.result,
-    findingCount: execution.findings.length,
-    reportPaths: {
+  try {
+    await recordRunningScan(plan, input.requestId);
+
+    const execution = await executeScanPlan(plan, {
+      runExternalCommands: process.env.SCANNER_RUNNER_ENABLED !== "false",
+      externalRunner: resolveWorkerRunnerMode(),
+      scannerImage: process.env.SCANNER_TOOLBOX_IMAGE,
+      onStepResult: async (result) => {
+        await recordScanStepResult(plan, result);
+      }
+    });
+    const executionResult = await writeExecutionResultEvidence(execution);
+    const reportPaths = await writeReports(plan, execution);
+    const integrationPaths = await writeIntegrationDeliveries(plan, reportPaths);
+    const persistedReportPaths = {
       executionResult,
       ...reportPaths,
       ...integrationPaths
-    }
-  };
+    };
+
+    await recordCompletedScan(plan, execution, persistedReportPaths);
+
+    return {
+      scanRunId: plan.scanRunId,
+      status: execution.status,
+      evidenceRoot: plan.evidenceRoot,
+      gateResult: execution.gate.result,
+      findingCount: execution.findings.length,
+      reportPaths: persistedReportPaths
+    };
+  } catch (error) {
+    await recordFailedScan(plan, error, input.requestId);
+    throw error;
+  }
+}
+
+function resolveWorkerRunnerMode(): "direct" | "docker" | "remote" {
+  if (process.env.SCANNER_RUNNER_MODE === "docker") return "docker";
+  if (process.env.SCANNER_RUNNER_MODE === "remote") return "remote";
+
+  return "direct";
 }
 
 function mapProjectPathForWorker(plan: ScanExecutionPlan): ScanExecutionPlan {

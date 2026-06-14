@@ -73,6 +73,8 @@ The API uses path versioning:
 | POST | `/api/v1/scans/queue` | Queue an unblocked scan execution plan for worker execution |
 | GET | `/api/v1/scans/runs` | List scan runs discovered under `REPORTS_PATH` |
 | GET | `/api/v1/scans/runs/{scanRunId}` | Get redacted scan run detail, findings summary, steps, and evidence manifest |
+| GET | `/api/v1/scans/runs/{scanRunId}/progress` | Get persisted live progress and recent scan events, with report-evidence fallback |
+| PATCH | `/api/v1/scans/runs/{scanRunId}/findings/{findingId}/triage` | Update persisted finding triage state, owner/note/dates optional |
 | GET | `/api/v1/scans/runs/{scanRunId}/report` | Read a generated markdown or JSON report artifact |
 | POST | `/api/v1/reports/export` | Export a scan run report as base64 PDF or PPTX |
 | GET | `/api/v1/akb/status` | Report AKB RAG configuration and storage boundaries without secrets |
@@ -205,7 +207,21 @@ Only unblocked plans are queued. A blocked plan returns HTTP 409 with
 ```bash
 curl http://localhost:8781/api/v1/scans/runs
 curl http://localhost:8781/api/v1/scans/runs/scan_abc123
+curl http://localhost:8781/api/v1/scans/runs/scan_abc123/progress
 curl "http://localhost:8781/api/v1/scans/runs/scan_abc123/report?format=markdown"
+```
+
+Finding triage requires PostgreSQL persistence. Status values are `open`,
+`accepted`, `false-positive`, `fixed`, and `suppressed`.
+
+```bash
+curl -X PATCH \
+  http://localhost:8781/api/v1/scans/runs/scan_abc123/findings/finding_abc123/triage \
+  -H 'content-type: application/json' \
+  -d '{
+    "status": "fixed",
+    "note": "Patched and verified in staging."
+  }'
 ```
 
 The history endpoints are read-only over `REPORTS_PATH`. They expose redacted

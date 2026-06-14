@@ -807,6 +807,14 @@ code,
   overflow-wrap: anywhere;
 }
 
+.security-inline-badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
 .security-empty-state {
   display: grid;
   place-items: center;

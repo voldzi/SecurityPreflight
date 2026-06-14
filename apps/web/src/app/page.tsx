@@ -82,6 +82,7 @@ import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type Oidc
 
 type WorkspaceView = "dashboard" | "capabilities" | "execution" | "telemetry";
 type ScanTargetMode = "project" | "web";
+type FindingTriageStatus = "open" | "accepted" | "false-positive" | "fixed" | "suppressed";
 
 interface ScanProfile {
   id: string;
@@ -156,6 +157,9 @@ interface ScanRunSummary {
     hasJsonReport: boolean;
     hasMarkdownReport: boolean;
     hasCentralEnvelope: boolean;
+    hasSarifReport: boolean;
+    hasCentralTelemetryDelivery: boolean;
+    hasDefectDojoDelivery: boolean;
   };
 }
 
@@ -175,6 +179,13 @@ interface ScanRunDetail extends ScanRunSummary {
     endpoint: string | null;
     status: string;
     recommendation: string;
+    triageStatus: FindingTriageStatus;
+    triageNote: string | null;
+    triageOwner: string | null;
+    triageDueAt: string | null;
+    triageExpiresAt: string | null;
+    triageUpdatedAt: string | null;
+    triageUpdatedBy: string | null;
   }>;
   steps: Array<{
     stepId: string;
@@ -185,6 +196,25 @@ interface ScanRunDetail extends ScanRunSummary {
     evidenceFile: string | null;
     findingCount: number;
     message: string | null;
+  }>;
+}
+
+interface ScanRunProgress {
+  scanRunId: string;
+  status: string;
+  gateResult: string;
+  totalSteps: number;
+  completedSteps: number;
+  failedSteps: number;
+  blockedSteps: number;
+  findingCount: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  updatedAt: string | null;
+  events: Array<{
+    type: string;
+    message: string | null;
+    createdAt: string;
   }>;
 }
 
@@ -480,6 +510,7 @@ export default function DashboardPage() {
   });
   const [scanRuns, setScanRuns] = useState<ScanRunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState<ScanRunDetail | null>(null);
+  const [scanProgress, setScanProgress] = useState<ScanRunProgress | null>(null);
   const [loadingDoctor, setLoadingDoctor] = useState(false);
   const [loadingRuns, setLoadingRuns] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -490,6 +521,7 @@ export default function DashboardPage() {
   const [scanLogOpen, setScanLogOpen] = useState(false);
   const [scanLogMode, setScanLogMode] = useState<DetailSurfaceMode>("sidebar");
   const [exportingFormat, setExportingFormat] = useState<"PDF" | "PPTX" | null>(null);
+  const [triagingFindingId, setTriagingFindingId] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string>(uiText[defaultLocale].messages.exportInitial);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -1132,6 +1164,7 @@ export default function DashboardPage() {
     setProfiles([]);
     setScanRuns([]);
     setSelectedRun(null);
+    setScanProgress(null);
   }
 
   async function signInWithOidc() {
@@ -1152,6 +1185,17 @@ export default function DashboardPage() {
     }
   }
 
+  async function loadScanRunProgress(scanRunId: string): Promise<ScanRunProgress | null> {
+    const payload = await fetchOptionalJson<{ data: ScanRunProgress }>(`${apiBaseUrl}/api/v1/scans/runs/${scanRunId}/progress`, undefined, authToken);
+
+    if (!payload) {
+      return null;
+    }
+
+    setScanProgress(payload.data);
+    return payload.data;
+  }
+
   async function loadScanRunDetail(scanRunId: string): Promise<ScanRunDetail | null> {
     const payload = await fetchOptionalJson<{ data: ScanRunDetail }>(`${apiBaseUrl}/api/v1/scans/runs/${scanRunId}`, undefined, authToken);
 
@@ -1160,6 +1204,11 @@ export default function DashboardPage() {
     }
 
     setSelectedRun(payload.data);
+    try {
+      await loadScanRunProgress(scanRunId);
+    } catch {
+      // Detail evidence remains usable even when progress persistence is temporarily unavailable.
+    }
     return payload.data;
   }
 
@@ -1193,8 +1242,10 @@ export default function DashboardPage() {
       await delay(1500);
 
       let detail: ScanRunDetail | null;
+      let progress: ScanRunProgress | null = null;
 
       try {
+        progress = await loadScanRunProgress(scanRunId);
         detail = await loadScanRunDetail(scanRunId);
       } catch (error) {
         setScanResult((current) =>
@@ -1209,7 +1260,7 @@ export default function DashboardPage() {
         return;
       }
 
-      if (detail) {
+      if (detail && ["completed", "failed", "cancelled"].includes(detail.status)) {
         await refreshScanRuns(scanRunId);
         setScanResult((current) =>
           current.scanRunId === scanRunId
@@ -1229,7 +1280,11 @@ export default function DashboardPage() {
         current.scanRunId === scanRunId
           ? {
               ...current,
-              message: copy.messages.scanQueuedWaiting
+              gate: progress?.gateResult ?? current.gate,
+              stepCount: progress?.totalSteps ?? current.stepCount,
+              message: progress
+                ? copy.messages.scanProgress(progress.completedSteps, progress.totalSteps, statusDisplayLabel(progress.status, locale))
+                : copy.messages.scanQueuedWaiting
             }
           : current
       );
@@ -1347,6 +1402,54 @@ export default function DashboardPage() {
       setAkbMessage(error instanceof Error ? error.message : copy.messages.akbFailed);
     } finally {
       setAkbLoading(false);
+    }
+  }
+
+  async function updateFindingTriageState(findingId: string, status: FindingTriageStatus) {
+    if (!authReady) {
+      setScanResult((current) => ({
+        ...current,
+        status: "error",
+        message: copy.messages.authRequiredScan
+      }));
+      return;
+    }
+
+    if (!selectedRun) {
+      setScanResult((current) => ({
+        ...current,
+        status: "error",
+        message: copy.messages.noScanEvidence
+      }));
+      return;
+    }
+
+    setTriagingFindingId(findingId);
+
+    try {
+      await fetchJson<{ data: ScanRunDetail["findings"][number] }>(
+        `${apiBaseUrl}/api/v1/scans/runs/${selectedRun.id}/findings/${findingId}/triage`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            status
+          })
+        },
+        authToken
+      );
+      await loadScanRunDetail(selectedRun.id);
+      setScanResult((current) => ({
+        ...current,
+        message: copy.messages.triageUpdated(copy.scanLog.triageLabel(status))
+      }));
+    } catch (error) {
+      setScanResult((current) => ({
+        ...current,
+        status: "error",
+        message: error instanceof Error ? error.message : copy.messages.triageFailed
+      }));
+    } finally {
+      setTriagingFindingId(null);
     }
   }
 
@@ -1965,10 +2068,12 @@ export default function DashboardPage() {
 
   function renderScanLogSurface() {
     const run = selectedRun ?? latestRun;
+    const currentRunId = run?.id ?? scanResult.scanRunId;
+    const currentServerProgress = scanProgress?.scanRunId === currentRunId ? scanProgress : null;
     const steps = selectedRun?.steps ?? [];
-    const completedSteps = completedStepCount(steps);
-    const totalSteps = steps.length || scanResult.stepCount || 0;
-    const currentProgress = progressValue(completedSteps, totalSteps, selectedRun?.status ?? run?.status);
+    const completedSteps = currentServerProgress?.completedSteps ?? completedStepCount(steps);
+    const totalSteps = currentServerProgress?.totalSteps ?? (steps.length || scanResult.stepCount || 0);
+    const currentProgress = progressValue(completedSteps, totalSteps, currentServerProgress?.status ?? selectedRun?.status ?? run?.status);
     const evidenceFiles = run?.evidence.files ?? [];
     const findings = selectedRun?.findings ?? [];
     const blockingReasons = selectedRun?.gate.blockingReasons ?? [];
@@ -2010,7 +2115,7 @@ export default function DashboardPage() {
         <div className="security-scan-log-facts">
           <div>
             <span>{copy.scanLog.status}</span>
-            <strong>{run ? statusDisplayLabel(run.status, locale) : statusDisplayLabel(scanResult.status, locale)}</strong>
+            <strong>{currentServerProgress ? statusDisplayLabel(currentServerProgress.status, locale) : run ? statusDisplayLabel(run.status, locale) : statusDisplayLabel(scanResult.status, locale)}</strong>
           </div>
           <div>
             <span>{copy.scanLog.project}</span>
@@ -2023,6 +2128,10 @@ export default function DashboardPage() {
           <div>
             <span>{copy.scanLog.duration}</span>
             <strong>{formatDuration(run?.durationMs ?? null, locale)}</strong>
+          </div>
+          <div>
+            <span>{copy.scanLog.persistedFindings}</span>
+            <strong>{copy.execution.findingsCount(currentServerProgress?.findingCount ?? run?.findingCount ?? 0)}</strong>
           </div>
           <div>
             <span>{copy.scanLog.evidenceRoot}</span>
@@ -2102,8 +2211,46 @@ export default function DashboardPage() {
             id: finding.id,
             title: finding.title,
             leading: <FileWarning size={15} />,
-            badges: <Badge tone={statusTone(finding.severity)}>{finding.severity.toUpperCase()}</Badge>,
-            meta: `${finding.tool} · ${findingLocation(finding, copy.scanLog.noLocation)} · ${finding.recommendation}`
+            badges: (
+              <span className="security-inline-badges">
+                <Badge tone={statusTone(finding.severity)}>{finding.severity.toUpperCase()}</Badge>
+                <Badge tone={finding.triageStatus === "fixed" || finding.triageStatus === "false-positive" ? "good" : finding.triageStatus === "open" ? "danger" : "warning"}>
+                  {copy.scanLog.triageLabel(finding.triageStatus)}
+                </Badge>
+              </span>
+            ),
+            meta: `${finding.tool} · ${findingLocation(finding, copy.scanLog.noLocation)} · ${finding.recommendation}`,
+            actions: (
+              <span className="security-hover-actions">
+                <IconButton
+                  disabled={triagingFindingId === finding.id || !authReady}
+                  label={copy.scanLog.markOpen}
+                  size="compact"
+                  title={copy.scanLog.markOpen}
+                  onClick={() => updateFindingTriageState(finding.id, "open")}
+                >
+                  <AlertTriangle size={13} />
+                </IconButton>
+                <IconButton
+                  disabled={triagingFindingId === finding.id || !authReady}
+                  label={copy.scanLog.markAccepted}
+                  size="compact"
+                  title={copy.scanLog.markAccepted}
+                  onClick={() => updateFindingTriageState(finding.id, "accepted")}
+                >
+                  <Archive size={13} />
+                </IconButton>
+                <IconButton
+                  disabled={triagingFindingId === finding.id || !authReady}
+                  label={copy.scanLog.markFixed}
+                  size="compact"
+                  title={copy.scanLog.markFixed}
+                  onClick={() => updateFindingTriageState(finding.id, "fixed")}
+                >
+                  <CheckCircle2 size={13} />
+                </IconButton>
+              </span>
+            )
           }))}
           emptyLabel={copy.scanLog.noFindings}
           ariaLabel={copy.scanLog.findings}

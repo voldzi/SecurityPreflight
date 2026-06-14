@@ -131,6 +131,11 @@ The run panel includes a scan log drawer for the latest planned or queued run.
 It uses the redacted `/api/v1/scans/runs` evidence APIs to show run identity,
 gate status, progress, step timeline, evidence files, blockers, and finding
 summaries without exposing raw scanner stdout, source code, or secrets.
+When PostgreSQL persistence is enabled, the worker also records queued,
+running, step-completed, completed, failed, and finding-triage events. The UI
+uses `/api/v1/scans/runs/{scanRunId}/progress` for live progress and can update
+basic finding triage state through the protected triage API. Raw scanner output
+remains in `/reports` evidence files, not in PostgreSQL.
 
 When the stack runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
 directory containing the projects to scan. The API and worker mount it
@@ -313,7 +318,13 @@ table and must stay in sync.
 | `NEXT_PUBLIC_ARCHFLOW_URL` | no | unset | Optional target URL for ArchFlow in the STRATOS topbar switcher |
 | `NEXT_PUBLIC_PROCESSFORGE_URL` | no | unset | Optional target URL for ProcessForge in the STRATOS topbar switcher |
 | `LOG_LEVEL` | no | `info` | Log verbosity |
-| `DATABASE_URL` | yes | unset | PostgreSQL connection string |
+| `DATABASE_URL` | yes | local compose postgres | PostgreSQL connection string. Production on `docker.home.cz` uses the HAProxy PostgreSQL endpoint `haproxy.home.cz:5000`; keep credentials only in runtime `.env`, never in Git |
+| `SECURITY_PREFLIGHT_DB_ENABLED` | no | `true` | Enables PostgreSQL persistence for scan runs, steps, finding metadata, triage, and audit events |
+| `SECURITY_PREFLIGHT_DB_REQUIRED` | no | `false` | When `true`, API/worker persistence failures are treated as hard operational failures |
+| `SECURITY_PREFLIGHT_DB_APPLICATION_NAME` | no | `security-preflight` | PostgreSQL application name for connection attribution |
+| `SECURITY_PREFLIGHT_DB_POOL_MAX` | no | `8` | Maximum PostgreSQL pool size per API/worker process |
+| `SECURITY_PREFLIGHT_DB_CONNECT_TIMEOUT_MS` | no | `5000` | PostgreSQL connection timeout in milliseconds |
+| `SECURITY_PREFLIGHT_DB_IDLE_TIMEOUT_MS` | no | `30000` | PostgreSQL idle connection timeout in milliseconds |
 | `REDIS_URL` | yes | unset | Redis connection string |
 | `REPORTS_PATH` | yes | `/reports` | Container path for generated reports and evidence |
 | `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker API and worker may read through a read-only mount |

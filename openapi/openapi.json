@@ -541,6 +541,182 @@
         }
       }
     },
+    "/api/v1/scans/runs/{scanRunId}/progress": {
+      "get": {
+        "summary": "Get persisted scan run progress",
+        "operationId": "getScanRunProgress",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scan run progress from PostgreSQL persistence or report evidence fallback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunProgressResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan run ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run progress was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs/{scanRunId}/findings/{findingId}/triage": {
+      "patch": {
+        "summary": "Update persisted finding triage state",
+        "operationId": "updateFindingTriage",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          },
+          {
+            "name": "findingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 240,
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingTriageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated finding triage state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingTriageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid finding triage request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Persisted finding was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL persistence is required but unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/scans/runs/{scanRunId}/report": {
       "get": {
         "summary": "Get a redacted scan report artifact",
@@ -1878,6 +2054,17 @@
           }
         }
       },
+      "ScanRunProgressResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScanRunProgress"
+          }
+        }
+      },
       "ScanRunReportResponse": {
         "type": "object",
         "required": [
@@ -2036,6 +2223,119 @@
           }
         ]
       },
+      "ScanRunProgress": {
+        "type": "object",
+        "required": [
+          "scanRunId",
+          "status",
+          "gateResult",
+          "totalSteps",
+          "completedSteps",
+          "failedSteps",
+          "blockedSteps",
+          "findingCount",
+          "startedAt",
+          "finishedAt",
+          "updatedAt",
+          "events"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "gateResult": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "warning",
+              "fail",
+              "error",
+              "unknown"
+            ]
+          },
+          "totalSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completedSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failedSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blockedSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "findingCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanRunProgressEvent"
+            }
+          }
+        }
+      },
+      "ScanRunProgressEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "message",
+          "createdAt"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "ScanRunProject": {
         "type": "object",
         "required": [
@@ -2173,6 +2473,66 @@
           }
         }
       },
+      "FindingStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "accepted",
+          "false-positive",
+          "fixed",
+          "suppressed"
+        ]
+      },
+      "FindingTriageRequest": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/FindingStatus"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 240
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "FindingTriageResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScanRunFinding"
+          }
+        }
+      },
       "ScanRunFinding": {
         "type": "object",
         "required": [
@@ -2185,7 +2545,14 @@
           "line",
           "endpoint",
           "status",
-          "recommendation"
+          "recommendation",
+          "triageStatus",
+          "triageNote",
+          "triageOwner",
+          "triageDueAt",
+          "triageExpiresAt",
+          "triageUpdatedAt",
+          "triageUpdatedBy"
         ],
         "properties": {
           "id": {
@@ -2226,6 +2593,48 @@
           },
           "recommendation": {
             "type": "string"
+          },
+          "triageStatus": {
+            "$ref": "#/components/schemas/FindingStatus"
+          },
+          "triageNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triageOwner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triageDueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "triageExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "triageUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "triageUpdatedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

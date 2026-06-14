@@ -84,13 +84,13 @@ CSRF protections must be added first.
 
 ## Audit Logs
 
-Audit events are recorded for project registration, scan start, scan
-completion, scan cancellation, report export, settings changes, risk exception
-creation, exception approval, and finding status changes.
-
-MVP stores audit events in PostgreSQL and includes relevant event references in
-scan evidence. Retention is local and controlled by the report/database cleanup
-policy.
+Audit events are recorded for queued scans, worker start, step completion,
+scan completion/failure, and finding triage changes. PostgreSQL stores bounded
+event metadata, actor identifiers from the authenticated request when
+available, finding status changes, and references to evidence files. Raw
+scanner stdout, source code, credentials, AKB prompts, AKB answers, document
+chunks, and embeddings are not copied into PostgreSQL. Retention is local and
+controlled by the report/database cleanup policy.
 
 ## Safe Error Messages
 

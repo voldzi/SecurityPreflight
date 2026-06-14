@@ -125,10 +125,10 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
     {
       id: "worker-execution",
       area: "Spouštění workerem",
-      status: "Partial",
-      implemented: "Queue endpoint, worker consumer, interní kontroly, runner externích scannerů a UI log běhu nad reportovou evidencí.",
-      gap: "Chybí serverový live progress stream, rušení běhů a retry fronta.",
-      priority: "P0"
+      status: "Ready",
+      implemented: "Queue endpoint, worker consumer, interní kontroly, runner externích scannerů, průběžná PostgreSQL persistence kroků a UI log běhu.",
+      gap: "Doplnit rušení běhů, retry frontu a detailní SLA metriky workeru.",
+      priority: "P1"
     },
     {
       id: "healthcare-reference",
@@ -141,9 +141,9 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
     {
       id: "findings",
       area: "Správa nálezů",
-      status: "Gap",
-      implemented: "Normalizovaný model nálezů a reportové výstupy existují v balíčcích.",
-      gap: "Chybí UI pro triage, výjimky, vlastníky, SLA nápravy a drill-down evidence.",
+      status: "Partial",
+      implemented: "Nálezy se persistují do PostgreSQL a UI podporuje základní triage stavy open, accepted a fixed; API podporuje i vlastníka, poznámku a termíny.",
+      gap: "Doplnit plnou obrazovku nálezů, schvalování výjimek, SLA dashboard a drill-down evidence.",
       priority: "P0"
     },
     {
@@ -199,10 +199,10 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
     {
       id: "worker-execution",
       area: "Worker execution",
-      status: "Partial",
-      implemented: "Queue endpoint, worker consumer, internal checks, external scanner runner, and run log UI over report evidence.",
-      gap: "No server-side live progress stream, cancellation, or retry queue yet.",
-      priority: "P0"
+      status: "Ready",
+      implemented: "Queue endpoint, worker consumer, internal checks, external scanner runner, incremental PostgreSQL step persistence, and run log UI.",
+      gap: "Add cancellation, retry queue, and detailed worker SLA metrics.",
+      priority: "P1"
     },
     {
       id: "healthcare-reference",
@@ -215,9 +215,9 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
     {
       id: "findings",
       area: "Finding management",
-      status: "Gap",
-      implemented: "Normalized finding model and report output exist in packages.",
-      gap: "No UI for triage, exceptions, owners, remediation SLA, or evidence drill-down.",
+      status: "Partial",
+      implemented: "Findings are persisted in PostgreSQL and the UI supports basic open, accepted, and fixed triage states; the API also supports owner, note, and dates.",
+      gap: "Add a full findings workspace, exception approval, SLA dashboard, and evidence drill-down.",
       priority: "P0"
     },
     {
@@ -268,17 +268,17 @@ export const localizedExecutionStages: Record<AppLocale, ExecutionStage[]> = {
     { id: "intake", title: "Příjem projektu", meta: "pevný Docker workspace mount", status: "Partial" },
     { id: "plan", title: "Plán", meta: "profilové kontroly, guardraily, cesty evidence", status: "Ready" },
     { id: "queue", title: "Fronta", meta: "Redis-backed požadavek na sken", status: "Ready" },
-    { id: "run", title: "Běh", meta: "spuštění worker/toolbox", status: "Partial" },
-    { id: "triage", title: "Triage", meta: "UI nálezů a výjimky", status: "Gap" },
-    { id: "export", title: "Export", meta: "reporty a centrální obálka", status: "Partial" }
+    { id: "run", title: "Běh", meta: "worker/toolbox a live progress", status: "Ready" },
+    { id: "triage", title: "Triage", meta: "stavy nálezů v PostgreSQL", status: "Partial" },
+    { id: "export", title: "Export", meta: "reporty a centrální obálka", status: "Ready" }
   ],
   en: [
     { id: "intake", title: "Project intake", meta: "fixed Docker workspace mount", status: "Partial" },
     { id: "plan", title: "Plan", meta: "profile checks, guardrails, evidence paths", status: "Ready" },
     { id: "queue", title: "Queue", meta: "Redis-backed scan request", status: "Ready" },
-    { id: "run", title: "Run", meta: "worker/toolbox execution", status: "Partial" },
-    { id: "triage", title: "Triage", meta: "findings UI and exceptions", status: "Gap" },
-    { id: "export", title: "Export", meta: "reports and central envelope", status: "Partial" }
+    { id: "run", title: "Run", meta: "worker/toolbox and live progress", status: "Ready" },
+    { id: "triage", title: "Triage", meta: "finding states in PostgreSQL", status: "Partial" },
+    { id: "export", title: "Export", meta: "reports and central envelope", status: "Ready" }
   ]
 };
 
@@ -600,6 +600,7 @@ export const uiText = {
       loadRunsFailed: "Nepodařilo se načíst historii běhů skenů.",
       loadEvidenceFailed: "Nepodařilo se načíst evidenci skenu.",
       scanFinished: (gate: string) => `Sken skončil s gate ${gate}.`,
+      scanProgress: (completed: number, total: number, status: string) => `Sken běží: ${completed}/${total} kroků, stav ${status}.`,
       scanQueuedWaiting: "Scan job je ve frontě; čekám na worker evidenci.",
       scanQueuedNoEvidence: "Scan job byl zařazen do fronty, ale evidence zatím není dostupná.",
       authRequiredDoctor: "Před kontrolou toolchainu je vyžadována autentizace.",
@@ -624,6 +625,8 @@ export const uiText = {
       planReady: "Plán skenu je připraven a lze jej zařadit do fronty.",
       scanQueued: "Scan job byl zařazen do fronty. Worker zapíše evidenci do /reports.",
       scanActionFailed: "Akce skenu selhala.",
+      triageUpdated: (status: string) => `Triage nálezu změněna na ${status}.`,
+      triageFailed: "Změna triage nálezu selhala.",
       loadProfilesFallback: "Načtěte profily z lokálního API pro zahájení skenování."
     },
     runPanel: {
@@ -661,6 +664,7 @@ export const uiText = {
       project: "Projekt",
       profile: "Profil",
       duration: "Doba běhu",
+      persistedFindings: "Persistované nálezy",
       evidenceRoot: "Evidence root",
       refresh: "Obnovit",
       openExecution: "Otevřít evidence view",
@@ -676,7 +680,18 @@ export const uiText = {
       noFiles: "Zatím nejsou dostupné soubory evidence.",
       noBlockers: "Žádné blokery gate.",
       noFindings: "Žádné nálezy v načtené evidenci.",
-      noLocation: "bez lokace"
+      noLocation: "bez lokace",
+      markOpen: "Označit jako otevřené",
+      markAccepted: "Akceptovat riziko",
+      markFixed: "Označit jako opravené",
+      triageLabel: (status: string) =>
+        ({
+          open: "otevřeno",
+          accepted: "akceptováno",
+          "false-positive": "false positive",
+          fixed: "opraveno",
+          suppressed: "potlačeno"
+        })[status] ?? status
     },
     detail: {
       title: "Funkční audit SecurityPreflight",
@@ -1049,6 +1064,7 @@ export const uiText = {
       loadRunsFailed: "Failed to load scan run history.",
       loadEvidenceFailed: "Failed to load scan evidence.",
       scanFinished: (gate: string) => `Scan finished with ${gate} gate.`,
+      scanProgress: (completed: number, total: number, status: string) => `Scan is running: ${completed}/${total} steps, status ${status}.`,
       scanQueuedWaiting: "Scan job is queued; waiting for worker evidence.",
       scanQueuedNoEvidence: "Scan job was queued, but evidence is not available yet.",
       authRequiredDoctor: "Authentication is required before checking the toolchain.",
@@ -1073,6 +1089,8 @@ export const uiText = {
       planReady: "Scan plan is ready and can be queued.",
       scanQueued: "Scan job was queued. Worker will write evidence under /reports.",
       scanActionFailed: "Scan action failed.",
+      triageUpdated: (status: string) => `Finding triage changed to ${status}.`,
+      triageFailed: "Finding triage update failed.",
       loadProfilesFallback: "Load profiles from the local API to start scanning."
     },
     runPanel: {
@@ -1110,6 +1128,7 @@ export const uiText = {
       project: "Project",
       profile: "Profile",
       duration: "Duration",
+      persistedFindings: "Persisted findings",
       evidenceRoot: "Evidence root",
       refresh: "Refresh",
       openExecution: "Open evidence view",
@@ -1125,7 +1144,18 @@ export const uiText = {
       noFiles: "No evidence files are available yet.",
       noBlockers: "No gate blockers.",
       noFindings: "No findings in the loaded evidence.",
-      noLocation: "no location"
+      noLocation: "no location",
+      markOpen: "Mark open",
+      markAccepted: "Accept risk",
+      markFixed: "Mark fixed",
+      triageLabel: (status: string) =>
+        ({
+          open: "open",
+          accepted: "accepted",
+          "false-positive": "false positive",
+          fixed: "fixed",
+          suppressed: "suppressed"
+        })[status] ?? status
     },
     detail: {
       title: "SecurityPreflight functional audit",

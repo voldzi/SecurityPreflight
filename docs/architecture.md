@@ -92,15 +92,16 @@ flowchart LR
 
 ## Databases and Storage
 
-- PostgreSQL stores projects, scan profiles, scan runs, findings, risk
-  exceptions, settings, and audit events.
-- Redis stores queue state, worker coordination data, and short-lived scan
-  progress/events.
+- PostgreSQL stores scan run status, step results, finding metadata, finding
+  triage state, and scan/finding audit events. In production on
+  `docker.home.cz`, the connection is supplied through `DATABASE_URL` and
+  routed to `haproxy.home.cz:5000`.
+- Redis stores queue state and worker coordination data.
 - Report storage is a Docker volume mapped to a local directory such as
   `~/SecurityPreflight/reports`.
-- Raw tool outputs are treated as sensitive evidence. They must be redacted
-  before persistence where practical, and report access remains local by
-  default.
+- Raw tool outputs are treated as sensitive evidence. They are redacted into
+  report files where practical and are not copied into PostgreSQL; the database
+  keeps bounded metadata and audit state.
 
 ## External Systems and Integrations
 

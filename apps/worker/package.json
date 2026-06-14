@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@security-preflight/core": "workspace:*",
+    "@security-preflight/persistence": "workspace:*",
     "@security-preflight/report": "workspace:*",
     "@security-preflight/scanners": "workspace:*",
     "bullmq": "^5.56.7",

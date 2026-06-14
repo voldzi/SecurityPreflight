@@ -17,6 +17,7 @@
     "paths": {
       "@security-preflight/config": ["packages/config/src/index.ts"],
       "@security-preflight/core": ["packages/core/src/index.ts"],
+      "@security-preflight/persistence": ["packages/persistence/src/index.ts"],
       "@security-preflight/report": ["packages/report/src/index.ts"],
       "@security-preflight/scanners": ["packages/scanners/src/index.ts"]
     },

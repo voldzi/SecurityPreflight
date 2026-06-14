@@ -930,6 +930,7 @@ export interface ExecuteScanPlanOptions {
   externalRunner?: ExternalRunnerMode;
   scannerImage?: string;
   dockerCommand?: string;
+  onStepResult?: (result: ScanStepExecutionResult) => Promise<void> | void;
 }
 
 interface CommandRunResult {
@@ -1043,6 +1044,9 @@ export async function executeScanPlan(
 
   if (plan.blocked) {
     const stepResults = await Promise.all(plan.steps.map((step) => writeBlockedStepEvidence(plan, step)));
+    for (const result of stepResults) {
+      await options.onStepResult?.(result);
+    }
     const findings = stepResults.flatMap((result) => result.findings);
     const gate = evaluateGate(findings, plan.profile, plan.project.dataClassification ?? "internal");
 
@@ -1061,7 +1065,9 @@ export async function executeScanPlan(
   const stepResults: ScanStepExecutionResult[] = [];
 
   for (const step of plan.steps) {
-    stepResults.push(await executeStep(plan, step, options));
+    const result = await executeStep(plan, step, options);
+    stepResults.push(result);
+    await options.onStepResult?.(result);
   }
 
   const findings = stepResults.flatMap((result) => result.findings);
