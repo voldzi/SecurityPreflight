@@ -43,8 +43,8 @@ The Web UI runs on `http://localhost:8780`; the API runs on
 Docker Desktop stack:
 
 ```bash
-docker compose up -d
-docker compose down
+docker compose -f infra/docker-compose.yml up -d
+docker compose -f infra/docker-compose.yml down
 ```
 
 The Web image uses the local `~/.npmrc` as a Docker BuildKit secret during
@@ -201,7 +201,10 @@ For an internal production-like host, build from the Git repository and apply
 the production Compose override so only the Web UI and API ports are published:
 
 ```bash
-docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -d --build
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.production.yml \
+  up -d --build
 ```
 
 SecurityPreflight uses an explicit Docker Compose default network outside
@@ -218,11 +221,17 @@ deployment already created a conflicting network, stop the stack and remove the
 old Docker network before starting the updated compose file:
 
 ```bash
-docker compose -f docker-compose.yml -f infra/docker-compose.production.yml down
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.production.yml \
+  down
 for network in security-preflight_default securitypreflight_default; do
   docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network"
 done
-docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -d --build
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.production.yml \
+  up -d --build
 ```
 
 After startup, verify that no Docker network uses the LAN subnet:

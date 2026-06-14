@@ -62,7 +62,7 @@ The Web UI runs on `http://localhost:8780`; the API runs on
 Run the Docker Desktop stack:
 
 ```bash
-docker compose up -d
+docker compose -f infra/docker-compose.yml up -d
 ```
 
 Provision the STRATOS Keycloak client on the production host when deploying:

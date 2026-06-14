@@ -60,11 +60,17 @@ ip route get 192.168.200.2
   network, and restart:
 
 ```bash
-docker compose -f docker-compose.yml -f infra/docker-compose.production.yml down
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.production.yml \
+  down
 for network in security-preflight_default securitypreflight_default; do
   docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network"
 done
-docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -d --build
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.production.yml \
+  up -d --build
 ```
 
 - Verification:
