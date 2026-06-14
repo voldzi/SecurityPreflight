@@ -182,8 +182,8 @@ export const requiredScannerTools: ToolRequirement[] = [
     name: "Redocly",
     category: "openapi",
     requiredForHealthcare: true,
-    command: "npx",
-    args: ["--yes", "@redocly/cli@latest", "--version"],
+    command: "redocly",
+    args: ["--version"],
     checks: ["openapi", "openapi:lint", "api:error-response", "api:health", "api:ready"],
     purpose: "OpenAPI JSON-first contract validation."
   },
