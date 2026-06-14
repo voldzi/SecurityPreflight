@@ -97,6 +97,9 @@ flowchart LR
   Redis, and scanner tooling packaged in the worker/scanner-toolbox images.
 - Optional network access: vulnerability database updates for dependency
   scanners and explicitly allowed local/staging DAST targets.
+- STRATOS UI alignment: the Web UI follows STRATOS application shell and token
+  conventions. Direct `@voldzi/stratos-ui` package consumption is deferred until
+  registry-based access is configured without committing package credentials.
 - Future integrations: DefectDojo/Security Assurance Platform export, CI/CD
   templates, SARIF upload, SBOM workflows, and macOS Keychain support through a
   host-side CLI helper.
