@@ -20,7 +20,8 @@ a transition control for restricted deployments and requires
 The STRATOS production identity source is Keycloak realm `stratos` at
 `https://login.zeleznalady.cz/realms/stratos`. The application client is the
 public PKCE client `security-preflight-web`, provisioned by
-`infra/keycloak/ensure-security-preflight-client.sh`.
+`infra/keycloak/ensure-security-preflight-client.sh`, with production redirect
+URI `https://stratos.zeleznalady.cz/sp/*`.
 
 ## Authorization
 

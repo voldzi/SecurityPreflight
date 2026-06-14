@@ -50,6 +50,7 @@ import {
   ViewToolbar,
   WorkspaceNav,
   WorkspaceSidebar,
+  buildStratosTopbarApps,
   type BadgeTone,
   type CommandCenterItem,
   type DataTableColumn,
@@ -262,6 +263,26 @@ interface CapabilityRow {
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8781";
 const dockerProjectPath = "/workspace/projects";
 const authTokenStorageKey = "security-preflight.auth.token";
+const stratosAppUrls = {
+  "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL || "https://stratos.zeleznalady.cz/",
+  projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL || "https://stratos.zeleznalady.cz/project",
+  akb: process.env.NEXT_PUBLIC_AKB_URL || "https://stratos.zeleznalady.cz/akb",
+  archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
+  processforge: process.env.NEXT_PUBLIC_PROCESSFORGE_URL
+};
+const stratosTopbarApps = [
+  { id: "security-preflight", label: "SecurityPreflight", shortLabel: "SP", icon: <ShieldCheck size={15} />, active: true },
+  ...buildStratosTopbarApps("budget-contract", stratosAppUrls).map((app) => ({
+    ...app,
+    active: false,
+    onSelect:
+      !app.disabled && stratosAppUrls[app.id as keyof typeof stratosAppUrls]
+        ? () => {
+            window.location.assign(stratosAppUrls[app.id as keyof typeof stratosAppUrls] as string);
+          }
+        : app.onSelect
+  }))
+];
 
 const projectRows: ProjectRow[] = [
   {
@@ -1822,12 +1843,7 @@ export default function DashboardPage() {
       }
       topbar={
         <GlobalTopbar
-          apps={[
-            { id: "security-preflight", label: "SecurityPreflight", shortLabel: "SP", icon: <ShieldCheck size={15} />, active: true },
-            { id: "projectflow", label: "ProjectFlow", shortLabel: "PF", disabled: true, disabledReason: "External STRATOS app." },
-            { id: "budget", label: "Budget & Contract", shortLabel: "BC", disabled: true, disabledReason: "External STRATOS app." },
-            { id: "akb", label: "AKB", shortLabel: "AKB", disabled: true, disabledReason: akbStatus?.publicBaseUrl ?? "Configure AKB public URL." }
-          ]}
+          apps={stratosTopbarApps}
           labels={{ applications: "STRATOS applications", userMenu: "User menu", settings: "Settings", logout: "Logout" }}
           context={<span>SecurityPreflight / {activeView === "capabilities" ? "Capability audit" : activeView}</span>}
           center={

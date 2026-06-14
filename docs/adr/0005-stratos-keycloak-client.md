@@ -13,9 +13,10 @@ standalone local token.
 
 ## Decision
 
-SecurityPreflight uses Keycloak realm `stratos` and public Web client
-`security-preflight-web` for browser sign-in with authorization code and PKCE.
-The API validates bearer access tokens against the STRATOS issuer
+SecurityPreflight uses Keycloak realm `stratos`, public Web client
+`security-preflight-web`, and public path
+`https://stratos.zeleznalady.cz/sp` for browser sign-in with authorization code
+and PKCE. The API validates bearer access tokens against the STRATOS issuer
 `https://login.zeleznalady.cz/realms/stratos`; JWKS is explicit when configured
 and otherwise derived from the standard Keycloak certs endpoint.
 

@@ -69,6 +69,10 @@ Provision the STRATOS Keycloak client on the production host when deploying:
 ./infra/keycloak/provision-production-keycloak-client.sh
 ```
 
+The public STRATOS route is `https://stratos.zeleznalady.cz/sp`. The nginx
+include proposal for the publishing host is
+`infra/nginx/stratos-security-preflight.conf`.
+
 Preview a scan execution plan without running scanners:
 
 ```bash

@@ -157,6 +157,7 @@ SecurityPreflight follows the STRATOS Keycloak pattern:
 - realm: `stratos`
 - public issuer: `https://login.zeleznalady.cz/realms/stratos`
 - Web client: `security-preflight-web`
+- public Web URL: `https://stratos.zeleznalady.cz/sp`
 - realm roles: `security-preflight.viewer`, `security-preflight.operator`,
   `security-preflight.admin`, `stratos_security_admin`, `stratos_superadmin`
 
@@ -178,6 +179,21 @@ environment variables. The scripts create a public authorization-code/PKCE
 client and write only public OIDC values to `SECURITY_PREFLIGHT_ENV_FILE`; they
 do not create or persist a web client secret.
 
+### STRATOS Nginx Publication
+
+The internet-facing URL is `https://stratos.zeleznalady.cz/sp`. Add the
+repository include file to the publishing nginx host:
+
+```bash
+cp /srv/SecurityPreflight/infra/nginx/stratos-security-preflight.conf \
+  /etc/nginx/stratos-locations.d/security-preflight.conf
+nginx -t
+systemctl reload nginx
+```
+
+The include keeps the Next.js Web UI prefix intact for `/sp/`, while API calls
+under `/sp/api/` are mapped to the Fastify API `/api/` paths.
+
 ## Configuration
 
 Configuration comes from environment variables. `.env.example` mirrors this
@@ -189,10 +205,16 @@ table and must stay in sync.
 | `APP_PORT` | yes | `8781` | API HTTP port |
 | `WEB_PORT` | yes | `8780` | Web UI HTTP port |
 | `NEXT_PUBLIC_API_URL` | yes | `http://localhost:8781` | Browser-visible API base URL baked into the Web build and supplied at runtime |
+| `NEXT_PUBLIC_SECURITY_PREFLIGHT_BASE_PATH` | no | unset | Next.js base path; production uses `/sp` |
 | `NEXT_PUBLIC_SECURITY_PREFLIGHT_PUBLIC_BASE_URL` | no | unset | Browser-visible Web UI base URL used for OIDC redirect URI |
 | `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_ISSUER` | no | STRATOS issuer in `.env.example` | Public OIDC issuer used by the browser PKCE login |
 | `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | no | `security-preflight-web` in `.env.example` | Public OIDC client id for the Web UI |
 | `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_SCOPES` | no | `openid profile email` | Public OIDC scopes requested by the Web UI |
+| `NEXT_PUBLIC_STRATOS_HOME_URL` | no | `https://stratos.zeleznalady.cz/` | Target URL for Budget & Contract in the STRATOS topbar switcher |
+| `NEXT_PUBLIC_PROJECTFLOW_URL` | no | `https://stratos.zeleznalady.cz/project` | Target URL for ProjectFlow in the STRATOS topbar switcher |
+| `NEXT_PUBLIC_AKB_URL` | no | `https://stratos.zeleznalady.cz/akb` | Target URL for AKB in the STRATOS topbar switcher |
+| `NEXT_PUBLIC_ARCHFLOW_URL` | no | unset | Optional target URL for ArchFlow in the STRATOS topbar switcher |
+| `NEXT_PUBLIC_PROCESSFORGE_URL` | no | unset | Optional target URL for ProcessForge in the STRATOS topbar switcher |
 | `LOG_LEVEL` | no | `info` | Log verbosity |
 | `DATABASE_URL` | yes | unset | PostgreSQL connection string |
 | `REDIS_URL` | yes | unset | Redis connection string |

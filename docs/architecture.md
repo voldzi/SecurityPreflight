@@ -131,7 +131,8 @@ flowchart LR
   OIDC issuer, client id, or audience is missing. JWKS is either configured
   explicitly or derived from the Keycloak issuer.
 - STRATOS Keycloak integration uses realm `stratos`, public PKCE client
-  `security-preflight-web`, and repository-managed provisioning in
+  `security-preflight-web`, public path `https://stratos.zeleznalady.cz/sp`,
+  and repository-managed provisioning in
   `infra/keycloak/ensure-security-preflight-client.sh`.
 - OIDC JWTs are verified server-side with RS256/JWKS and role claims from
   `realm_access` and `resource_access`.

@@ -12,13 +12,16 @@ export function oidcConfig(): OidcClientConfig | null {
   const issuer = process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_ISSUER?.replace(/\/$/, "");
   const clientId = process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_CLIENT_ID;
   const publicBaseUrl = process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_PUBLIC_BASE_URL?.replace(/\/$/, "");
+  const basePath = process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_BASE_PATH?.replace(/\/$/, "");
 
   if (!issuer || !clientId || typeof window === "undefined") return null;
+
+  const fallbackBaseUrl = `${window.location.origin}${basePath || ""}`;
 
   return {
     issuer,
     clientId,
-    redirectUri: `${publicBaseUrl || window.location.origin}/`,
+    redirectUri: `${publicBaseUrl || fallbackBaseUrl}/`,
     scopes: process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_SCOPES || "openid profile email"
   };
 }

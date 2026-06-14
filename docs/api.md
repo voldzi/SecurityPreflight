@@ -26,7 +26,7 @@ openapi/openapi.yaml
 | --- | --- |
 | Local Docker Desktop | `http://localhost:8781` |
 | Test | Not defined yet |
-| Production | Environment-specific; use the deployed HTTPS/API origin |
+| Production | `https://stratos.zeleznalady.cz/sp/api` through nginx, mapped to internal `/api` paths |
 
 ## Authentication
 
