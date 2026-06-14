@@ -451,7 +451,7 @@ export const uiText = {
       registrationFailed: "Registrace projektu selhala.",
       loadFailed: "Nepodařilo se načíst projekty.",
       authRequired: "Před správou projektů je vyžadována autentizace.",
-      pathHelp: "Cesta musí být absolutní a uvnitř PROJECTS_ROOT_CONTAINER.",
+      pathHelp: "Zadejte absolutní cestu v kontejneru uvnitř PROJECTS_ROOT_CONTAINER, např. /workspace/projects/moje-aplikace.",
       classifications: {
         public: "veřejná",
         internal: "interní",
@@ -600,6 +600,8 @@ export const uiText = {
       akbCited: "AKB vrátila citovanou odpověď.",
       akbFailed: "AKB požadavek selhal.",
       authRequiredScan: "Před spuštěním skenů je vyžadována autentizace.",
+      webTargetRequired: "Zadejte URL webu nebo API, které chcete zkontrolovat.",
+      webTargetInvalid: "URL webu musí být platná http nebo https adresa.",
       buildingPlan: "Sestavuji scan plán...",
       queueingScan: "Zařazuji scan job do fronty...",
       planBlocked: "Plán skenu byl vytvořen, ale guardraily blokují spuštění.",
@@ -613,6 +615,13 @@ export const uiText = {
       aria: "Spustit sken",
       scanProfile: "Scan profil",
       findProfile: "Najít profil",
+      targetType: "Typ cíle",
+      directoryTarget: "Adresář",
+      webTarget: "Web/API",
+      webTargetUrl: "Web nebo API URL",
+      webTargetPlaceholder: "https://example.cz",
+      directoryTargetHelp: "Adresář vyberete registrací projektu. Cesta musí být uvnitř Docker mountu PROJECTS_ROOT_CONTAINER, typicky /workspace/projects/...",
+      webTargetHelp: "Webový cíl používá řízený DAST profil. Spouštějte ho jen proti vlastním nebo výslovně povoleným URL.",
       project: "Projekt",
       checks: "Kontroly",
       tools: "Nástroje",
@@ -664,7 +673,17 @@ export const uiText = {
     },
     sidebar: {
       subtitle: "STRATOS bezpečnostní workspace",
-      localOnly: "pouze lokálně"
+      localOnly: "pouze lokálně",
+      workspaceMenu: "Navigace pracovního prostoru",
+      headerActions: "Akce panelu",
+      groupActions: "Akce submenu",
+      itemActions: "Akce položky",
+      openCommand: "Otevřít příkazové centrum",
+      collapseSubmenus: "Skrýt submenu",
+      openItem: "Otevřít položku",
+      refreshData: "Obnovit data",
+      openDetail: "Otevřít detail",
+      dryRunItem: "Sestavit dry-run plán"
     },
     dates: {
       notAvailable: "není k dispozici"
@@ -838,7 +857,7 @@ export const uiText = {
       registrationFailed: "Project registration failed.",
       loadFailed: "Failed to load projects.",
       authRequired: "Authentication is required before managing projects.",
-      pathHelp: "Path must be absolute and inside PROJECTS_ROOT_CONTAINER.",
+      pathHelp: "Enter an absolute container path inside PROJECTS_ROOT_CONTAINER, for example /workspace/projects/my-app.",
       classifications: {
         public: "public",
         internal: "internal",
@@ -987,6 +1006,8 @@ export const uiText = {
       akbCited: "AKB returned a cited response.",
       akbFailed: "AKB request failed.",
       authRequiredScan: "Authentication is required before running scans.",
+      webTargetRequired: "Enter the web or API URL you want to check.",
+      webTargetInvalid: "The web target must be a valid http or https URL.",
       buildingPlan: "Building scan plan...",
       queueingScan: "Queueing scan job...",
       planBlocked: "Scan plan was created, but guardrails block execution.",
@@ -1000,6 +1021,13 @@ export const uiText = {
       aria: "Run scan",
       scanProfile: "Scan profile",
       findProfile: "Find profile",
+      targetType: "Target type",
+      directoryTarget: "Directory",
+      webTarget: "Web/API",
+      webTargetUrl: "Web or API URL",
+      webTargetPlaceholder: "https://example.com",
+      directoryTargetHelp: "Choose a directory by registering a project. The path must be inside the Docker PROJECTS_ROOT_CONTAINER mount, usually /workspace/projects/...",
+      webTargetHelp: "The web target uses the controlled DAST profile. Run it only against URLs you own or are explicitly allowed to test.",
       project: "Project",
       checks: "Checks",
       tools: "Tools",
@@ -1051,7 +1079,17 @@ export const uiText = {
     },
     sidebar: {
       subtitle: "STRATOS security workspace",
-      localOnly: "local only"
+      localOnly: "local only",
+      workspaceMenu: "Workspace navigation",
+      headerActions: "Panel actions",
+      groupActions: "Submenu actions",
+      itemActions: "Item actions",
+      openCommand: "Open command center",
+      collapseSubmenus: "Hide submenu",
+      openItem: "Open item",
+      refreshData: "Refresh data",
+      openDetail: "Open detail",
+      dryRunItem: "Build dry-run plan"
     },
     dates: {
       notAvailable: "not available"

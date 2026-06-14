@@ -86,6 +86,17 @@ commands, then writes evidence under `REPORTS_PATH/<scanRunId>/`. Missing
 scanner binaries, disabled runner policy, or scanner execution errors create
 blocking tooling evidence rather than a false pass.
 
+The Web UI supports two scan target modes in the run panel:
+
+- Directory target: register a project first, then select it from the run
+  panel. The registered path is a container path under
+  `PROJECTS_ROOT_CONTAINER`, for example `/workspace/projects/app`. The matching
+  host directory must be mounted through `PROJECTS_ROOT_HOST`.
+- Web/API target: switch the run panel to `Web/API`, enter an `http` or `https`
+  URL, and SecurityPreflight uses the controlled DAST profile with that host as
+  the explicit allowlisted target. Only use this for systems you own or are
+  explicitly authorized to test.
+
 When the stack runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
 directory containing the projects to scan. The API and worker mount it
 read-only at `PROJECTS_ROOT_CONTAINER`. The API uses that root to validate

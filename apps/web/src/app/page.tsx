@@ -6,6 +6,9 @@ import {
   Archive,
   Bot,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ChevronsLeft,
   ClipboardList,
   Database,
   Download,
@@ -14,6 +17,7 @@ import {
   FileWarning,
   FolderGit2,
   Gauge,
+  Globe2,
   History,
   LayoutDashboard,
   LogIn,
@@ -21,6 +25,7 @@ import {
   MessageSquareText,
   Play,
   Presentation,
+  RefreshCw,
   Search,
   ScrollText,
   Settings,
@@ -48,7 +53,6 @@ import {
   StructuredList,
   ViewTabs,
   ViewToolbar,
-  WorkspaceNav,
   WorkspaceSidebar,
   buildStratosTopbarApps,
   type BadgeTone,
@@ -77,6 +81,7 @@ import {
 import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type OidcClientConfig } from "./oidc";
 
 type WorkspaceView = "dashboard" | "capabilities" | "execution" | "telemetry";
+type ScanTargetMode = "project" | "web";
 
 interface ScanProfile {
   id: string;
@@ -348,6 +353,14 @@ function authHeaders(authToken?: string | null): Record<string, string> {
   return authToken ? { authorization: `Bearer ${authToken}` } : {};
 }
 
+function hostFromUrl(value: string): string | null {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 function statusTone(status: string): BadgeTone {
   if (["Ready", "READY", "PASS", "pass", "completed", "available", "container", "success", "queued"].includes(status)) return "good";
   if (["Partial", "WARNING", "warning", "MEDIUM", "idle", "loading", "running"].includes(status)) return "warning";
@@ -425,6 +438,12 @@ export default function DashboardPage() {
   const [doctor, setDoctor] = useState<ToolchainDoctor | null>(null);
   const [projects, setProjects] = useState<RegisteredProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [scanTargetMode, setScanTargetMode] = useState<ScanTargetMode>("project");
+  const [webTargetUrl, setWebTargetUrl] = useState("");
+  const [openSidebarGroups, setOpenSidebarGroups] = useState<Record<string, boolean>>({
+    workspace: true,
+    future: false
+  });
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [registeringProject, setRegisteringProject] = useState(false);
   const [projectMessage, setProjectMessage] = useState<string>(uiText[defaultLocale].projects.pathHelp);
@@ -472,16 +491,17 @@ export default function DashboardPage() {
   const capabilityRows = localizedCapabilityRows[locale];
   const executionStages = localizedExecutionStages[locale];
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null;
+  const effectiveProfileId = scanTargetMode === "web" ? "controlled-dast-local" : selectedProfileId;
   const activeScanProject = selectedProject ?? {
     id: "security-preflight-local",
     name: "SecurityPreflight",
     path: dockerProjectPath,
-    dataClassification: selectedProfileId === "healthcare-reference" ? "health-data" : "internal"
+    dataClassification: effectiveProfileId === "healthcare-reference" ? "health-data" : "internal"
   };
 
   const selectedProfile = useMemo(
-    () => profiles.find((profile) => profile.id === selectedProfileId),
-    [profiles, selectedProfileId]
+    () => profiles.find((profile) => profile.id === effectiveProfileId),
+    [effectiveProfileId, profiles]
   );
   const selectedProfileDescription = selectedProfile
     ? profileDescription(locale, selectedProfile.id, selectedProfile.description)
@@ -603,7 +623,7 @@ export default function DashboardPage() {
         id: "action-run-scan",
         type: "action",
         title: copy.command.runScan,
-        subtitle: selectedProfileId,
+        subtitle: effectiveProfileId,
         icon: <Play size={18} />,
         tone: "green",
         primaryAction: {
@@ -617,7 +637,7 @@ export default function DashboardPage() {
         id: "action-dry-run",
         type: "action",
         title: copy.command.dryRunPlan,
-        subtitle: selectedProfileId,
+        subtitle: effectiveProfileId,
         icon: <ClipboardList size={18} />,
         primaryAction: {
           id: "plan",
@@ -655,7 +675,7 @@ export default function DashboardPage() {
         }
       }
     ],
-    [akbStatus?.configured, authReady, copy.command, copy.views, criticalGaps, latestRun, selectedProfileId]
+    [akbStatus?.configured, authReady, copy.command, copy.views, criticalGaps, effectiveProfileId, latestRun]
   );
 
   const projectColumns = useMemo<Array<DataTableColumn<ProjectRow>>>(
@@ -1316,6 +1336,18 @@ export default function DashboardPage() {
       return;
     }
 
+    const trimmedWebTargetUrl = webTargetUrl.trim();
+    const webTargetHost = scanTargetMode === "web" ? hostFromUrl(trimmedWebTargetUrl) : null;
+
+    if (scanTargetMode === "web" && (!trimmedWebTargetUrl || !webTargetHost)) {
+      setScanResult({
+        mode,
+        status: "error",
+        message: trimmedWebTargetUrl ? copy.messages.webTargetInvalid : copy.messages.webTargetRequired
+      });
+      return;
+    }
+
     const scanRunId = `scan_ui_${Date.now().toString(36)}`;
     setScanResult({
       mode,
@@ -1327,14 +1359,24 @@ export default function DashboardPage() {
     try {
       const requestBody = {
         scanRunId,
-        profileId: selectedProfileId,
+        profileId: effectiveProfileId,
         reportsRoot: "/reports",
         project: {
           id: activeScanProject.id,
           name: activeScanProject.name,
           path: activeScanProject.path,
           dataClassification: activeScanProject.dataClassification
-        }
+        },
+        ...(scanTargetMode === "web" && webTargetHost
+          ? {
+              dast: {
+                targetUrl: trimmedWebTargetUrl,
+                allowedHosts: [webTargetHost],
+                allowActiveScan: true,
+                allowProductionTargets: false
+              }
+            }
+          : {})
       };
       const endpoint = mode === "plan" ? "plan" : "queue";
       const payload = await fetchJson<any>(`${apiBaseUrl}/api/v1/scans/${endpoint}`, {
@@ -1369,6 +1411,150 @@ export default function DashboardPage() {
         scanRunId
       });
     }
+  }
+
+  function toggleSidebarGroup(groupId: string) {
+    setOpenSidebarGroups((current) => ({
+      ...current,
+      [groupId]: !current[groupId]
+    }));
+  }
+
+  function setAllSidebarGroups(open: boolean) {
+    setOpenSidebarGroups(
+      navGroups.reduce<Record<string, boolean>>((accumulator, group) => {
+        accumulator[group.id] = open;
+        return accumulator;
+      }, {})
+    );
+  }
+
+  function selectSidebarItem(itemId: string) {
+    setActiveView(itemId as WorkspaceView);
+  }
+
+  function renderSidebarMiniActions(itemId: string, disabled?: boolean) {
+    if (disabled) return null;
+
+    return (
+      <span className="security-sidebar-item-actions" aria-label={copy.sidebar.itemActions}>
+        <button
+          type="button"
+          className="security-sidebar-mini-button"
+          title={copy.sidebar.openItem}
+          aria-label={copy.sidebar.openItem}
+          onClick={(event) => {
+            event.stopPropagation();
+            selectSidebarItem(itemId);
+          }}
+        >
+          <ChevronRight size={13} aria-hidden="true" />
+        </button>
+        {itemId === "dashboard" ? (
+          <button
+            type="button"
+            className="security-sidebar-mini-button"
+            title={copy.sidebar.refreshData}
+            aria-label={copy.sidebar.refreshData}
+            onClick={(event) => {
+              event.stopPropagation();
+              void refreshProjects();
+              void refreshScanRuns();
+            }}
+          >
+            <RefreshCw size={13} aria-hidden="true" />
+          </button>
+        ) : null}
+        {itemId === "capabilities" ? (
+          <button
+            type="button"
+            className="security-sidebar-mini-button"
+            title={copy.sidebar.openDetail}
+            aria-label={copy.sidebar.openDetail}
+            onClick={(event) => {
+              event.stopPropagation();
+              setActiveView("capabilities");
+              setDetailOpen(true);
+            }}
+          >
+            <AlertTriangle size={13} aria-hidden="true" />
+          </button>
+        ) : null}
+        {itemId === "execution" ? (
+          <button
+            type="button"
+            className="security-sidebar-mini-button"
+            title={copy.sidebar.dryRunItem}
+            aria-label={copy.sidebar.dryRunItem}
+            disabled={!authReady}
+            onClick={(event) => {
+              event.stopPropagation();
+              setActiveView("execution");
+              void runScan("plan");
+            }}
+          >
+            <ClipboardList size={13} aria-hidden="true" />
+          </button>
+        ) : null}
+      </span>
+    );
+  }
+
+  function renderSidebarNav() {
+    return (
+      <nav className="security-sidebar-nav" aria-label={copy.sidebar.workspaceMenu}>
+        {navGroups.map((group) => {
+          const expanded = openSidebarGroups[group.id] ?? true;
+
+          return (
+            <section className="security-sidebar-nav-group" key={group.id}>
+              <div className="security-sidebar-group-head">
+                <button
+                  type="button"
+                  className="security-sidebar-group-trigger"
+                  aria-expanded={expanded}
+                  onClick={() => toggleSidebarGroup(group.id)}
+                >
+                  {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                  <span>{group.label}</span>
+                </button>
+                <span className="security-sidebar-group-actions" aria-label={copy.sidebar.groupActions}>
+                  <button
+                    type="button"
+                    className="security-sidebar-mini-button"
+                    title={copy.sidebar.openCommand}
+                    aria-label={copy.sidebar.openCommand}
+                    onClick={() => setCommandOpen(true)}
+                  >
+                    <Search size={13} aria-hidden="true" />
+                  </button>
+                </span>
+              </div>
+              {expanded ? (
+                <div className="security-sidebar-nav-items">
+                  {group.items.map((item) => (
+                    <button
+                      type="button"
+                      key={`${group.id}-${item.id}`}
+                      className={`security-sidebar-nav-item${item.active ? " is-active" : ""}${item.disabled ? " is-disabled" : ""}`}
+                      disabled={item.disabled}
+                      title={item.disabled ? item.disabledReason : item.label}
+                      aria-current={item.active ? "page" : undefined}
+                      onClick={() => selectSidebarItem(item.id)}
+                    >
+                      <span className="security-sidebar-nav-icon">{item.icon}</span>
+                      <span className="security-sidebar-nav-label">{item.label}</span>
+                      {item.badge ? <Badge tone="danger">{item.badge}</Badge> : null}
+                      {renderSidebarMiniActions(item.id, item.disabled)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          );
+        })}
+      </nav>
+    );
   }
 
   function renderDashboard() {
@@ -1988,6 +2174,8 @@ export default function DashboardPage() {
         <WorkspaceSidebar
           title="SecurityPreflight"
           subtitle={copy.sidebar.subtitle}
+          showHeader={false}
+          className="security-workspace-sidebar"
           footer={
             <div className="security-sidebar-footer">
               <Badge tone="good">{copy.sidebar.localOnly}</Badge>
@@ -1995,7 +2183,33 @@ export default function DashboardPage() {
             </div>
           }
         >
-          <WorkspaceNav groups={navGroups} onSelect={(itemId) => setActiveView(itemId as WorkspaceView)} />
+          <header className="security-workspace-header">
+            <div>
+              <h1>SecurityPreflight</h1>
+              <p>{copy.sidebar.subtitle}</p>
+            </div>
+            <div className="security-sidebar-hover-actions" aria-label={copy.sidebar.headerActions}>
+              <button
+                type="button"
+                className="security-sidebar-icon-button"
+                title={copy.sidebar.openCommand}
+                aria-label={copy.sidebar.openCommand}
+                onClick={() => setCommandOpen(true)}
+              >
+                <Search size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="security-sidebar-icon-button"
+                title={copy.sidebar.collapseSubmenus}
+                aria-label={copy.sidebar.collapseSubmenus}
+                onClick={() => setAllSidebarGroups(false)}
+              >
+                <ChevronsLeft size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </header>
+          {renderSidebarNav()}
         </WorkspaceSidebar>
       }
       topbar={
@@ -2100,28 +2314,66 @@ export default function DashboardPage() {
           <div className="security-run-header">
             <div>
               <h2>{copy.runPanel.title}</h2>
-              <span>{activeScanProject.path}</span>
+              <span>{scanTargetMode === "web" ? webTargetUrl.trim() || copy.runPanel.webTargetPlaceholder : activeScanProject.path}</span>
             </div>
             <RagBadge status={statusRag(scanGate)} label={scanResult.gate ? actionGateDisplayLabel(scanResult.gate, locale) : statusDisplayLabel(scanResult.status, locale)} />
           </div>
 
-          <SelectField
-            label={copy.projects.selectProject}
-            value={selectedProject?.id ?? ""}
-            onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
-            searchPlaceholder={copy.projects.selectProject}
-          >
-            {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </SelectField>
+          <div className="security-target-mode" role="group" aria-label={copy.runPanel.targetType}>
+            <button
+              type="button"
+              className={scanTargetMode === "project" ? "is-active" : undefined}
+              aria-pressed={scanTargetMode === "project"}
+              onClick={() => setScanTargetMode("project")}
+            >
+              <FolderGit2 size={14} aria-hidden="true" />
+              {copy.runPanel.directoryTarget}
+            </button>
+            <button
+              type="button"
+              className={scanTargetMode === "web" ? "is-active" : undefined}
+              aria-pressed={scanTargetMode === "web"}
+              onClick={() => {
+                setScanTargetMode("web");
+                setSelectedProfileId("controlled-dast-local");
+              }}
+            >
+              <Globe2 size={14} aria-hidden="true" />
+              {copy.runPanel.webTarget}
+            </button>
+          </div>
+
+          {scanTargetMode === "project" ? (
+            <SelectField
+              label={copy.projects.selectProject}
+              value={selectedProject?.id ?? ""}
+              onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
+              searchPlaceholder={copy.projects.selectProject}
+            >
+              {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </SelectField>
+          ) : (
+            <label className="security-akb-question">
+              <span>{copy.runPanel.webTargetUrl}</span>
+              <input
+                value={webTargetUrl}
+                onChange={(event) => setWebTargetUrl(event.currentTarget.value)}
+                placeholder={copy.runPanel.webTargetPlaceholder}
+                inputMode="url"
+                autoComplete="url"
+              />
+            </label>
+          )}
 
           <SelectField
             label={copy.runPanel.scanProfile}
-            value={selectedProfileId}
+            value={effectiveProfileId}
+            disabled={scanTargetMode === "web"}
             onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
             searchPlaceholder={copy.runPanel.findProfile}
           >
@@ -2133,6 +2385,7 @@ export default function DashboardPage() {
           </SelectField>
 
           <p className="security-run-description">{selectedProfileDescription}</p>
+          <p className="security-run-description">{scanTargetMode === "web" ? copy.runPanel.webTargetHelp : copy.runPanel.directoryTargetHelp}</p>
 
           <div className="security-facts">
             <div>
