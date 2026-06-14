@@ -408,6 +408,23 @@ function formatDuration(value: number | null, locale: AppLocale): string {
   return `${Math.round(value / 1000)} s`;
 }
 
+function completedStepCount(steps: ScanRunDetail["steps"]): number {
+  return steps.filter((step) => !["queued", "running", "loading", "pending"].includes(step.status.toLowerCase())).length;
+}
+
+function progressValue(completed: number, total: number, status?: string): number {
+  if (!total) return status === "completed" ? 100 : 0;
+
+  return Math.min(100, Math.round((completed / total) * 100));
+}
+
+function findingLocation(finding: ScanRunDetail["findings"][number], fallback: string): string {
+  if (finding.filePath) return `${finding.filePath}${finding.line ? `:${finding.line}` : ""}`;
+  if (finding.endpoint) return finding.endpoint;
+
+  return fallback;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -470,6 +487,8 @@ export default function DashboardPage() {
   const [commandQuery, setCommandQuery] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailMode, setDetailMode] = useState<DetailSurfaceMode>("sidebar");
+  const [scanLogOpen, setScanLogOpen] = useState(false);
+  const [scanLogMode, setScanLogMode] = useState<DetailSurfaceMode>("sidebar");
   const [exportingFormat, setExportingFormat] = useState<"PDF" | "PPTX" | null>(null);
   const [exportMessage, setExportMessage] = useState<string>(uiText[defaultLocale].messages.exportInitial);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
@@ -1418,6 +1437,19 @@ export default function DashboardPage() {
     }
   }
 
+  function openScanLog() {
+    setScanLogOpen(true);
+
+    if (scanResult.scanRunId) {
+      void refreshScanRuns(scanResult.scanRunId);
+      return;
+    }
+
+    if (latestRun?.id) {
+      void loadScanRunDetail(latestRun.id);
+    }
+  }
+
   function toggleSidebarGroup(groupId: string) {
     setOpenSidebarGroups((current) => ({
       ...current,
@@ -1538,20 +1570,24 @@ export default function DashboardPage() {
               {expanded ? (
                 <div className="security-sidebar-nav-items">
                   {group.items.map((item) => (
-                    <button
-                      type="button"
+                    <div
                       key={`${group.id}-${item.id}`}
-                      className={`security-sidebar-nav-item${item.active ? " is-active" : ""}${item.disabled ? " is-disabled" : ""}`}
-                      disabled={item.disabled}
-                      title={item.disabled ? item.disabledReason : item.label}
-                      aria-current={item.active ? "page" : undefined}
-                      onClick={() => selectSidebarItem(item.id)}
+                      className={`security-sidebar-nav-row${item.active ? " is-active" : ""}${item.disabled ? " is-disabled" : ""}`}
                     >
-                      <span className="security-sidebar-nav-icon">{item.icon}</span>
-                      <span className="security-sidebar-nav-label">{item.label}</span>
-                      {item.badge ? <Badge tone="danger">{item.badge}</Badge> : null}
+                      <button
+                        type="button"
+                        className="security-sidebar-nav-item"
+                        disabled={item.disabled}
+                        title={item.disabled ? item.disabledReason : item.label}
+                        aria-current={item.active ? "page" : undefined}
+                        onClick={() => selectSidebarItem(item.id)}
+                      >
+                        <span className="security-sidebar-nav-icon">{item.icon}</span>
+                        <span className="security-sidebar-nav-label">{item.label}</span>
+                        {item.badge ? <Badge tone="danger">{item.badge}</Badge> : null}
+                      </button>
                       {renderSidebarMiniActions(item.id, item.disabled)}
-                    </button>
+                    </div>
                   ))}
                 </div>
               ) : null}
@@ -1923,6 +1959,156 @@ export default function DashboardPage() {
           <strong>{exportingFormat ? copy.execution.exporting(exportingFormat) : copy.execution.reportExports}</strong>
           <p>{exportMessage}</p>
         </div>
+      </div>
+    );
+  }
+
+  function renderScanLogSurface() {
+    const run = selectedRun ?? latestRun;
+    const steps = selectedRun?.steps ?? [];
+    const completedSteps = completedStepCount(steps);
+    const totalSteps = steps.length || scanResult.stepCount || 0;
+    const currentProgress = progressValue(completedSteps, totalSteps, selectedRun?.status ?? run?.status);
+    const evidenceFiles = run?.evidence.files ?? [];
+    const findings = selectedRun?.findings ?? [];
+    const blockingReasons = selectedRun?.gate.blockingReasons ?? [];
+
+    if (!run && !scanResult.scanRunId) {
+      return (
+        <div className="security-scan-log">
+          <div className="security-empty-state">
+            <TerminalSquare size={22} aria-hidden="true" />
+            <strong>{copy.scanLog.noRun}</strong>
+            <p>{copy.scanLog.noRunDescription}</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="security-scan-log">
+        <section className="security-scan-log-hero">
+          <div>
+            <span>{copy.scanLog.scanRunId}</span>
+            <strong>{run?.id ?? scanResult.scanRunId}</strong>
+            <p>{scanResult.scanRunId === run?.id ? scanResult.message : copy.scanLog.loadedFromEvidence}</p>
+          </div>
+          <RagBadge
+            status={statusRag(run?.gateResult ?? scanResult.gate ?? scanResult.status)}
+            label={run ? gateDisplayLabel(run.gateResult, locale) : actionGateDisplayLabel(scanResult.gate ?? scanResult.status, locale)}
+          />
+        </section>
+
+        <section className="security-scan-log-progress" aria-label={copy.scanLog.progress}>
+          <div>
+            <span>{copy.scanLog.progress}</span>
+            <strong>{copy.scanLog.completedSteps(completedSteps, totalSteps)}</strong>
+          </div>
+          <ProgressBar value={currentProgress} tone={currentProgress === 100 ? "good" : "warning"} label={copy.scanLog.progress} />
+        </section>
+
+        <div className="security-scan-log-facts">
+          <div>
+            <span>{copy.scanLog.status}</span>
+            <strong>{run ? statusDisplayLabel(run.status, locale) : statusDisplayLabel(scanResult.status, locale)}</strong>
+          </div>
+          <div>
+            <span>{copy.scanLog.project}</span>
+            <strong>{run?.project.name ?? activeScanProject.name}</strong>
+          </div>
+          <div>
+            <span>{copy.scanLog.profile}</span>
+            <strong>{run ? profileName(locale, run.profile.id, run.profile.name) : profileName(locale, effectiveProfileId, effectiveProfileId)}</strong>
+          </div>
+          <div>
+            <span>{copy.scanLog.duration}</span>
+            <strong>{formatDuration(run?.durationMs ?? null, locale)}</strong>
+          </div>
+          <div>
+            <span>{copy.scanLog.evidenceRoot}</span>
+            <strong>{run?.evidence.root ?? "/reports"}</strong>
+          </div>
+        </div>
+
+        <div className="security-actions">
+          <Button disabled={loadingRuns} onClick={() => refreshScanRuns(run?.id ?? scanResult.scanRunId)} size="compact">
+            <RefreshCw size={14} />
+            {loadingRuns ? copy.dashboard.refreshing : copy.scanLog.refresh}
+          </Button>
+          <Button
+            disabled={!run}
+            onClick={() => {
+              setActiveView("execution");
+              setScanLogOpen(false);
+            }}
+            size="compact"
+          >
+            <Archive size={14} />
+            {copy.scanLog.openExecution}
+          </Button>
+          <IconButton disabled={!run || exportingFormat !== null || !authReady} label={copy.scanLog.exportPdf} title={copy.scanLog.exportPdf} onClick={() => exportLatestRun("PDF")} size="compact">
+            <FileText size={14} />
+          </IconButton>
+          <IconButton disabled={!run || exportingFormat !== null || !authReady} label={copy.scanLog.exportPptx} title={copy.scanLog.exportPptx} onClick={() => exportLatestRun("PPTX")} size="compact">
+            <Presentation size={14} />
+          </IconButton>
+        </div>
+
+        <StructuredList
+          title={copy.scanLog.timeline}
+          items={steps.map((step) => ({
+            id: step.stepId,
+            title: step.checkId,
+            leading: <RagBadge status={statusRag(step.status)} label={statusDisplayLabel(step.status, locale)} />,
+            badges: step.findingCount ? <Badge tone="danger">{copy.execution.findingsCount(step.findingCount)}</Badge> : <Badge tone="good">{copy.execution.noFindings}</Badge>,
+            meta: step.evidenceFile ?? step.message ?? copy.execution.noEvidenceFile
+          }))}
+          emptyLabel={copy.scanLog.noSteps}
+          ariaLabel={copy.scanLog.timeline}
+          className="security-list-card"
+        />
+
+        <div className="security-split-grid">
+          <StructuredList
+            title={copy.scanLog.evidenceFiles}
+            items={evidenceFiles.map((file) => ({
+              id: file,
+              title: file,
+              leading: file.endsWith(".md") ? <ScrollText size={15} /> : <FileJson size={15} />,
+              badges: <Badge tone={file === "central-result-envelope.json" ? "info" : "good"}>{file.endsWith(".json") ? "json" : "markdown"}</Badge>,
+              meta: copy.execution.reportsPathEvidence
+            }))}
+            emptyLabel={copy.scanLog.noFiles}
+            ariaLabel={copy.scanLog.evidenceFiles}
+            className="security-list-card"
+          />
+          <StructuredList
+            title={copy.scanLog.blockers}
+            items={blockingReasons.map((reason, index) => ({
+              id: `blocker-${index}`,
+              title: reason,
+              leading: <AlertTriangle size={15} />,
+              badges: <Badge tone="danger">{translateStatus(locale, "blocked")}</Badge>
+            }))}
+            emptyLabel={copy.scanLog.noBlockers}
+            ariaLabel={copy.scanLog.blockers}
+            className="security-list-card"
+          />
+        </div>
+
+        <StructuredList
+          title={copy.scanLog.findings}
+          items={findings.slice(0, 12).map((finding) => ({
+            id: finding.id,
+            title: finding.title,
+            leading: <FileWarning size={15} />,
+            badges: <Badge tone={statusTone(finding.severity)}>{finding.severity.toUpperCase()}</Badge>,
+            meta: `${finding.tool} · ${findingLocation(finding, copy.scanLog.noLocation)} · ${finding.recommendation}`
+          }))}
+          emptyLabel={copy.scanLog.noFindings}
+          ariaLabel={copy.scanLog.findings}
+          className="security-list-card"
+        />
       </div>
     );
   }
@@ -2422,7 +2608,7 @@ export default function DashboardPage() {
               <ClipboardList size={14} />
               {copy.runPanel.dryRun}
             </Button>
-            <IconButton label={copy.runPanel.openScanLog} disabled title={copy.runPanel.scanLogPending}>
+            <IconButton label={copy.runPanel.openScanLog} title={copy.runPanel.scanLogPending} onClick={openScanLog}>
               <TerminalSquare size={14} />
             </IconButton>
           </div>
@@ -2467,6 +2653,16 @@ export default function DashboardPage() {
             ariaLabel={copy.detail.p0Blockers}
           />
         </div>
+      </DetailSurface>
+      <DetailSurface
+        open={scanLogOpen}
+        mode={scanLogMode}
+        title={copy.scanLog.title}
+        labels={{ close: copy.detail.close, sidebar: copy.detail.sidebar, modal: copy.detail.modal, fullscreen: copy.detail.fullscreen }}
+        onClose={() => setScanLogOpen(false)}
+        onModeChange={setScanLogMode}
+      >
+        {renderScanLogSurface()}
       </DetailSurface>
       <CommandCenter
         open={commandOpen}

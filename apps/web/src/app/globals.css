@@ -403,8 +403,8 @@ code,
 .security-workspace-sidebar:focus-within .security-sidebar-hover-actions,
 .security-sidebar-nav-group:hover .security-sidebar-group-actions,
 .security-sidebar-nav-group:focus-within .security-sidebar-group-actions,
-.security-sidebar-nav-item:hover .security-sidebar-item-actions,
-.security-sidebar-nav-item:focus-within .security-sidebar-item-actions {
+.security-sidebar-nav-row:hover .security-sidebar-item-actions,
+.security-sidebar-nav-row:focus-within .security-sidebar-item-actions {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -503,11 +503,21 @@ code,
   min-width: 0;
 }
 
+.security-sidebar-nav-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  border-radius: 6px;
+}
+
 .security-sidebar-nav-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-height: 34px;
   border-radius: 6px;
   padding: 6px 7px;
@@ -517,19 +527,24 @@ code,
   text-align: left;
 }
 
+.security-sidebar-nav-row:hover:not(.is-disabled),
+.security-sidebar-nav-row:focus-within,
+.security-sidebar-nav-row.is-active {
+  background: var(--stratos-color-surface-subtle);
+}
+
 .security-sidebar-nav-item:hover:not(:disabled),
 .security-sidebar-nav-item:focus-visible,
-.security-sidebar-nav-item.is-active {
-  background: var(--stratos-color-surface-subtle);
+.security-sidebar-nav-row.is-active .security-sidebar-nav-item {
   color: var(--stratos-color-text);
   outline: 0;
 }
 
-.security-sidebar-nav-item.is-active .security-sidebar-nav-icon {
+.security-sidebar-nav-row.is-active .security-sidebar-nav-icon {
   color: var(--stratos-color-primary);
 }
 
-.security-sidebar-nav-item.is-disabled {
+.security-sidebar-nav-row.is-disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
@@ -700,6 +715,119 @@ code,
   outline-offset: 1px;
 }
 
+.security-scan-log {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  min-height: 100%;
+  background: var(--stratos-color-bg);
+  padding: 16px;
+}
+
+.security-scan-log-hero,
+.security-scan-log-progress,
+.security-empty-state {
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+}
+
+.security-scan-log-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+}
+
+.security-scan-log-hero div,
+.security-scan-log-progress div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.security-scan-log-hero span,
+.security-scan-log-progress span,
+.security-scan-log-facts span {
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.security-scan-log-hero strong {
+  min-width: 0;
+  color: var(--stratos-color-text);
+  font-size: 17px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.security-scan-log-hero p {
+  margin: 0;
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.security-scan-log-progress {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.security-scan-log-progress strong {
+  color: var(--stratos-color-text);
+  font-size: 13px;
+}
+
+.security-scan-log-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.security-scan-log-facts div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface-subtle);
+  padding: 10px;
+}
+
+.security-scan-log-facts strong {
+  min-width: 0;
+  color: var(--stratos-color-text);
+  font-size: 13px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.security-empty-state {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--stratos-color-muted);
+  text-align: center;
+}
+
+.security-empty-state strong {
+  color: var(--stratos-color-text);
+  font-size: 14px;
+}
+
+.security-empty-state p {
+  max-width: 360px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .security-detail-stack {
   padding: 16px;
 }
@@ -734,6 +862,10 @@ code,
   .security-project-path,
   .security-project-form-actions {
     grid-column: auto;
+  }
+
+  .security-scan-log-facts {
+    grid-template-columns: 1fr;
   }
 }
 

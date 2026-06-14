@@ -126,8 +126,8 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "worker-execution",
       area: "Spouštění workerem",
       status: "Partial",
-      implemented: "Queue endpoint, worker consumer, interní kontroly a runner externích scannerů.",
-      gap: "Chybí živý progress stream, rušení běhů a retry fronta.",
+      implemented: "Queue endpoint, worker consumer, interní kontroly, runner externích scannerů a UI log běhu nad reportovou evidencí.",
+      gap: "Chybí serverový live progress stream, rušení běhů a retry fronta.",
       priority: "P0"
     },
     {
@@ -173,9 +173,9 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
     {
       id: "projects",
       area: "Registr projektů",
-      status: "Gap",
-      implemented: "Dashboard ukazuje reprezentativní projekty a pevnou Docker mount cestu.",
-      gap: "Chybí perzistentní CRUD projektů, validace cest, výsledky detektoru stacku a projektová nastavení.",
+      status: "Partial",
+      implemented: "API a dashboard podporují perzistentní registraci projektů, validaci cest pod PROJECTS_ROOT_CONTAINER a detekci stacku.",
+      gap: "Chybí plná editační obrazovka, projektové policy overrides a detailní nastavení profilu.",
       priority: "P0"
     },
     {
@@ -200,8 +200,8 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "worker-execution",
       area: "Worker execution",
       status: "Partial",
-      implemented: "Queue endpoint, worker consumer, internal checks, external scanner runner.",
-      gap: "No live progress stream, cancellation, or retry queue yet.",
+      implemented: "Queue endpoint, worker consumer, internal checks, external scanner runner, and run log UI over report evidence.",
+      gap: "No server-side live progress stream, cancellation, or retry queue yet.",
       priority: "P0"
     },
     {
@@ -247,9 +247,9 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
     {
       id: "projects",
       area: "Project registry",
-      status: "Gap",
-      implemented: "Dashboard shows representative projects and fixed Docker mount path.",
-      gap: "Needs persistent project CRUD, path validation, stack detector results, and per-project settings.",
+      status: "Partial",
+      implemented: "API and dashboard support persistent project registration, PROJECTS_ROOT_CONTAINER path validation, and stack detection.",
+      gap: "Needs a full edit surface, per-project policy overrides, and detailed profile settings.",
       priority: "P0"
     },
     {
@@ -478,7 +478,7 @@ export const uiText = {
     },
     capabilities: {
       title: "Celková funkčnost",
-      body: "Aplikace má funkční lokální scan pipeline, OpenAPI kontrakt, worker evidence, report exporty a AKB bridge podle STRATOS hranic. Největší mezery zůstávají persistentní registry projektů, triage findings, progress běhů, produkční AKB/OIDC konfigurace a bezpečnostní hranice pro sdílené nasazení.",
+      body: "Aplikace má funkční lokální scan pipeline, OpenAPI kontrakt, worker evidence, log běhu, report exporty a AKB bridge podle STRATOS hranic. Největší mezery zůstávají triage findings, serverový live progress stream, produkční AKB/OIDC konfigurace a bezpečnostní hranice pro sdílené nasazení.",
       maturityEstimate: "Odhad zralosti",
       maturityProgress: "Funkční zralost",
       auditTitle: "Audit schopností",
@@ -646,10 +646,37 @@ export const uiText = {
       runScan: "Spustit sken",
       dryRun: "Dry run",
       openScanLog: "Otevřít log skenu",
-      scanLogPending: "UI logu skenu zatím není implementováno.",
+      scanLogPending: "Otevřít detailní průběh běhu, evidenci a nálezy.",
       working: "Pracuji",
       plannedSteps: (count: number) => `${count} plánovaných kroků`,
       showBlockers: "Zobrazit blokery zralosti"
+    },
+    scanLog: {
+      title: "Log a průběh skenu",
+      scanRunId: "Scan run",
+      loadedFromEvidence: "Načteno z lokální reportové evidence.",
+      progress: "Průběh",
+      completedSteps: (completed: number, total: number) => `${completed}/${total} kroků dokončeno`,
+      status: "Stav",
+      project: "Projekt",
+      profile: "Profil",
+      duration: "Doba běhu",
+      evidenceRoot: "Evidence root",
+      refresh: "Obnovit",
+      openExecution: "Otevřít evidence view",
+      exportPdf: "Export PDF",
+      exportPptx: "Export PPTX",
+      timeline: "Timeline kroků",
+      evidenceFiles: "Soubory evidence",
+      blockers: "Blokery gate",
+      findings: "Nálezy",
+      noRun: "Žádný běh skenu není vybraný",
+      noRunDescription: "Spusťte sken nebo načtěte historii evidence pro zobrazení průběhu.",
+      noSteps: "Zatím nejsou dostupné kroky běhu.",
+      noFiles: "Zatím nejsou dostupné soubory evidence.",
+      noBlockers: "Žádné blokery gate.",
+      noFindings: "Žádné nálezy v načtené evidenci.",
+      noLocation: "bez lokace"
     },
     detail: {
       title: "Funkční audit SecurityPreflight",
@@ -658,7 +685,7 @@ export const uiText = {
       modal: "Modal",
       fullscreen: "Fullscreen",
       currentAssessment: "Aktuální hodnocení",
-      body: "SecurityPreflight už není statický scaffold: scan execution, prohlížení evidence, PDF/PPTX exporty a AKB bridge jsou zapojené. Referenční zdravotnická připravenost ještě vyžaduje triage nálezů, registr projektů, sledování progressu, autentizované sdílené nasazení a garance centrálního doručení.",
+      body: "SecurityPreflight už není statický scaffold: scan execution, log běhu, prohlížení evidence, PDF/PPTX exporty a AKB bridge jsou zapojené. Referenční zdravotnická připravenost ještě vyžaduje triage nálezů, serverový live progress stream, autentizované sdílené nasazení a garance centrálního doručení.",
       p0Blockers: "P0 blokery"
     },
     command: {
@@ -900,7 +927,7 @@ export const uiText = {
     },
     capabilities: {
       title: "Overall functionality",
-      body: "The application has a working local scan pipeline, OpenAPI contract, worker evidence, report exports, and an AKB bridge aligned with STRATOS boundaries. The biggest gaps remain persistent project registry, findings triage, run progress, production AKB/OIDC configuration, and shared-deployment security boundaries.",
+      body: "The application has a working local scan pipeline, OpenAPI contract, worker evidence, run log, report exports, and an AKB bridge aligned with STRATOS boundaries. The biggest gaps remain findings triage, server-side live progress streaming, production AKB/OIDC configuration, and shared-deployment security boundaries.",
       maturityEstimate: "Maturity estimate",
       maturityProgress: "Functional maturity",
       auditTitle: "Capability audit",
@@ -1068,10 +1095,37 @@ export const uiText = {
       runScan: "Run scan",
       dryRun: "Dry run",
       openScanLog: "Open scan log",
-      scanLogPending: "Scan log UI is not implemented yet.",
+      scanLogPending: "Open detailed run progress, evidence, and findings.",
       working: "Working",
       plannedSteps: (count: number) => `${count} planned steps`,
       showBlockers: "Show maturity blockers"
+    },
+    scanLog: {
+      title: "Scan Log and Progress",
+      scanRunId: "Scan run",
+      loadedFromEvidence: "Loaded from local report evidence.",
+      progress: "Progress",
+      completedSteps: (completed: number, total: number) => `${completed}/${total} steps completed`,
+      status: "Status",
+      project: "Project",
+      profile: "Profile",
+      duration: "Duration",
+      evidenceRoot: "Evidence root",
+      refresh: "Refresh",
+      openExecution: "Open evidence view",
+      exportPdf: "Export PDF",
+      exportPptx: "Export PPTX",
+      timeline: "Step timeline",
+      evidenceFiles: "Evidence files",
+      blockers: "Gate blockers",
+      findings: "Findings",
+      noRun: "No scan run is selected",
+      noRunDescription: "Run a scan or load evidence history to show progress.",
+      noSteps: "No run steps are available yet.",
+      noFiles: "No evidence files are available yet.",
+      noBlockers: "No gate blockers.",
+      noFindings: "No findings in the loaded evidence.",
+      noLocation: "no location"
     },
     detail: {
       title: "SecurityPreflight functional audit",
@@ -1080,7 +1134,7 @@ export const uiText = {
       modal: "Modal",
       fullscreen: "Fullscreen",
       currentAssessment: "Current assessment",
-      body: "SecurityPreflight is beyond a static scaffold: scan execution, evidence browsing, PDF/PPTX exports and the AKB bridge are wired. Reference-grade healthcare readiness still needs findings triage, project registry, progress tracking, authenticated shared deployment and central delivery guarantees.",
+      body: "SecurityPreflight is beyond a static scaffold: scan execution, run log, evidence browsing, PDF/PPTX exports and the AKB bridge are wired. Reference-grade healthcare readiness still needs findings triage, server-side live progress streaming, authenticated shared deployment and central delivery guarantees.",
       p0Blockers: "P0 blockers"
     },
     command: {

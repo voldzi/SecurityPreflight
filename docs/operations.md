@@ -126,6 +126,11 @@ Web/API profiles provide bounded safe checks:
 The profiles do not perform brute force, credential attacks, denial-of-service,
 exploit chaining, destructive fuzzing, or third-party scanning.
 
+The run panel includes a scan log drawer for the latest planned or queued run.
+It uses the redacted `/api/v1/scans/runs` evidence APIs to show run identity,
+gate status, progress, step timeline, evidence files, blockers, and finding
+summaries without exposing raw scanner stdout, source code, or secrets.
+
 When the stack runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
 directory containing the projects to scan. The API and worker mount it
 read-only at `PROJECTS_ROOT_CONTAINER`. The API uses that root to validate
