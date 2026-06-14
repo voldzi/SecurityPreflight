@@ -36,8 +36,10 @@ openapi/openapi.yaml
 
 If `SECURITY_PREFLIGHT_AUTH_MODE` is unset, development defaults to
 `disabled`; `APP_ENV=production` defaults to `oidc` and fails closed until OIDC
-issuer, JWKS URL, client id, and audience are configured. OIDC tokens are
-validated with RS256/JWKS and checked against configured viewer/operator roles.
+issuer, client id, and audience are configured. For Keycloak, the JWKS URL is
+derived from the issuer unless `SECURITY_PREFLIGHT_OIDC_JWKS_URL` is set
+explicitly. OIDC tokens are validated with RS256/JWKS and checked against
+configured viewer/operator roles.
 `shared-token` is intended only as a controlled transition mode.
 
 ```bash

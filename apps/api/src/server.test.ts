@@ -102,6 +102,60 @@ describe("api server", () => {
     }
   });
 
+  it("derives Keycloak JWKS from the production OIDC issuer", async () => {
+    const previousAppEnv = process.env.APP_ENV;
+    const previousMode = process.env.SECURITY_PREFLIGHT_AUTH_MODE;
+    const previousIssuer = process.env.SECURITY_PREFLIGHT_OIDC_ISSUER;
+    const previousJwks = process.env.SECURITY_PREFLIGHT_OIDC_JWKS_URL;
+    const previousClient = process.env.SECURITY_PREFLIGHT_OIDC_CLIENT_ID;
+    const previousAudience = process.env.SECURITY_PREFLIGHT_OIDC_AUDIENCE;
+
+    process.env.APP_ENV = "production";
+    delete process.env.SECURITY_PREFLIGHT_AUTH_MODE;
+    process.env.SECURITY_PREFLIGHT_OIDC_ISSUER = "https://login.zeleznalady.cz/realms/stratos/";
+    delete process.env.SECURITY_PREFLIGHT_OIDC_JWKS_URL;
+    process.env.SECURITY_PREFLIGHT_OIDC_CLIENT_ID = "security-preflight-web";
+    delete process.env.SECURITY_PREFLIGHT_OIDC_AUDIENCE;
+
+    try {
+      const server = createServer({ logger: false });
+      const status = await server.inject({ method: "GET", url: "/api/v1/auth/status" });
+      expect(status.statusCode).toBe(200);
+      expect(status.json()).toMatchObject({
+        data: {
+          mode: "oidc",
+          required: true,
+          configured: true,
+          issuer: "https://login.zeleznalady.cz/realms/stratos",
+          clientId: "security-preflight-web",
+          audience: "security-preflight-web",
+          publicOidc: {
+            configured: true,
+            issuer: "https://login.zeleznalady.cz/realms/stratos",
+            clientId: "security-preflight-web"
+          }
+        }
+      });
+
+      const protectedResponse = await server.inject({
+        method: "GET",
+        url: "/api/v1/scan-profiles",
+        headers: {
+          authorization: "Bearer placeholder"
+        }
+      });
+      expect(protectedResponse.statusCode).toBe(401);
+      expect(protectedResponse.json().error.code).toBe("UNAUTHORIZED");
+    } finally {
+      restoreEnv("APP_ENV", previousAppEnv);
+      restoreEnv("SECURITY_PREFLIGHT_AUTH_MODE", previousMode);
+      restoreEnv("SECURITY_PREFLIGHT_OIDC_ISSUER", previousIssuer);
+      restoreEnv("SECURITY_PREFLIGHT_OIDC_JWKS_URL", previousJwks);
+      restoreEnv("SECURITY_PREFLIGHT_OIDC_CLIENT_ID", previousClient);
+      restoreEnv("SECURITY_PREFLIGHT_OIDC_AUDIENCE", previousAudience);
+    }
+  });
+
   it("serves scan profiles", async () => {
     const server = createServer({ logger: false });
     const response = await server.inject({ method: "GET", url: "/api/v1/scan-profiles" });

@@ -19,6 +19,8 @@ CODEX and Claude Code, following the central application standards
   storing prompts, answers, chunks, embeddings, or document text locally.
 - Production API boundary with STRATOS OIDC/JWKS bearer validation, coarse RBAC,
   shared-token transition mode, explicit CORS allowlist, and UI bearer handoff.
+- STRATOS Keycloak client provisioning for realm `stratos`, public client
+  `security-preflight-web`, and `security-preflight.*` RBAC roles.
 - Guarded scan execution planning with read-only mounts, evidence paths, and
   explicit controlled DAST allowlists.
 - Healthcare reference profile with SBOM, SCA, SAST, IaC, OpenAPI, privacy,
@@ -59,6 +61,15 @@ Run the Docker Desktop stack:
 
 ```bash
 docker compose up -d
+```
+
+Provision the STRATOS Keycloak client on the production host when deploying:
+
+```bash
+KEYCLOAK_USE_CONTAINER_BOOTSTRAP_PASSWORD=true \
+SECURITY_PREFLIGHT_ENV_FILE=/srv/SecurityPreflight/.env \
+SECURITY_PREFLIGHT_PUBLIC_BASE_URL=http://docker.home.cz:8780 \
+./infra/keycloak/ensure-security-preflight-client.sh
 ```
 
 Preview a scan execution plan without running scanners:

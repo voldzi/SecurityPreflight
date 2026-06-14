@@ -91,7 +91,10 @@ let jwksCache: { url: string; expiresAt: number; keys: Jwk[] } | null = null;
 export function getAuthStatus(): SecurityPreflightAuthStatus {
   const config = getAuthConfig();
   const oidc = getOidcConfig();
-  const publicIssuer = firstNonEmpty(process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_ISSUER, process.env.SECURITY_PREFLIGHT_OIDC_ISSUER);
+  const publicIssuer = firstNonEmpty(
+    process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_ISSUER,
+    process.env.SECURITY_PREFLIGHT_OIDC_ISSUER
+  )?.replace(/\/$/, "") ?? null;
   const publicClientId = firstNonEmpty(
     process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_CLIENT_ID,
     process.env.SECURITY_PREFLIGHT_OIDC_CLIENT_ID
@@ -166,7 +169,7 @@ export async function authenticateSecurityPreflightRequest(request: FastifyReque
 
   const oidc = getOidcConfig();
   if (!oidc) {
-    return fail(503, "OIDC_CONFIG_MISSING", "OIDC authentication is enabled, but issuer, JWKS URL, client id, or audience is missing.");
+    return fail(503, "OIDC_CONFIG_MISSING", "OIDC authentication is enabled, but issuer, client id, or audience is missing.");
   }
 
   try {
@@ -336,13 +339,15 @@ function getAuthConfig() {
 
 function getOidcConfig(): OidcConfig | null {
   const issuer = firstNonEmpty(process.env.SECURITY_PREFLIGHT_OIDC_ISSUER, process.env.STRATOS_OIDC_ISSUER)?.replace(/\/$/, "");
-  const jwksUrl = firstNonEmpty(process.env.SECURITY_PREFLIGHT_OIDC_JWKS_URL, process.env.STRATOS_OIDC_JWKS_URL);
+  const explicitJwksUrl = firstNonEmpty(process.env.SECURITY_PREFLIGHT_OIDC_JWKS_URL, process.env.STRATOS_OIDC_JWKS_URL);
   const clientId = firstNonEmpty(process.env.SECURITY_PREFLIGHT_OIDC_CLIENT_ID, process.env.STRATOS_SECURITY_PREFLIGHT_OIDC_CLIENT_ID);
   const audience = firstNonEmpty(process.env.SECURITY_PREFLIGHT_OIDC_AUDIENCE) ?? clientId;
 
-  if (!issuer || !jwksUrl || !clientId || !audience) {
+  if (!issuer || !clientId || !audience) {
     return null;
   }
+
+  const jwksUrl = explicitJwksUrl ?? `${issuer}/protocol/openid-connect/certs`;
 
   return { issuer, jwksUrl, clientId, audience };
 }

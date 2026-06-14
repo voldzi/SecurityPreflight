@@ -141,12 +141,41 @@ reachable only inside the Compose network.
 
 Production defaults to `SECURITY_PREFLIGHT_AUTH_MODE=oidc` when the variable is
 unset. The API fails closed until `SECURITY_PREFLIGHT_OIDC_ISSUER`,
-`SECURITY_PREFLIGHT_OIDC_JWKS_URL`, `SECURITY_PREFLIGHT_OIDC_CLIENT_ID`, and
-`SECURITY_PREFLIGHT_OIDC_AUDIENCE` are configured. `shared-token` mode exists
-only for controlled transition deployments and requires
+`SECURITY_PREFLIGHT_OIDC_CLIENT_ID`, and `SECURITY_PREFLIGHT_OIDC_AUDIENCE` are
+configured. `SECURITY_PREFLIGHT_OIDC_JWKS_URL` may be supplied explicitly; when
+it is absent, the API derives the standard Keycloak URL
+`<issuer>/protocol/openid-connect/certs`. `shared-token` mode exists only for
+controlled transition deployments and requires
 `SECURITY_PREFLIGHT_API_TOKEN`. Do not place GitHub Packages tokens, scanner
 tokens, production secrets, private keys, bearer tokens, or certificate material
 in the repository or generated reports.
+
+### STRATOS Keycloak
+
+SecurityPreflight follows the STRATOS Keycloak pattern:
+
+- realm: `stratos`
+- public issuer: `https://login.zeleznalady.cz/realms/stratos`
+- Web client: `security-preflight-web`
+- realm roles: `security-preflight.viewer`, `security-preflight.operator`,
+  `security-preflight.admin`, `stratos_security_admin`, `stratos_superadmin`
+
+Provision or update the Keycloak client from the production host after the code
+is present:
+
+```bash
+KEYCLOAK_USE_CONTAINER_BOOTSTRAP_PASSWORD=true \
+SECURITY_PREFLIGHT_ENV_FILE=/srv/SecurityPreflight/.env \
+SECURITY_PREFLIGHT_PUBLIC_BASE_URL=http://docker.home.cz:8780 \
+./infra/keycloak/ensure-security-preflight-client.sh
+```
+
+Override `KEYCLOAK_CONTAINER`, `KEYCLOAK_INTERNAL_URL`, `KEYCLOAK_PUBLIC_URL`,
+`KEYCLOAK_REALM`, `SECURITY_PREFLIGHT_REDIRECT_URIS`, or
+`SECURITY_PREFLIGHT_WEB_ORIGINS` when the STRATOS deployment differs. The script
+creates a public authorization-code/PKCE client and writes only public OIDC
+values to `SECURITY_PREFLIGHT_ENV_FILE`; it does not create or persist a web
+client secret.
 
 ## Configuration
 
@@ -160,8 +189,8 @@ table and must stay in sync.
 | `WEB_PORT` | yes | `8780` | Web UI HTTP port |
 | `NEXT_PUBLIC_API_URL` | yes | `http://localhost:8781` | Browser-visible API base URL baked into the Web build and supplied at runtime |
 | `NEXT_PUBLIC_SECURITY_PREFLIGHT_PUBLIC_BASE_URL` | no | unset | Browser-visible Web UI base URL used for OIDC redirect URI |
-| `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_ISSUER` | no | unset | Public OIDC issuer used by the browser PKCE login |
-| `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | no | unset | Public OIDC client id for the Web UI |
+| `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_ISSUER` | no | STRATOS issuer in `.env.example` | Public OIDC issuer used by the browser PKCE login |
+| `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | no | `security-preflight-web` in `.env.example` | Public OIDC client id for the Web UI |
 | `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_SCOPES` | no | `openid profile email` | Public OIDC scopes requested by the Web UI |
 | `LOG_LEVEL` | no | `info` | Log verbosity |
 | `DATABASE_URL` | yes | unset | PostgreSQL connection string |
@@ -172,9 +201,9 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_AUTH_MODE` | no | dev: `disabled`, production: `oidc` | API auth mode: `disabled`, `shared-token`, or `oidc` |
 | `SECURITY_PREFLIGHT_API_TOKEN` | no | unset | Shared-token mode bearer token; never commit |
 | `SECURITY_PREFLIGHT_CORS_ORIGINS` | yes for browser production | localhost origins | Comma-separated allowed browser origins for API CORS |
-| `SECURITY_PREFLIGHT_OIDC_ISSUER` | required for OIDC | unset | OIDC issuer expected in bearer JWTs |
-| `SECURITY_PREFLIGHT_OIDC_JWKS_URL` | required for OIDC | unset | JWKS URL for RS256 bearer token validation |
-| `SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | required for OIDC | unset | OIDC client id / authorized party |
+| `SECURITY_PREFLIGHT_OIDC_ISSUER` | required for OIDC | STRATOS issuer in `.env.example` | OIDC issuer expected in bearer JWTs |
+| `SECURITY_PREFLIGHT_OIDC_JWKS_URL` | no | derived from issuer | JWKS URL for RS256 bearer token validation; can be explicit for nonstandard IdPs |
+| `SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | required for OIDC | `security-preflight-web` in `.env.example` | OIDC client id / authorized party |
 | `SECURITY_PREFLIGHT_OIDC_AUDIENCE` | required for OIDC | client id | Expected token audience |
 | `SECURITY_PREFLIGHT_REQUIRED_ROLES` | no | STRATOS/SecurityPreflight viewer/operator/admin roles | Comma-separated roles allowed to read API data |
 | `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | STRATOS/SecurityPreflight operator/admin roles | Comma-separated roles allowed to mutate state, queue scans, export reports, and ask AKB |

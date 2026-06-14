@@ -5,7 +5,9 @@
 Local development may run with `SECURITY_PREFLIGHT_AUTH_MODE=disabled`.
 Production does not default to anonymous access: when `APP_ENV=production` and
 `SECURITY_PREFLIGHT_AUTH_MODE` is unset, the API uses `oidc` and fails closed
-until OIDC issuer, JWKS URL, client id, and audience are configured.
+until OIDC issuer, client id, and audience are configured. For Keycloak, the
+JWKS URL is derived from the issuer when `SECURITY_PREFLIGHT_OIDC_JWKS_URL` is
+not set.
 
 Protected API endpoints accept bearer tokens. OIDC mode validates RS256 JWTs
 against JWKS, issuer, audience, expiry, not-before, subject, and authorized
@@ -14,6 +16,11 @@ party. The Web UI supports STRATOS-style OIDC PKCE login through public
 SecurityPreflight, not directly to AKB. `shared-token` mode is available only as
 a transition control for restricted deployments and requires
 `SECURITY_PREFLIGHT_API_TOKEN`.
+
+The STRATOS production identity source is Keycloak realm `stratos` at
+`https://login.zeleznalady.cz/realms/stratos`. The application client is the
+public PKCE client `security-preflight-web`, provisioned by
+`infra/keycloak/ensure-security-preflight-client.sh`.
 
 ## Authorization
 
@@ -26,8 +33,11 @@ exports, central ingest, and AKB questions require one of
 `superadmin` as appropriate.
 
 Project-level ownership, exception approver roles, and per-project
-authorization are still planned. Until they exist, healthcare deployments should
-scope access at the STRATOS/Keycloak role level and network boundary.
+authorization are still planned. Until they exist, healthcare deployments must
+scope access at the STRATOS/Keycloak role level and network boundary:
+`security-preflight.viewer` for read-only review, `security-preflight.operator`
+for scan execution and report export, and `security-preflight.admin` or
+`stratos_security_admin` for administration.
 
 ## Secret Management
 
