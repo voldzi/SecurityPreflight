@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createPublicKey, createVerify, verify as verifyDetachedSignature } from "node:crypto";
 import dns from "node:dns/promises";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -311,12 +312,13 @@ const checkDefinitions: Record<string, CheckDefinition> = {
     executionMode: "internal",
     activeDast: true,
     needsNetwork: true,
-    evidenceExtensions: ["json"]
+    evidenceExtensions: ["json", "job.json", "response.json"]
   },
   "defectdojo:export": {
     tool: "security-preflight-defectdojo",
     type: "configuration",
     executionMode: "internal",
+    needsNetwork: true,
     evidenceExtensions: ["json"]
   },
   "greenbone:openvas": {
@@ -325,13 +327,13 @@ const checkDefinitions: Record<string, CheckDefinition> = {
     executionMode: "internal",
     activeDast: true,
     needsNetwork: true,
-    evidenceExtensions: ["json"]
+    evidenceExtensions: ["json", "xml"]
   },
   "openscap:system": {
     tool: "openscap",
     type: "configuration",
     executionMode: "internal",
-    evidenceExtensions: ["json"]
+    evidenceExtensions: ["json", "xml", "html"]
   },
   "gitleaks:quick": {
     tool: "gitleaks",
@@ -920,7 +922,7 @@ export interface ScanExecutionResult {
   gate: GateEvaluation;
 }
 
-export type ExternalRunnerMode = "direct" | "docker";
+export type ExternalRunnerMode = "direct" | "docker" | "remote";
 
 export interface ExecuteScanPlanOptions {
   runExternalCommands?: boolean;
@@ -1244,6 +1246,10 @@ async function runExternalScannerCommand(
 ): Promise<CommandRunResult> {
   const runner = options.externalRunner ?? resolveExternalRunnerMode();
 
+  if (runner === "remote") {
+    return runRemoteScannerCommand(plan, step);
+  }
+
   if (runner === "docker") {
     return runDockerScannerCommand(plan, step, options);
   }
@@ -1252,7 +1258,145 @@ async function runExternalScannerCommand(
 }
 
 function resolveExternalRunnerMode(): ExternalRunnerMode {
-  return process.env.SCANNER_RUNNER_MODE === "docker" ? "docker" : "direct";
+  if (process.env.SCANNER_RUNNER_MODE === "docker") {
+    return "docker";
+  }
+
+  if (process.env.SCANNER_RUNNER_MODE === "remote") {
+    return "remote";
+  }
+
+  return "direct";
+}
+
+async function runRemoteScannerCommand(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<CommandRunResult> {
+  if (!step.command?.[0]) {
+    return emptyCommandFailure("remote", [], "Scanner command is missing.");
+  }
+
+  if (!["zap", "nuclei"].includes(step.tool)) {
+    return emptyCommandFailure(
+      "remote",
+      step.command,
+      `Remote scanner mode only supports web-target scanner tools; '${step.tool}' requires local project access.`
+    );
+  }
+
+  const endpoint = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL?.trim();
+  const token = await resolveSecretReference(process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_TOKEN_REF);
+
+  if (!endpoint) {
+    return emptyCommandFailure("remote", step.command, "SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL is not configured.");
+  }
+
+  const requestedAt = new Date().toISOString();
+  const payload = {
+    schemaVersion: "security-preflight.external-command.v1",
+    jobId: `${plan.scanRunId}:${step.id}`,
+    requestedAt,
+    scanRunId: plan.scanRunId,
+    project: {
+      id: plan.project.id,
+      name: plan.project.name,
+      dataClassification: plan.project.dataClassification ?? "internal"
+    },
+    step: {
+      id: step.id,
+      checkId: step.checkId,
+      tool: step.tool,
+      timeoutSeconds: step.timeoutSeconds,
+      command: step.command,
+      evidenceExtensions: step.evidencePaths.map((evidencePath) => path.extname(evidencePath).replace(/^\./, ""))
+    },
+    target: {
+      url: plan.policy.activeDastTarget,
+      allowedHosts: plan.policy.allowedDastHosts
+    },
+    policy: {
+      activeDast: step.guardrails.activeDast,
+      networkMode: step.networkMode,
+      noSourceUpload: true
+    }
+  };
+
+  await writeFile(supplementalEvidencePath(step, "job"), `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
+
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "user-agent": "SecurityPreflight/0.1 external-runner",
+        ...(token.ok ? { authorization: `Bearer ${token.value}` } : {})
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(step.timeoutSeconds * 1000)
+    });
+    const responseText = await response.text();
+    await writeFile(supplementalEvidencePath(step, "response"), `${redactSecrets(responseText)}\n`, "utf8");
+
+    if (!response.ok) {
+      return {
+        runner: "remote",
+        command: step.command,
+        exitCode: response.status,
+        signal: null,
+        timedOut: false,
+        stdout: "",
+        stderr: responseText,
+        errorMessage: `External scanner returned HTTP ${response.status}.`
+      };
+    }
+
+    const responseJson = parseJson(responseText);
+    const payloadRecord = extractSignedPayload(responseJson);
+    const signatureRequired = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_REQUIRE_SIGNATURE !== "false";
+    const publicKey = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY?.trim();
+
+    if (signatureRequired) {
+      const signatureCheck = verifyRemotePayloadSignature(responseJson, publicKey);
+      if (!signatureCheck.ok) {
+        return {
+          runner: "remote",
+          command: step.command,
+          exitCode: null,
+          signal: null,
+          timedOut: false,
+          stdout: responseText,
+          stderr: "",
+          errorMessage: signatureCheck.error
+        };
+      }
+    }
+
+    await writeRemoteEvidenceFiles(step, payloadRecord);
+    const resultRecord = asRecord(payloadRecord.result ?? payloadRecord.commandResult ?? payloadRecord);
+    const durationMs = Date.now() - startedAt;
+
+    return {
+      runner: "remote",
+      command: stringArrayValue(resultRecord.command) ?? step.command,
+      exitCode: numberValue(resultRecord.exitCode) ?? (numberValue(resultRecord.statusCode) ?? 0),
+      signal: stringValue(resultRecord.signal),
+      timedOut: Boolean(resultRecord.timedOut),
+      stdout: stringValue(resultRecord.stdout) ?? `External scanner completed in ${durationMs} ms.`,
+      stderr: stringValue(resultRecord.stderr) ?? "",
+      errorMessage: stringValue(resultRecord.errorMessage)
+    };
+  } catch (error) {
+    return {
+      runner: "remote",
+      command: step.command,
+      exitCode: null,
+      signal: null,
+      timedOut: error instanceof Error && error.name === "TimeoutError",
+      stdout: "",
+      stderr: "",
+      errorMessage: error instanceof Error ? error.message : String(error)
+    };
+  }
 }
 
 async function runDirectScannerCommand(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<CommandRunResult> {
@@ -1785,6 +1929,101 @@ function parseNucleiFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, d
       evidence: JSON.stringify(redactObject(item))
     })
   ];
+}
+
+function parseGreenboneReportFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, report: string): Finding[] {
+  const json = parseJson(report);
+
+  if (json) {
+    const parsed = parseGreenboneJsonFindings(plan, step, json);
+    if (parsed.length > 0) {
+      return parsed;
+    }
+  }
+
+  return xmlBlocks(report, "result")
+    .map((block) => {
+      const nvt = xmlTag(block, "nvt") ?? "";
+      const name = xmlTag(nvt, "name") ?? xmlTag(block, "name") ?? "Greenbone/OpenVAS finding";
+      const oid = xmlAttribute(nvt, "oid") ?? xmlTag(nvt, "oid") ?? xmlTag(block, "id");
+      const host = xmlTag(block, "host");
+      const port = xmlTag(block, "port");
+      const threat = xmlTag(block, "threat");
+      const score = numberValue(xmlTag(block, "severity"));
+      const severity = greenboneSeverity(threat, score);
+
+      if (severity === "info") {
+        return null;
+      }
+
+      return createExecutionFinding(plan, step, {
+        severity,
+        title: name,
+        description: xmlTag(block, "description") ?? xmlTag(block, "summary") ?? `${name} was reported by Greenbone/OpenVAS.`,
+        endpoint: [host, port].filter(Boolean).join(":") || plan.policy.activeDastTarget,
+        ruleId: oid ?? step.checkId,
+        cve: stringListValue(xmlBlocks(nvt, "cve").map((item) => decodeXml(item.replace(/<[^>]+>/g, "")))),
+        recommendation: xmlTag(block, "solution") ?? "Review the Greenbone/OpenVAS result and apply the vendor remediation.",
+        evidence: JSON.stringify(redactObject({ name, oid, host, port, threat, score }))
+      });
+    })
+    .filter((finding): finding is Finding => finding !== null)
+    .slice(0, 250);
+}
+
+function parseGreenboneJsonFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const root = asRecord(document);
+  const results = arrayValue(root.results ?? root.Results ?? root.findings ?? root.vulnerabilities);
+
+  return results
+    .map((result) => {
+      const item = asRecord(result);
+      const name = stringValue(item.name ?? item.title ?? item.nvtName) ?? "Greenbone/OpenVAS finding";
+      const severity = greenboneSeverity(stringValue(item.threat), numberValue(item.severity ?? item.cvss));
+
+      if (severity === "info") {
+        return null;
+      }
+
+      return createExecutionFinding(plan, step, {
+        severity,
+        title: name,
+        description: stringValue(item.description ?? item.summary) ?? `${name} was reported by Greenbone/OpenVAS.`,
+        endpoint: stringValue(item.endpoint) ?? ([stringValue(item.host), stringValue(item.port)].filter(Boolean).join(":") || plan.policy.activeDastTarget),
+        ruleId: stringValue(item.oid ?? item.id ?? item.nvtOid) ?? step.checkId,
+        cve: stringListValue(item.cves ?? item.cve),
+        recommendation: stringValue(item.solution ?? item.remediation) ?? "Review the Greenbone/OpenVAS result and apply the vendor remediation.",
+        evidence: JSON.stringify(redactObject(item))
+      });
+    })
+    .filter((finding): finding is Finding => finding !== null)
+    .slice(0, 250);
+}
+
+function parseOpenScapResultFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, report: string): Finding[] {
+  return xmlBlocks(report, "rule-result")
+    .map((block) => {
+      const result = xmlTag(block, "result")?.toLowerCase();
+
+      if (!result || ["pass", "fixed", "notapplicable", "notselected", "informational"].includes(result)) {
+        return null;
+      }
+
+      const ruleId = xmlAttribute(block, "idref") ?? xmlTag(block, "idref") ?? step.checkId;
+      const severity = result === "fail" ? normalizeSeverity(xmlAttribute(block, "severity") ?? xmlTag(block, "severity"), "medium") : "high";
+      const title = xmlTag(block, "title") ?? `OpenSCAP rule ${ruleId} ${result}`;
+
+      return createExecutionFinding(plan, step, {
+        severity,
+        title,
+        description: xmlTag(block, "description") ?? `OpenSCAP reported rule ${ruleId} with result '${result}'.`,
+        ruleId,
+        recommendation: xmlTag(block, "fixtext") ?? "Review the OpenSCAP rule result and remediate the failed baseline control.",
+        evidence: JSON.stringify(redactObject({ ruleId, result, severity }))
+      });
+    })
+    .filter((finding): finding is Finding => finding !== null)
+    .slice(0, 250);
 }
 
 async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
@@ -2393,23 +2632,57 @@ async function checkExternalRunnerReadiness(plan: ScanExecutionPlan, step: ScanE
   const target = activeTarget(plan);
   const endpoint = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL?.trim();
   const publicKey = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY?.trim();
+  const healthUrl = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_HEALTH_URL?.trim();
 
   if (!target) {
     return missingActiveTargetFinding(plan, step);
   }
 
-  if (endpoint && publicKey) {
+  const handoff = {
+    schemaVersion: "security-preflight.external-handoff.v1",
+    generatedAt: new Date().toISOString(),
+    scanRunId: plan.scanRunId,
+    targetUrl: target.toString(),
+    allowedHosts: plan.policy.allowedDastHosts,
+    expectedChecks: ["dns:records", "tls:certificate", "tls:configuration", "http:security-headers", "nuclei:safe", "zap:baseline"],
+    signatureRequired: process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_REQUIRE_SIGNATURE !== "false",
+    noSourceUpload: true
+  };
+  await writeFile(supplementalEvidencePath(step, "job"), `${redactSecrets(JSON.stringify(handoff, null, 2))}\n`, "utf8");
+
+  if (!endpoint || !publicKey) {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "External scanner VPS is not configured",
+        description:
+          "SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL and SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY are required for signed external scanner result exchange.",
+        endpoint: target.toString(),
+        recommendation: "Provision the hardened scanner VPS, configure signed result return, and keep credentials outside Git.",
+        evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), configuredPublicKey: Boolean(publicKey) }))
+      })
+    ];
+  }
+
+  if (!healthUrl) {
+    return [];
+  }
+
+  const health = await fetchTarget(healthUrl, { method: "GET", timeoutMs: 8_000 });
+  await writeFile(supplementalEvidencePath(step, "response"), `${redactSecrets(JSON.stringify(health, null, 2))}\n`, "utf8");
+
+  if (health.ok && health.status && health.status >= 200 && health.status < 300) {
     return [];
   }
 
   return [
     createExecutionFinding(plan, step, {
       severity: "high",
-      title: "External scanner VPS is not configured",
-      description: "SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL and SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY are required for signed external scanner result exchange.",
-      endpoint: target.toString(),
-      recommendation: "Provision the hardened scanner VPS, configure signed result return, and keep credentials outside Git.",
-      evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), configuredPublicKey: Boolean(publicKey) }))
+      title: "External scanner VPS health check failed",
+      description: health.error ?? `External scanner health endpoint returned HTTP ${health.status ?? "unknown"}.`,
+      endpoint: healthUrl,
+      recommendation: "Verify the hardened scanner VPS health endpoint, network route, and authentication boundary before using remote scans.",
+      evidence: JSON.stringify(redactObject(health))
     })
   ];
 }
@@ -2418,8 +2691,9 @@ async function checkDefectDojoReadiness(plan: ScanExecutionPlan, step: ScanExecu
   const baseUrl = process.env.SECURITY_PREFLIGHT_DEFECTDOJO_URL?.trim();
   const tokenRef = process.env.SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF?.trim();
   const product = process.env.SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT?.trim();
+  const token = await resolveSecretReference(tokenRef);
 
-  if (baseUrl && tokenRef && product) {
+  if (baseUrl && token.ok && product) {
     return [];
   }
 
@@ -2427,9 +2701,18 @@ async function checkDefectDojoReadiness(plan: ScanExecutionPlan, step: ScanExecu
     createExecutionFinding(plan, step, {
       severity: "medium",
       title: "DefectDojo export is not configured",
-      description: "DefectDojo URL, token reference, and product mapping are required before findings can be centrally triaged.",
-      recommendation: "Configure SECURITY_PREFLIGHT_DEFECTDOJO_URL, SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF, and SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT in the deployment secret store.",
-      evidence: JSON.stringify(redactObject({ configuredBaseUrl: Boolean(baseUrl), configuredTokenRef: Boolean(tokenRef), configuredProduct: Boolean(product) }))
+      description: "DefectDojo URL, resolvable token reference, and product mapping are required before findings can be centrally triaged.",
+      recommendation:
+        "Configure SECURITY_PREFLIGHT_DEFECTDOJO_URL, SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF, and SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT in the deployment secret store.",
+      evidence: JSON.stringify(
+        redactObject({
+          configuredBaseUrl: Boolean(baseUrl),
+          configuredTokenRef: Boolean(tokenRef),
+          tokenResolved: token.ok,
+          tokenSource: token.source,
+          configuredProduct: Boolean(product)
+        })
+      )
     })
   ];
 }
@@ -2438,34 +2721,94 @@ async function checkGreenboneReadiness(plan: ScanExecutionPlan, step: ScanExecut
   const target = activeTarget(plan);
   const endpoint = process.env.SECURITY_PREFLIGHT_GREENBONE_URL?.trim();
   const credentialRef = process.env.SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF?.trim();
+  const reportPath = process.env.SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH?.trim();
+  const credential = await resolveSecretReference(credentialRef);
 
   if (!target) {
     return missingActiveTargetFinding(plan, step);
   }
 
-  if (endpoint && credentialRef) {
-    return [];
+  if (reportPath) {
+    try {
+      const report = await readFile(reportPath, "utf8");
+      await writeFile(supplementalEvidencePath(step, "xml"), report, "utf8");
+      return parseGreenboneReportFindings(plan, step, report);
+    } catch (error) {
+      return [
+        createExecutionFinding(plan, step, {
+          severity: "high",
+          title: "Greenbone/OpenVAS report evidence is not readable",
+          description: error instanceof Error ? error.message : String(error),
+          endpoint: target.toString(),
+          recommendation: "Attach a readable Greenbone XML report through SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH.",
+          evidence: JSON.stringify(redactObject({ reportPath }))
+        })
+      ];
+    }
+  }
+
+  if (endpoint && credential.ok) {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "medium",
+        title: "Greenbone/OpenVAS scan result is not attached",
+        description: "Greenbone connectivity is configured, but no XML report was attached for normalized finding import.",
+        endpoint: target.toString(),
+        recommendation:
+          "Run the approved Greenbone/OpenVAS task from the scanner network and set SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH to the exported XML report before relying on enterprise assurance evidence.",
+        evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), credentialResolved: credential.ok, credentialSource: credential.source }))
+      })
+    ];
   }
 
   return [
     createExecutionFinding(plan, step, {
       severity: "high",
       title: "Greenbone/OpenVAS integration is not configured",
-      description: "Greenbone/OpenVAS requires a configured manager endpoint and credential reference before network vulnerability evidence can be imported.",
+      description: "Greenbone/OpenVAS requires a configured manager endpoint, resolvable credential reference, and imported report evidence.",
       endpoint: target.toString(),
-      recommendation: "Configure SECURITY_PREFLIGHT_GREENBONE_URL and SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF, then run the enterprise assurance profile from an approved scanner network.",
-      evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), configuredCredentialRef: Boolean(credentialRef) }))
+      recommendation:
+        "Configure SECURITY_PREFLIGHT_GREENBONE_URL, SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF, and SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH, then run the enterprise assurance profile from an approved scanner network.",
+      evidence: JSON.stringify(
+        redactObject({
+          configuredEndpoint: Boolean(endpoint),
+          configuredCredentialRef: Boolean(credentialRef),
+          credentialResolved: credential.ok,
+          credentialSource: credential.source,
+          configuredReportPath: Boolean(reportPath)
+        })
+      )
     })
   ];
 }
 
 async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
   const contentPath = process.env.SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH?.trim();
+  const resultPath = process.env.SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH?.trim();
+  const profile = process.env.SECURITY_PREFLIGHT_OPENSCAP_PROFILE?.trim();
+  const evalEnabled = process.env.SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED === "true";
+
+  if (resultPath) {
+    try {
+      const report = await readFile(resultPath, "utf8");
+      await writeFile(supplementalEvidencePath(step, "xml"), report, "utf8");
+      return parseOpenScapResultFindings(plan, step, report);
+    } catch (error) {
+      return [
+        createExecutionFinding(plan, step, {
+          severity: "high",
+          title: "OpenSCAP result evidence is not readable",
+          description: error instanceof Error ? error.message : String(error),
+          recommendation: "Attach a readable OpenSCAP XCCDF result XML through SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH.",
+          evidence: JSON.stringify(redactObject({ resultPath }))
+        })
+      ];
+    }
+  }
 
   if (contentPath) {
     try {
       await stat(contentPath);
-      return [];
     } catch {
       return [
         createExecutionFinding(plan, step, {
@@ -2477,6 +2820,64 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
         })
       ];
     }
+
+    if (!evalEnabled || !profile) {
+      return [
+        createExecutionFinding(plan, step, {
+          severity: "medium",
+          title: "OpenSCAP evaluation evidence is not configured",
+          description: "OpenSCAP content is mounted, but no result XML is attached and local oscap evaluation is not fully enabled.",
+          recommendation:
+            "Set SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH to an approved result XML, or set SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true and SECURITY_PREFLIGHT_OPENSCAP_PROFILE to run oscap xccdf eval.",
+          evidence: JSON.stringify(redactObject({ contentPath, evalEnabled, configuredProfile: Boolean(profile) }))
+        })
+      ];
+    }
+
+    const xmlPath = supplementalEvidencePath(step, "xml");
+    const htmlPath = supplementalEvidencePath(step, "html");
+    const command = ["xccdf", "eval", "--profile", profile, "--results", xmlPath, "--report", htmlPath, contentPath];
+
+    try {
+      await execFileAsync("oscap", command, {
+        cwd: plan.project.path,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: step.timeoutSeconds * 1000
+      });
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException & { stdout?: string | Buffer; stderr?: string | Buffer; code?: string | number };
+      try {
+        const report = await readFile(xmlPath, "utf8");
+        const findings = parseOpenScapResultFindings(plan, step, report);
+        const executionFinding =
+          findings.length === 0 && String(nodeError.code) !== "2"
+            ? [
+                createExecutionFinding(plan, step, {
+                  severity: "high",
+                  title: "OpenSCAP evaluation failed",
+                  description: nodeError.message,
+                  recommendation: "Inspect OpenSCAP command evidence and fix content/profile compatibility.",
+                  evidence: [bufferToString(nodeError.stderr), bufferToString(nodeError.stdout)].filter(Boolean).join("\n")
+                })
+              ]
+            : [];
+        return [...findings, ...executionFinding];
+      } catch {
+        return [
+          createExecutionFinding(plan, step, {
+            severity: "high",
+            title: "OpenSCAP evaluation failed before writing result XML",
+            description: nodeError.message,
+            recommendation: "Inspect OpenSCAP installation, content path, profile id, and runtime permissions.",
+            evidence: JSON.stringify(redactObject({ command, stderr: bufferToString(nodeError.stderr), stdout: bufferToString(nodeError.stdout) }))
+          })
+        ];
+      }
+    }
+
+    const report = await readFile(xmlPath, "utf8");
+    return parseOpenScapResultFindings(plan, step, report);
   }
 
   return [
@@ -2484,7 +2885,8 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
       severity: "medium",
       title: "OpenSCAP content is not configured",
       description: "OpenSCAP needs approved SCAP content before compliance evidence can be generated.",
-      recommendation: "Configure SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH with approved SCAP content for the target environment."
+      recommendation:
+        "Configure SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH plus SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH, or enable local oscap evaluation with SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true."
     })
   ];
 }
@@ -2887,6 +3289,206 @@ function detectWafSignals(probes: HttpProbeResult[]): string[] {
   return signals.filter((signal) => haystack.includes(signal));
 }
 
+export interface SecretReferenceResolution {
+  ok: boolean;
+  value: string;
+  source: "env" | "file" | "unresolved";
+  error: string | null;
+}
+
+export async function resolveSecretReference(reference: string | null | undefined): Promise<SecretReferenceResolution> {
+  const raw = reference?.trim();
+
+  if (!raw) {
+    return { ok: false, value: "", source: "unresolved", error: "Secret reference is not configured." };
+  }
+
+  if (raw.startsWith("env:")) {
+    const envName = raw.slice("env:".length).trim();
+    const value = process.env[envName]?.trim();
+    return value
+      ? { ok: true, value, source: "env", error: null }
+      : { ok: false, value: "", source: "env", error: `Environment variable '${envName}' is not set.` };
+  }
+
+  if (raw.startsWith("file:")) {
+    const filePath = raw.slice("file:".length).trim();
+    try {
+      return { ok: true, value: (await readFile(filePath, "utf8")).trim(), source: "file", error: null };
+    } catch (error) {
+      return { ok: false, value: "", source: "file", error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  if (path.isAbsolute(raw)) {
+    try {
+      return { ok: true, value: (await readFile(raw, "utf8")).trim(), source: "file", error: null };
+    } catch (error) {
+      return { ok: false, value: "", source: "file", error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  const value = process.env[raw]?.trim();
+  return value
+    ? { ok: true, value, source: "env", error: null }
+    : { ok: false, value: "", source: "unresolved", error: `Secret reference '${raw}' did not resolve to env: or file: content.` };
+}
+
+function parseJson(value: string): unknown | null {
+  const trimmed = value.trim();
+
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function extractSignedPayload(document: unknown): Record<string, any> {
+  const root = asRecord(document);
+  const payload = root.payload ?? root.data ?? document;
+
+  if (typeof payload === "string") {
+    return asRecord(parseJson(payload));
+  }
+
+  return asRecord(payload);
+}
+
+function verifyRemotePayloadSignature(document: unknown, publicKey: string | undefined): { ok: boolean; error: string | null } {
+  const root = asRecord(document);
+  const payload = root.payload ?? root.data;
+  const signature = normalizeSignature(stringValue(root.signature) ?? stringValue(root.detachedSignature));
+
+  if (!publicKey) {
+    return { ok: false, error: "External scanner signature verification requires SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY." };
+  }
+
+  if (payload === undefined || !signature) {
+    return { ok: false, error: "External scanner response did not include a signed payload and detached signature." };
+  }
+
+  const signingInput = typeof payload === "string" ? payload : JSON.stringify(payload);
+  const publicKeyValue = publicKey.replaceAll("\\n", "\n");
+  const signatureBytes = Buffer.from(signature, "base64");
+
+  try {
+    const key = createPublicKey(publicKeyValue);
+    const verified = verifyDetachedSignature(null, Buffer.from(signingInput), key, signatureBytes);
+    if (verified) {
+      return { ok: true, error: null };
+    }
+  } catch {
+    // RSA/ECDSA keys need a digest-based verifier; fall through to SHA-256.
+  }
+
+  try {
+    const verifier = createVerify("sha256");
+    verifier.update(signingInput);
+    verifier.end();
+    return verifier.verify(publicKeyValue, signatureBytes)
+      ? { ok: true, error: null }
+      : { ok: false, error: "External scanner response signature could not be verified." };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function normalizeSignature(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("sha256=")) {
+    return value.slice("sha256=".length);
+  }
+
+  return value;
+}
+
+async function writeRemoteEvidenceFiles(step: ScanExecutionStep, payload: Record<string, any>): Promise<void> {
+  const evidence = payload.evidence ?? payload.generatedEvidence ?? payload.files;
+
+  if (Array.isArray(evidence)) {
+    for (const item of evidence) {
+      const record = asRecord(item);
+      const extension = stringValue(record.extension ?? record.kind ?? record.name)?.replace(/^\./, "");
+      const content = decodeEvidenceValue(record.content, stringValue(record.encoding));
+      const outputPath = extension ? step.evidencePaths.find((candidate) => candidate.endsWith(`.${extension}`)) : null;
+
+      if (outputPath && content !== null) {
+        await writeFile(outputPath, content, "utf8");
+      }
+    }
+    return;
+  }
+
+  const record = asRecord(evidence);
+  for (const [key, value] of Object.entries(record)) {
+    const extension = key.replace(/^\./, "");
+    const outputPath = step.evidencePaths.find((candidate) => candidate.endsWith(`.${extension}`));
+    const content = decodeEvidenceValue(value, stringValue(asRecord(value).encoding));
+
+    if (outputPath && content !== null) {
+      await writeFile(outputPath, content, "utf8");
+    }
+  }
+}
+
+function decodeEvidenceValue(value: unknown, encoding: string | null): string | null {
+  if (typeof value === "string") {
+    return encoding === "base64" ? Buffer.from(value, "base64").toString("utf8") : value;
+  }
+
+  const record = asRecord(value);
+  const content = stringValue(record.content ?? record.data);
+
+  if (!content) {
+    return null;
+  }
+
+  return stringValue(record.encoding) === "base64" || encoding === "base64" ? Buffer.from(content, "base64").toString("utf8") : content;
+}
+
+function xmlBlocks(source: string, tagName: string): string[] {
+  const expression = new RegExp(`<${tagName}\\b[^>]*>[\\s\\S]*?<\\/${tagName}>`, "gi");
+  return source.match(expression) ?? [];
+}
+
+function xmlTag(source: string, tagName: string): string | null {
+  const match = new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i").exec(source);
+  return match?.[1] ? decodeXml(match[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()) : null;
+}
+
+function xmlAttribute(source: string, attributeName: string): string | null {
+  const match = new RegExp(`\\b${attributeName}=(["'])(.*?)\\1`, "i").exec(source);
+  return match?.[2] ? decodeXml(match[2]) : null;
+}
+
+function decodeXml(value: string): string {
+  return value
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&quot;", "\"")
+    .replaceAll("&apos;", "'");
+}
+
+function greenboneSeverity(threat: string | null, score: number | null): Severity {
+  if (score !== null) {
+    if (score >= 9) return "critical";
+    if (score >= 7) return "high";
+    if (score >= 4) return "medium";
+    if (score > 0) return "low";
+  }
+
+  return normalizeSeverity(threat, "info");
+}
+
 async function writeStepEvidence(
   plan: ScanExecutionPlan,
   step: ScanExecutionStep,
@@ -2916,6 +3518,17 @@ export async function writeExecutionResultEvidence(result: ScanExecutionResult):
 
 function primaryEvidencePath(step: ScanExecutionStep): string {
   return step.evidencePaths[0] ?? path.join(process.cwd(), `${step.id}.json`);
+}
+
+function supplementalEvidencePath(step: ScanExecutionStep, suffix: string): string {
+  const expectedSuffix = `.${suffix}`;
+  const evidencePath = step.evidencePaths.find((candidate) => candidate.endsWith(expectedSuffix) || candidate.endsWith(`${expectedSuffix}.json`));
+
+  if (evidencePath) {
+    return evidencePath;
+  }
+
+  return path.join(path.dirname(primaryEvidencePath(step)), `${sanitizeFilePart(step.checkId)}.${suffix}`);
 }
 
 function stepResultEvidencePath(step: ScanExecutionStep): string {
@@ -2972,6 +3585,15 @@ function stringListValue(value: unknown): string | null {
   }
 
   return stringValue(value);
+}
+
+function stringArrayValue(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const values = value.map((item) => stringValue(item)).filter((item): item is string => item !== null);
+  return values.length > 0 ? values : null;
 }
 
 function numberValue(value: unknown): number | null {

@@ -485,6 +485,9 @@ describe("api server", () => {
     );
     await writeFile(path.join(evidenceRoot, "report.md"), "# Security Preflight Report\n\nNo findings.\n", "utf8");
     await writeFile(path.join(evidenceRoot, "central-result-envelope.json"), "{}\n", "utf8");
+    await writeFile(path.join(evidenceRoot, "defectdojo.sarif.json"), "{}\n", "utf8");
+    await writeFile(path.join(evidenceRoot, "central-telemetry-delivery.json"), "{}\n", "utf8");
+    await writeFile(path.join(evidenceRoot, "defectdojo-delivery.json"), "{}\n", "utf8");
     process.env.REPORTS_PATH = reportsPath;
 
     try {
@@ -513,7 +516,10 @@ describe("api server", () => {
               hasExecutionResult: true,
               hasJsonReport: true,
               hasMarkdownReport: true,
-              hasCentralEnvelope: true
+              hasCentralEnvelope: true,
+              hasSarifReport: true,
+              hasCentralTelemetryDelivery: true,
+              hasDefectDojoDelivery: true
             }
           }
         ]

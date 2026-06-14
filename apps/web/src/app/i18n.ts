@@ -134,7 +134,7 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "healthcare-reference",
       area: "Referenční zdravotnické kontroly",
       status: "Partial",
-      implemented: "Přísný profil, fail-closed evidence scannerů a redakce centrální obálky.",
+      implemented: "Přísný profil, fail-closed evidence scannerů, Greenbone/OpenSCAP import, DefectDojo SARIF a redakce centrální obálky.",
       gap: "Chybí katalog policy, retenční matice, ověření řízení přístupu a kontroly audit-logů.",
       priority: "P0"
     },
@@ -150,8 +150,8 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "reports",
       area: "Reporty a evidence",
       status: "Ready",
-      implemented: "Markdown, JSON, execution-result, centrální obálka, prohlížeč evidence a PDF/PPTX export.",
-      gap: "Doplnit SARIF/SBOM export a retenční řízení evidence.",
+      implemented: "Markdown, JSON, SARIF, execution-result, centrální obálka, delivery manifesty, prohlížeč evidence a PDF/PPTX export.",
+      gap: "Doplnit retenční řízení evidence.",
       priority: "P1"
     },
     {
@@ -166,8 +166,8 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "telemetry",
       area: "Centrální telemetrie",
       status: "Partial",
-      implemented: "OpenAPI ingest endpoint a redigovaná výsledková obálka.",
-      gap: "Chybí nakonfigurovaný vzdálený sink, podepisování, retry buffer a timeline doručení.",
+      implemented: "OpenAPI ingest endpoint, volitelný worker delivery, redigovaná výsledková obálka a manifesty doručení.",
+      gap: "Chybí retry buffer, centrální stavová timeline a produkční konfigurace sinku.",
       priority: "P1"
     },
     {
@@ -208,7 +208,7 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "healthcare-reference",
       area: "Healthcare reference checks",
       status: "Partial",
-      implemented: "Strict profile, fail-closed scanner evidence, central envelope redaction.",
+      implemented: "Strict profile, fail-closed scanner evidence, Greenbone/OpenSCAP import, DefectDojo SARIF, and central envelope redaction.",
       gap: "Needs policy catalog, retention matrix, access-control assertions, and audit-log review checks.",
       priority: "P0"
     },
@@ -224,8 +224,8 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "reports",
       area: "Reports and evidence",
       status: "Ready",
-      implemented: "Markdown, JSON, execution-result, central envelope, live evidence browser, and PDF/PPTX export workflow.",
-      gap: "Add SARIF/SBOM export view and evidence retention controls.",
+      implemented: "Markdown, JSON, SARIF, execution-result, central envelope, delivery manifests, evidence browser, and PDF/PPTX export workflow.",
+      gap: "Add evidence retention controls.",
       priority: "P1"
     },
     {
@@ -240,8 +240,8 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       id: "telemetry",
       area: "Central telemetry",
       status: "Partial",
-      implemented: "OpenAPI ingest endpoint and redacted result envelope contract.",
-      gap: "No configured remote sink, signing, retry buffer, or delivery status timeline.",
+      implemented: "OpenAPI ingest endpoint, optional worker delivery, redacted result envelope, and delivery manifests.",
+      gap: "Needs retry buffer, central delivery timeline, and production sink configuration.",
       priority: "P1"
     },
     {
@@ -385,7 +385,7 @@ export const uiText = {
       },
       "enterprise-assurance": {
         name: "Enterprise assurance",
-        description: "Profil pro zdravotnické evidence pipeline s Greenbone/OpenVAS, OpenSCAP, DefectDojo exportem a lokální SBOM/IaC evidencí."
+        description: "Profil pro zdravotnické evidence pipeline s Greenbone/OpenVAS importem, OpenSCAP importem/evaluací, DefectDojo SARIF exportem a lokální SBOM/IaC evidencí."
       },
       "container-security": {
         name: "Bezpečnost kontejnerů",
@@ -522,15 +522,15 @@ export const uiText = {
     },
     telemetry: {
       title: "Telemetrie a centrální ukládání",
-      body: "API nabízí v1 kontrakt centrálního ingestu a worker zapisuje redigovanou výsledkovou obálku. Pro citlivé zdravotnické projekty je to správný směr, ale produkční použití ještě vyžaduje stav doručení, podepisování, retenční politiku a autentizovaný centrální příjem.",
-      integrationPartial: "integrace částečná",
+      body: "API nabízí v1 kontrakt centrálního ingestu, worker zapisuje redigovanou výsledkovou obálku a při explicitním zapnutí doručuje výsledky do centrálního sinku nebo DefectDojo.",
+      integrationPartial: "doručení volitelné",
       centralEnvelope: "Centrální výsledková obálka",
       centralEnvelopeDescription: "Aktuální kontrakt a chybějící produkční kontroly",
       endpointImplemented: "contract-first ingest",
       redactedEnvelope: "Redigovaná worker obálka",
       noRawSource: "bez uploadu raw zdrojů",
-      deliveryStatus: "Stav doručení a retry fronta",
-      centralEvidenceNeeded: "vyžadováno pro centrální evidenci",
+      deliveryStatus: "Manifest doručení",
+      centralEvidenceNeeded: "auditováno v report evidence",
       authenticatedIntake: "Autentizovaný centrální příjem",
       protectedBoundary: "chráněná API hranice dostupná",
       authConfigIncomplete: "konfigurace autentizace není kompletní",
@@ -834,7 +834,7 @@ export const uiText = {
       },
       "enterprise-assurance": {
         name: "Enterprise assurance",
-        description: "Healthcare evidence pipeline profile with Greenbone/OpenVAS, OpenSCAP, DefectDojo export, and local SBOM/IaC evidence."
+        description: "Healthcare evidence pipeline profile with Greenbone/OpenVAS import, OpenSCAP import/evaluation, DefectDojo SARIF export, and local SBOM/IaC evidence."
       },
       "container-security": {
         name: "Container security",
@@ -971,15 +971,15 @@ export const uiText = {
     },
     telemetry: {
       title: "Telemetry and central storage",
-      body: "The API exposes a v1 central ingest contract and the worker writes a redacted result envelope. This is the right direction for sensitive healthcare projects, but production use still needs delivery status, signing, retention policy, and authenticated central intake.",
-      integrationPartial: "integration partial",
+      body: "The API exposes a v1 central ingest contract, the worker writes a redacted result envelope, and explicit opt-in can deliver results to a central sink or DefectDojo.",
+      integrationPartial: "delivery optional",
       centralEnvelope: "Central result envelope",
       centralEnvelopeDescription: "Current contract and missing production controls",
       endpointImplemented: "contract-first ingest",
       redactedEnvelope: "Redacted worker envelope",
       noRawSource: "no raw source upload",
-      deliveryStatus: "Delivery status and retry queue",
-      centralEvidenceNeeded: "needed for central evidence",
+      deliveryStatus: "Delivery manifest",
+      centralEvidenceNeeded: "audited in report evidence",
       authenticatedIntake: "Authenticated central intake",
       protectedBoundary: "protected API boundary available",
       authConfigIncomplete: "authentication configuration incomplete",
@@ -1134,7 +1134,7 @@ export const uiText = {
       modal: "Modal",
       fullscreen: "Fullscreen",
       currentAssessment: "Current assessment",
-      body: "SecurityPreflight is beyond a static scaffold: scan execution, run log, evidence browsing, PDF/PPTX exports and the AKB bridge are wired. Reference-grade healthcare readiness still needs findings triage, server-side live progress streaming, authenticated shared deployment and central delivery guarantees.",
+      body: "SecurityPreflight is beyond a static scaffold: scan execution, run log, evidence browsing, PDF/PPTX/SARIF exports, central delivery manifests and the AKB bridge are wired. Reference-grade healthcare operations still need findings triage, server-side live progress streaming, retention controls and production sink configuration.",
       p0Blockers: "P0 blockers"
     },
     command: {

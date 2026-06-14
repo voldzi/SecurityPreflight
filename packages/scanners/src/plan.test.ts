@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { defaultScanProfiles } from "@security-preflight/core";
@@ -14,6 +15,15 @@ const profile = (id: string) => {
 
   return match;
 };
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
 
 describe("scan execution planner", () => {
   it("plans a fast local profile with read-only mounts and disabled network", () => {
@@ -273,6 +283,184 @@ describe("scan execution planner", () => {
       expect(result.findings[0]?.severity).toBe("high");
       expect(result.findings[0]?.endpoint).toBe("http://localhost:3000/admin");
     } finally {
+      await rm(reportsRoot, { recursive: true, force: true });
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("dispatches safe web scanner commands to a remote runner and parses returned evidence", async () => {
+    const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
+    const projectRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-project-"));
+    const previousUrl = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL;
+    const previousSignatureMode = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_REQUIRE_SIGNATURE;
+    const server = http.createServer((request, response) => {
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        const job = JSON.parse(body) as { schemaVersion: string; target: { url: string } };
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            schemaVersion: "security-preflight.external-command-result.v1",
+            result: {
+              exitCode: 0,
+              command: ["nuclei", "-u", job.target.url],
+              stdout: "ok",
+              stderr: ""
+            },
+            evidence: {
+              jsonl:
+                JSON.stringify({
+                  "template-id": "exposed-panel",
+                  "matched-at": `${job.target.url.replace(/\/$/, "")}/admin`,
+                  info: { name: "Exposed admin panel", severity: "high", description: "Admin panel was reachable", tags: ["exposure"] }
+                }) + "\n"
+            }
+          })
+        );
+      });
+    });
+
+    try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Test HTTP server did not bind to a TCP port");
+      }
+      process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL = `http://127.0.0.1:${address.port}/jobs`;
+      process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_REQUIRE_SIGNATURE = "false";
+      const plan = buildScanExecutionPlan({
+        scanRunId: "scan_remote_nuclei",
+        project: {
+          id: "project_1",
+          name: "Remote",
+          path: projectRoot
+        },
+        profile: {
+          id: "remote-nuclei-test",
+          name: "remote-nuclei-test",
+          description: "Remote Nuclei runner test profile.",
+          checks: ["nuclei:safe"],
+          failThreshold: "medium",
+          allowActiveDast: true,
+          allowProductionTargets: false,
+          timeoutSeconds: 60
+        },
+        dast: {
+          allowActiveScan: true,
+          targetUrl: "http://localhost:3000",
+          allowedHosts: ["localhost"]
+        },
+        reportsRoot
+      });
+      const result = await executeScanPlan(plan, { runExternalCommands: true, externalRunner: "remote" });
+
+      expect(result.status).toBe("completed");
+      expect(result.findings).toHaveLength(1);
+      expect(result.findings[0]?.tool).toBe("nuclei");
+      expect(result.findings[0]?.endpoint).toBe("http://localhost:3000/admin");
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL", previousUrl);
+      restoreEnv("SECURITY_PREFLIGHT_EXTERNAL_SCANNER_REQUIRE_SIGNATURE", previousSignatureMode);
+      server.close();
+      await rm(reportsRoot, { recursive: true, force: true });
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("imports Greenbone/OpenVAS XML report findings", async () => {
+    const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
+    const projectRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-project-"));
+    const reportPath = path.join(reportsRoot, "greenbone.xml");
+    const previousReportPath = process.env.SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH;
+
+    try {
+      await writeFile(
+        reportPath,
+        `<report><results><result><host>127.0.0.1</host><port>443/tcp</port><threat>High</threat><severity>7.5</severity><nvt oid="1.2.3"><name>TLS issue</name></nvt><description>Weak TLS evidence</description><solution>Harden TLS</solution></result></results></report>`,
+        "utf8"
+      );
+      process.env.SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH = reportPath;
+      const plan = buildScanExecutionPlan({
+        scanRunId: "scan_greenbone_import",
+        project: {
+          id: "project_1",
+          name: "Greenbone",
+          path: projectRoot
+        },
+        profile: {
+          id: "greenbone-test",
+          name: "greenbone-test",
+          description: "Greenbone import test profile.",
+          checks: ["greenbone:openvas"],
+          failThreshold: "medium",
+          allowActiveDast: true,
+          allowProductionTargets: false,
+          timeoutSeconds: 60
+        },
+        dast: {
+          allowActiveScan: true,
+          targetUrl: "https://localhost",
+          allowedHosts: ["localhost"]
+        },
+        reportsRoot
+      });
+      const result = await executeScanPlan(plan);
+
+      expect(result.findings).toHaveLength(1);
+      expect(result.findings[0]?.tool).toBe("greenbone");
+      expect(result.findings[0]?.severity).toBe("high");
+      expect(result.findings[0]?.title).toBe("TLS issue");
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH", previousReportPath);
+      await rm(reportsRoot, { recursive: true, force: true });
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("imports OpenSCAP XCCDF result findings", async () => {
+    const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
+    const projectRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-project-"));
+    const resultPath = path.join(reportsRoot, "openscap.xml");
+    const previousResultPath = process.env.SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH;
+
+    try {
+      await writeFile(
+        resultPath,
+        `<TestResult><rule-result idref="xccdf_org.example_rule_a" severity="high"><result>fail</result><title>Filesystem baseline</title><description>Baseline failed</description><fixtext>Apply hardening</fixtext></rule-result></TestResult>`,
+        "utf8"
+      );
+      process.env.SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH = resultPath;
+      const plan = buildScanExecutionPlan({
+        scanRunId: "scan_openscap_import",
+        project: {
+          id: "project_1",
+          name: "OpenSCAP",
+          path: projectRoot
+        },
+        profile: {
+          id: "openscap-test",
+          name: "openscap-test",
+          description: "OpenSCAP import test profile.",
+          checks: ["openscap:system"],
+          failThreshold: "medium",
+          allowActiveDast: false,
+          allowProductionTargets: false,
+          timeoutSeconds: 60
+        },
+        reportsRoot
+      });
+      const result = await executeScanPlan(plan);
+
+      expect(result.findings).toHaveLength(1);
+      expect(result.findings[0]?.tool).toBe("openscap");
+      expect(result.findings[0]?.severity).toBe("high");
+      expect(result.findings[0]?.title).toBe("Filesystem baseline");
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH", previousResultPath);
       await rm(reportsRoot, { recursive: true, force: true });
       await rm(projectRoot, { recursive: true, force: true });
     }

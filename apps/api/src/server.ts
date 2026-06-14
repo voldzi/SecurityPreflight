@@ -65,6 +65,9 @@ interface ScanRunSummaryDto {
     hasJsonReport: boolean;
     hasMarkdownReport: boolean;
     hasCentralEnvelope: boolean;
+    hasSarifReport: boolean;
+    hasCentralTelemetryDelivery: boolean;
+    hasDefectDojoDelivery: boolean;
   };
 }
 
@@ -895,7 +898,10 @@ async function readScanRunSummary(scanRunId: string): Promise<ScanRunSummaryDto 
       hasExecutionResult: files.includes("execution-result.json"),
       hasJsonReport: files.includes("report.json"),
       hasMarkdownReport: files.includes("report.md"),
-      hasCentralEnvelope: files.includes("central-result-envelope.json")
+      hasCentralEnvelope: files.includes("central-result-envelope.json"),
+      hasSarifReport: files.includes("defectdojo.sarif.json"),
+      hasCentralTelemetryDelivery: files.includes("central-telemetry-delivery.json"),
+      hasDefectDojoDelivery: files.includes("defectdojo-delivery.json")
     }
   };
 }

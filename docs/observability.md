@@ -42,6 +42,12 @@ envelope for completed scan jobs. The envelope is written next to local reports
 as `central-result-envelope.json` and can be accepted by
 `POST /api/v1/results/ingest` for central evidence storage.
 
+When delivery is explicitly enabled, the worker writes
+`central-telemetry-delivery.json` with the central ingest status and
+`defectdojo-delivery.json` with the DefectDojo SARIF import status. These files
+record endpoint, HTTP status, generated timestamp, and redacted response
+metadata only.
+
 Result telemetry is evidence exchange, not behavioral tracking. It must not
 include secrets, production `.env` values, private keys, request payloads, or
 raw scanner output.

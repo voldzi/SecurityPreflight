@@ -59,7 +59,7 @@ flowchart LR
 - `packages/scanners`: adapters and parsers for Gitleaks, Semgrep, Trivy,
   Syft, Grype, OSV Scanner, Checkov, Redocly OpenAPI validation,
   documentation compliance, and controlled ZAP baseline evidence.
-- `packages/report`: Markdown, JSON, and later SARIF/SBOM report generation.
+- `packages/report`: Markdown, JSON, SARIF, central envelope, and report generation.
   The API additionally builds STRATOS-style PDF and PPTX exports from redacted
   report evidence.
 - `packages/config`: global and per-project configuration schemas.
@@ -127,13 +127,13 @@ flowchart LR
   answers. Browser clients never call internal AKB services directly, and
   SecurityPreflight does not store prompts, answers, chunks, embeddings, or
   document text outside AKB.
-- Assurance integrations: SecurityPreflight exposes readiness checks for
-  DefectDojo, Greenbone/OpenVAS, OpenSCAP, and a hardened external scanner VPS.
-  These checks verify configured endpoints, content paths, and secret
-  references without storing credentials in Git or reports.
-- Future integrations: SARIF upload, richer DefectDojo import automation,
-  signed external-runner delivery status, and macOS Keychain support through a
-  host-side CLI helper.
+- Assurance integrations: SecurityPreflight writes SARIF for DefectDojo import,
+  can post SARIF to DefectDojo when explicitly enabled, imports
+  Greenbone/OpenVAS and OpenSCAP evidence, and can dispatch supported web
+  scanner commands to a hardened external scanner VPS.
+- Future integrations: richer DefectDojo product/test synchronization,
+  Greenbone task orchestration, and macOS Keychain support through a host-side
+  CLI helper.
 
 ## Authentication and Authorization
 

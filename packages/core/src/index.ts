@@ -255,7 +255,7 @@ export const requiredScannerTools: ToolRequirement[] = [
     command: "gvm-cli",
     args: ["--version"],
     checks: ["greenbone:openvas"],
-    purpose: "Integration point for authenticated Greenbone/OpenVAS network vulnerability evidence."
+    purpose: "Greenbone/OpenVAS report import and authenticated network vulnerability evidence support."
   },
   {
     id: "openscap",
@@ -265,7 +265,7 @@ export const requiredScannerTools: ToolRequirement[] = [
     command: "oscap",
     args: ["--version"],
     checks: ["openscap:system"],
-    purpose: "Compliance evidence for host or image baselines when a hardened scanner environment provides SCAP content."
+    purpose: "OpenSCAP XCCDF result import and optional local compliance evaluation for approved SCAP content."
   }
 ];
 
@@ -379,7 +379,7 @@ export const defaultScanProfiles: ScanProfile[] = [
     id: "enterprise-assurance",
     name: "enterprise-assurance",
     description:
-      "Enterprise assurance profile for healthcare evidence pipelines that combine local checks with Greenbone/OpenVAS, OpenSCAP, and DefectDojo export readiness.",
+      "Enterprise assurance profile for healthcare evidence pipelines that combine local checks with Greenbone/OpenVAS import, OpenSCAP import/evaluation, and DefectDojo SARIF export.",
     checks: [
       "greenbone:openvas",
       "openscap:system",

@@ -120,8 +120,9 @@ Web/API profiles provide bounded safe checks:
   documented `GET`/`HEAD` operations without path parameters.
 - `controlled-dast-local` adds OWASP ZAP baseline when the runner can execute
   ZAP.
-- `external-vps-safe` verifies the hardened external scanner handoff contract in
-  addition to safe perimeter checks.
+- `external-vps-safe` writes the hardened external scanner handoff contract and
+  can use `SCANNER_RUNNER_MODE=remote` to dispatch ZAP/Nuclei web-target
+  commands to an external VPS without uploading source code.
 
 The profiles do not perform brute force, credential attacks, denial-of-service,
 exploit chaining, destructive fuzzing, or third-party scanning.
@@ -137,10 +138,29 @@ read-only at `PROJECTS_ROOT_CONTAINER`. The API uses that root to validate
 registered project paths and detect metadata; the worker maps queued host paths
 under that root into the container path before reading project files.
 
-Completed worker jobs write `central-result-envelope.json` next to `report.json`
-and `report.md`. A central storage service can implement or call
-`POST /api/v1/results/ingest` using the OpenAPI schema. Do not send raw scanner
-outputs or source code through this endpoint.
+Completed worker jobs write `central-result-envelope.json`,
+`defectdojo.sarif.json`, `report.json`, and `report.md`. A central storage
+service can implement or call `POST /api/v1/results/ingest` using the OpenAPI
+schema. Set `SECURITY_PREFLIGHT_RESULT_SINK_ENABLED=true` and
+`SECURITY_PREFLIGHT_RESULT_SINK_URL` to have the worker post the redacted
+central envelope after each scan. Do not send raw scanner outputs or source
+code through this endpoint.
+
+DefectDojo export uses the documented SARIF import path with
+`scan_type=SARIF`. Set `SECURITY_PREFLIGHT_DEFECTDOJO_EXPORT_ENABLED=true`,
+`SECURITY_PREFLIGHT_DEFECTDOJO_URL`,
+`SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF`, and
+`SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT` to upload the generated SARIF file to
+`/api/v2/import-scan/`. Set `SECURITY_PREFLIGHT_DEFECTDOJO_REIMPORT=true` for
+`/api/v2/reimport-scan/`.
+
+Greenbone/OpenVAS evidence is imported from an approved XML or JSON report via
+`SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH`. SecurityPreflight does not store
+Greenbone credentials in reports. OpenSCAP evidence can be imported from
+`SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH`; alternatively, set
+`SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true`,
+`SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH`, and
+`SECURITY_PREFLIGHT_OPENSCAP_PROFILE` to run `oscap xccdf eval` in the worker.
 
 The API can export completed scan evidence as STRATOS-style PDF or PPTX
 payloads through `POST /api/v1/reports/export`. Exports are generated from
@@ -309,7 +329,7 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | STRATOS/SecurityPreflight operator/admin roles | Comma-separated roles allowed to mutate state, queue scans, export reports, and ask AKB |
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |
 | `SCANNER_RUNNER_ENABLED` | no | `true` | Enables worker execution of planned external scanner commands |
-| `SCANNER_RUNNER_MODE` | no | `direct` | `direct` runs scanners inside the worker; `docker` runs them through Docker with the scanner-toolbox image |
+| `SCANNER_RUNNER_MODE` | no | `direct` | `direct` runs scanners inside the worker; `docker` runs them through Docker with the scanner-toolbox image; `remote` dispatches supported web scanners to the external scanner API |
 | `SCANNER_TOOLBOX_IMAGE` | no | `security-preflight/scanner-toolbox:local` | Image used by the Docker scanner runner |
 | `SECURITY_PREFLIGHT_DOCKER_NETWORK_NAME` | no | `security-preflight_default` | Explicit Docker Compose network name |
 | `SECURITY_PREFLIGHT_DOCKER_SUBNET` | no | `10.246.250.0/24` | Explicit Docker IPAM subnet; must not use LAN ranges such as `192.168.x.x` |
@@ -318,13 +338,30 @@ table and must stay in sync.
 | `ALLOW_ACTIVE_DAST` | no | `false` | Enables controlled active DAST profiles |
 | `DAST_ALLOWED_HOSTS` | no | `localhost,127.0.0.1,host.docker.internal` | Comma-separated active DAST allowlist |
 | `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL` | no | unset | Hardened external scanner VPS API endpoint for signed result exchange |
+| `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_HEALTH_URL` | no | unset | Optional external scanner health endpoint checked by `external-runner:vps` |
+| `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_TOKEN_REF` | no | unset | Optional `env:NAME`, `file:/path`, or env-name reference used as bearer token for remote scanner dispatch |
 | `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY` | no | unset | Public key used to verify external scanner result signatures |
-| `SECURITY_PREFLIGHT_DEFECTDOJO_URL` | no | unset | DefectDojo base URL for future/import-controlled central triage integration |
+| `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_REQUIRE_SIGNATURE` | no | `true` | Requires remote scanner responses to include a detached signature over the returned payload |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_URL` | no | unset | DefectDojo base URL for SARIF import |
 | `SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF` | no | unset | Secret-store reference for the DefectDojo API token; never commit the token |
 | `SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT` | no | unset | DefectDojo product mapping for imported findings |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_EXPORT_ENABLED` | no | `false` | Enables worker upload of `defectdojo.sarif.json` to DefectDojo |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_EXPORT_REQUIRED` | no | `false` | Fails the worker job if DefectDojo upload fails |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_REIMPORT` | no | `false` | Uses `/api/v2/reimport-scan/` instead of `/api/v2/import-scan/` |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT_TYPE` | no | `STRATOS` | Product type name for DefectDojo auto-created context |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_ENGAGEMENT` | no | generated | Engagement name for DefectDojo import |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_AUTO_CREATE_CONTEXT` | no | `true` | Allows DefectDojo to create product type, product, and engagement context |
 | `SECURITY_PREFLIGHT_GREENBONE_URL` | no | unset | Greenbone/OpenVAS manager endpoint for enterprise assurance evidence |
 | `SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF` | no | unset | Secret-store reference for Greenbone credentials; never commit credentials |
-| `SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH` | no | unset | Mounted path to approved SCAP content for OpenSCAP readiness checks |
+| `SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH` | no | unset | Approved Greenbone/OpenVAS XML or JSON report to import into normalized findings |
+| `SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH` | no | unset | Mounted path to approved SCAP content for optional local OpenSCAP evaluation |
+| `SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH` | no | unset | Approved OpenSCAP XCCDF result XML to import into normalized findings |
+| `SECURITY_PREFLIGHT_OPENSCAP_PROFILE` | no | unset | OpenSCAP profile id used when local evaluation is enabled |
+| `SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED` | no | `false` | Enables worker execution of `oscap xccdf eval`; otherwise import a result XML |
+| `SECURITY_PREFLIGHT_RESULT_SINK_ENABLED` | no | `false` | Enables worker delivery of redacted `central-result-envelope.json` |
+| `SECURITY_PREFLIGHT_RESULT_SINK_URL` | no | unset | Central result ingest URL, usually `/api/v1/results/ingest` on the central service |
+| `SECURITY_PREFLIGHT_RESULT_SINK_TOKEN_REF` | no | unset | Optional `env:NAME`, `file:/path`, or env-name bearer token reference for central delivery |
+| `SECURITY_PREFLIGHT_RESULT_SINK_REQUIRED` | no | `false` | Fails the worker job if central result delivery fails |
 | `SECURITY_PREFLIGHT_AKB_RAG_BASE_URL` | no | unset | AKB RAG API base URL, normally ending in `/api/v1` |
 | `SECURITY_PREFLIGHT_AKB_PUBLIC_BASE_URL` | no | `https://stratos.zeleznalady.cz/akb` | Human-facing AKB URL shown in UI status |
 | `SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN` | no | unset | Compatibility bearer token for AKB when OIDC is unavailable; never commit |
@@ -352,10 +389,11 @@ table and must stay in sync.
 - Optional scanner network access for vulnerability database updates.
 - Optional controlled DAST target on localhost or allowlisted staging hosts.
 - Optional hardened external scanner VPS for internet vantage-point checks. It
-  must return signed, redacted result envelopes; raw source code and secrets stay
-  out of the external scanner.
-- Optional DefectDojo instance for centralized finding triage. Production tokens
-  must live in a secret store and be referenced by name only.
+  receives signed-job contracts or supported web scanner commands only; raw
+  source code and secrets stay out of the external scanner.
+- Optional DefectDojo instance for centralized finding triage through SARIF
+  import. Production tokens must live in a secret store and be referenced by
+  name only.
 - Optional AKB RAG service for STRATOS document-grounded AI. Production should
   use OIDC client credentials or a controlled backend token, never browser-side
   direct AKB calls.

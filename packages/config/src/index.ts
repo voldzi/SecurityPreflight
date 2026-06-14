@@ -57,26 +57,39 @@ export const globalConfigSchema = z.object({
       enabled: z.boolean().default(false),
       baseUrl: z.string().default(""),
       apiTokenRef: z.string().default(""),
-      product: z.string().default("")
+      product: z.string().default(""),
+      productType: z.string().default("STRATOS"),
+      engagement: z.string().default(""),
+      exportEnabled: z.boolean().default(false),
+      exportRequired: z.boolean().default(false),
+      reimport: z.boolean().default(false),
+      autoCreateContext: z.boolean().default(true)
     })
     .default({}),
   greenbone: z
     .object({
       enabled: z.boolean().default(false),
       baseUrl: z.string().default(""),
-      credentialRef: z.string().default("")
+      credentialRef: z.string().default(""),
+      reportPath: z.string().default("")
     })
     .default({}),
   externalScanner: z
     .object({
       enabled: z.boolean().default(false),
       baseUrl: z.string().default(""),
-      publicKey: z.string().default("")
+      healthUrl: z.string().default(""),
+      tokenRef: z.string().default(""),
+      publicKey: z.string().default(""),
+      requireSignature: z.boolean().default(true)
     })
     .default({}),
   openscap: z
     .object({
-      contentPath: z.string().default("")
+      contentPath: z.string().default(""),
+      resultsPath: z.string().default(""),
+      profile: z.string().default(""),
+      evalEnabled: z.boolean().default(false)
     })
     .default({}),
   resultSinks: z
@@ -86,6 +99,7 @@ export const globalConfigSchema = z.object({
           enabled: z.boolean().default(false),
           endpoint: z.string().url().default("http://localhost:8781/api/v1/results/ingest"),
           apiTokenRef: z.string().default(""),
+          required: z.boolean().default(false),
           sendFindings: z.boolean().default(true),
           sendEvidenceMetadata: z.boolean().default(true)
         })

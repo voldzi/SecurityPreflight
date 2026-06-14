@@ -2110,7 +2110,10 @@
           "hasExecutionResult",
           "hasJsonReport",
           "hasMarkdownReport",
-          "hasCentralEnvelope"
+          "hasCentralEnvelope",
+          "hasSarifReport",
+          "hasCentralTelemetryDelivery",
+          "hasDefectDojoDelivery"
         ],
         "properties": {
           "root": {
@@ -2132,6 +2135,15 @@
             "type": "boolean"
           },
           "hasCentralEnvelope": {
+            "type": "boolean"
+          },
+          "hasSarifReport": {
+            "type": "boolean"
+          },
+          "hasCentralTelemetryDelivery": {
+            "type": "boolean"
+          },
+          "hasDefectDojoDelivery": {
             "type": "boolean"
           }
         }

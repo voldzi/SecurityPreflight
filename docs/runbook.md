@@ -86,6 +86,23 @@ Never configure SecurityPreflight Docker IPAM with `192.168.x.x` LAN ranges.
 - If an external scanner step is skipped, confirm `SCANNER_RUNNER_ENABLED` is
   not `false` and the scanner binary is present in the worker or selected
   scanner-toolbox image.
+- For remote scanner runs, confirm `SCANNER_RUNNER_MODE=remote`,
+  `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL`, and
+  `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY`. If signatures are enforced,
+  the remote response must include a detached signature over the payload.
+- For Greenbone/OpenVAS, attach the approved XML or JSON report through
+  `SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH`; endpoint credentials alone are
+  not enough to produce normalized vulnerability evidence.
+- For OpenSCAP, attach `SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH` or explicitly
+  enable local evaluation with `SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true`,
+  `SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH`, and
+  `SECURITY_PREFLIGHT_OPENSCAP_PROFILE`.
+- For DefectDojo, inspect `defectdojo.sarif.json` and
+  `defectdojo-delivery.json`. Upload requires
+  `SECURITY_PREFLIGHT_DEFECTDOJO_EXPORT_ENABLED=true` and a resolvable token
+  reference.
+- For central telemetry, inspect `central-result-envelope.json` and
+  `central-telemetry-delivery.json`.
 - Do not treat a skipped external scanner step as a production pass.
 
 ## High Latency

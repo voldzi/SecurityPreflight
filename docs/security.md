@@ -157,12 +157,16 @@ templates. The built-in endpoint probes use a fixed short path list, short
 timeouts, and GET/HEAD-style requests only. The `openapi-runtime-safe` profile
 adds bounded GET/HEAD probes for documented OpenAPI operations without path
 parameters. The `external-vps-safe` profile verifies readiness for a hardened
-external scanner that returns signed redacted result envelopes.
+external scanner and `SCANNER_RUNNER_MODE=remote` can dispatch supported
+web-target scanner commands, such as ZAP and Nuclei, without sending source
+code to the VPS.
 
-Greenbone/OpenVAS, OpenSCAP, and DefectDojo are handled as enterprise assurance
-integration points. SecurityPreflight records blocking readiness evidence when
-their endpoints, content paths, or secret references are not configured; actual
-production credentials must remain in a secret store outside Git and reports.
+Greenbone/OpenVAS and OpenSCAP are handled as enterprise assurance evidence
+imports. Greenbone findings are normalized from approved XML or JSON reports;
+OpenSCAP findings are normalized from XCCDF result XML or from an explicit
+local `oscap xccdf eval` run. DefectDojo export uses SARIF import and requires
+an explicit worker opt-in. Production credentials must remain in a secret store
+outside Git and reports.
 
 The tool must not implement or enable brute-force attacks, denial-of-service
 tests, exploit chaining, authentication bypass attempts, data exfiltration, or

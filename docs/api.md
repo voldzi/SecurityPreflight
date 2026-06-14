@@ -81,6 +81,11 @@ The API uses path versioning:
 | GET | `/api/v1/toolchain/requirements` | List scanner/evidence tools required for healthcare reference coverage |
 | POST | `/api/v1/results/ingest` | Accept a redacted result envelope for central storage |
 
+Scan run evidence manifests include booleans for `execution-result.json`,
+`report.json`, `report.md`, `central-result-envelope.json`,
+`defectdojo.sarif.json`, `central-telemetry-delivery.json`, and
+`defectdojo-delivery.json`.
+
 ## Error Responses
 
 All errors use the unified format:
