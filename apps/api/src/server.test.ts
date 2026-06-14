@@ -165,6 +165,132 @@ describe("api server", () => {
     expect(response.json().data.some((profile: { id: string }) => profile.id === "healthcare-reference")).toBe(true);
   });
 
+  it("registers, updates, lists, and deletes projects with stack detection", async () => {
+    const previousReportsPath = process.env.REPORTS_PATH;
+    const previousProjectsRoot = process.env.PROJECTS_ROOT_CONTAINER;
+    const reportsPath = await mkdtemp(path.join(tmpdir(), "security-preflight-projects-reports-"));
+    const projectsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-projects-root-"));
+    const projectPath = path.join(projectsRoot, "registered-app");
+
+    await mkdir(path.join(projectPath, ".git"), { recursive: true });
+    await writeFile(path.join(projectPath, "package.json"), "{\"name\":\"registered-app\"}\n", "utf8");
+    await writeFile(path.join(projectPath, "next.config.mjs"), "export default {};\n", "utf8");
+    await writeFile(path.join(projectPath, "Dockerfile"), "FROM node:26-bookworm-slim\n", "utf8");
+    await writeFile(path.join(projectPath, ".git", "HEAD"), "ref: refs/heads/main\n", "utf8");
+    await writeFile(
+      path.join(projectPath, ".git", "config"),
+      "[remote \"origin\"]\n\turl = https://token@example.com/voldzi/registered-app.git\n",
+      "utf8"
+    );
+
+    process.env.REPORTS_PATH = reportsPath;
+    process.env.PROJECTS_ROOT_CONTAINER = projectsRoot;
+
+    try {
+      const server = createServer({ logger: false });
+      const created = await server.inject({
+        method: "POST",
+        url: "/api/v1/projects",
+        payload: {
+          id: "project_test",
+          name: "Registered App",
+          path: projectPath,
+          dataClassification: "health-data",
+          owner: "Security Team"
+        }
+      });
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json().data).toMatchObject({
+        id: "project_test",
+        name: "Registered App",
+        path: projectPath,
+        dataClassification: "health-data",
+        owner: "Security Team",
+        repositoryUrl: "https://example.com/voldzi/registered-app.git",
+        defaultBranch: "main"
+      });
+      expect(created.json().data.technologyStack).toEqual(expect.arrayContaining(["Docker", "Next.js", "Node.js"]));
+
+      const duplicate = await server.inject({
+        method: "POST",
+        url: "/api/v1/projects",
+        payload: {
+          name: "Duplicate App",
+          path: projectPath
+        }
+      });
+      expect(duplicate.statusCode).toBe(409);
+      expect(duplicate.json().error.code).toBe("PROJECT_PATH_EXISTS");
+
+      const list = await server.inject({ method: "GET", url: "/api/v1/projects" });
+      expect(list.statusCode).toBe(200);
+      expect(list.json().meta.total).toBe(1);
+      expect(list.json().meta.registryPath).toBe(path.join(reportsPath, "projects.json"));
+
+      const detail = await server.inject({ method: "GET", url: "/api/v1/projects/project_test" });
+      expect(detail.statusCode).toBe(200);
+      expect(detail.json().data.name).toBe("Registered App");
+
+      const updated = await server.inject({
+        method: "PATCH",
+        url: "/api/v1/projects/project_test",
+        payload: {
+          owner: "Platform Security",
+          dataClassification: "sensitive"
+        }
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json().data).toMatchObject({
+        owner: "Platform Security",
+        dataClassification: "sensitive"
+      });
+
+      const deleted = await server.inject({ method: "DELETE", url: "/api/v1/projects/project_test" });
+      expect(deleted.statusCode).toBe(204);
+
+      const empty = await server.inject({ method: "GET", url: "/api/v1/projects" });
+      expect(empty.json().meta.total).toBe(0);
+    } finally {
+      restoreEnv("REPORTS_PATH", previousReportsPath);
+      restoreEnv("PROJECTS_ROOT_CONTAINER", previousProjectsRoot);
+      await rm(reportsPath, { recursive: true, force: true });
+      await rm(projectsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects project registration outside the configured project root", async () => {
+    const previousReportsPath = process.env.REPORTS_PATH;
+    const previousProjectsRoot = process.env.PROJECTS_ROOT_CONTAINER;
+    const reportsPath = await mkdtemp(path.join(tmpdir(), "security-preflight-projects-reports-"));
+    const projectsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-projects-root-"));
+    const outsideRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-outside-root-"));
+
+    process.env.REPORTS_PATH = reportsPath;
+    process.env.PROJECTS_ROOT_CONTAINER = projectsRoot;
+
+    try {
+      const server = createServer({ logger: false });
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/v1/projects",
+        payload: {
+          name: "Outside Root",
+          path: outsideRoot
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe("PROJECT_PATH_OUTSIDE_ROOT");
+    } finally {
+      restoreEnv("REPORTS_PATH", previousReportsPath);
+      restoreEnv("PROJECTS_ROOT_CONTAINER", previousProjectsRoot);
+      await rm(reportsPath, { recursive: true, force: true });
+      await rm(projectsRoot, { recursive: true, force: true });
+      await rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
   it("serves healthcare toolchain requirements", async () => {
     const server = createServer({ logger: false });
     const response = await server.inject({ method: "GET", url: "/api/v1/toolchain/requirements" });

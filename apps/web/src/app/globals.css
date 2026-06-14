@@ -407,6 +407,36 @@ code,
   padding: 12px;
 }
 
+.security-project-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(240px, 1.4fr) minmax(150px, 0.7fr);
+  gap: 10px;
+  min-width: 0;
+  border-bottom: 1px solid var(--stratos-color-border);
+  padding: 12px;
+}
+
+.security-project-path {
+  grid-column: span 2;
+}
+
+.security-project-form-actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.security-project-form-actions span {
+  min-width: 0;
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .security-akb-question {
   display: grid;
   gap: 6px;
@@ -420,6 +450,7 @@ code,
 }
 
 .security-akb-question input,
+.security-akb-question select,
 .security-akb-question textarea {
   width: 100%;
   min-width: 0;
@@ -437,6 +468,7 @@ code,
 }
 
 .security-akb-question input:focus,
+.security-akb-question select:focus,
 .security-akb-question textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--stratos-color-primary) 45%, transparent);
   outline-offset: 1px;
@@ -468,8 +500,14 @@ code,
   }
 
   .security-split-grid,
-  .security-metric-grid {
+  .security-metric-grid,
+  .security-project-form {
     grid-template-columns: 1fr;
+  }
+
+  .security-project-path,
+  .security-project-form-actions {
+    grid-column: auto;
   }
 }
 

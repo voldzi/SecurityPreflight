@@ -67,9 +67,11 @@ flowchart LR
 ## Data Flows
 
 1. A user registers a local project path through the UI or CLI.
-2. The API stores project metadata and asks the detector to infer the stack from
-   repository files such as `package.json`, `Dockerfile`, `pyproject.toml`, or
-   `Package.swift`.
+2. The API validates that the project path is absolute, mounted inside
+   `PROJECTS_ROOT_CONTAINER`, and points to a directory. It stores project
+   metadata in `REPORTS_PATH/projects.json` and infers the stack from bounded
+   file-name inspection such as `package.json`, `Dockerfile`, `pyproject.toml`,
+   or `Package.swift`.
 3. A scan request creates a `ScanRun` and queues work in Redis.
 4. The API builds a scan execution plan with command argument arrays, evidence
    paths, read-only project mounts, network mode, and guardrail decisions.

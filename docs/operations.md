@@ -86,10 +86,11 @@ commands, then writes evidence under `REPORTS_PATH/<scanRunId>/`. Missing
 scanner binaries, disabled runner policy, or scanner execution errors create
 blocking tooling evidence rather than a false pass.
 
-When the worker runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
-directory containing the projects to scan. The worker mounts it read-only at
-`PROJECTS_ROOT_CONTAINER` and maps queued host paths under that root into the
-container path before reading project files.
+When the stack runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
+directory containing the projects to scan. The API and worker mount it
+read-only at `PROJECTS_ROOT_CONTAINER`. The API uses that root to validate
+registered project paths and detect metadata; the worker maps queued host paths
+under that root into the container path before reading project files.
 
 Completed worker jobs write `central-result-envelope.json` next to `report.json`
 and `report.md`. A central storage service can implement or call
@@ -219,8 +220,8 @@ table and must stay in sync.
 | `DATABASE_URL` | yes | unset | PostgreSQL connection string |
 | `REDIS_URL` | yes | unset | Redis connection string |
 | `REPORTS_PATH` | yes | `/reports` | Container path for generated reports and evidence |
-| `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker worker may read |
-| `PROJECTS_ROOT_CONTAINER` | no | `/workspace/projects` | Container mount path for `PROJECTS_ROOT_HOST` |
+| `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker API and worker may read through a read-only mount |
+| `PROJECTS_ROOT_CONTAINER` | no | `/workspace/projects` | Container mount path for `PROJECTS_ROOT_HOST`; registered project paths must stay inside this root |
 | `SECURITY_PREFLIGHT_AUTH_MODE` | no | dev: `disabled`, production: `oidc` | API auth mode: `disabled`, `shared-token`, or `oidc` |
 | `SECURITY_PREFLIGHT_API_TOKEN` | no | unset | Shared-token mode bearer token; never commit |
 | `SECURITY_PREFLIGHT_CORS_ORIGINS` | yes for browser production | localhost origins | Comma-separated allowed browser origins for API CORS |
@@ -271,6 +272,9 @@ table and must stay in sync.
 
 - Report evidence is stored under the configured reports volume, planned as
   `~/SecurityPreflight/reports` on the host.
+- The project registry is stored as `projects.json` inside `REPORTS_PATH`.
+  It contains metadata and bounded stack-detection results only; source code
+  is not copied into the registry.
 - PostgreSQL stores scan history, findings, settings, and audit events.
 - Backup requires copying both the PostgreSQL volume/export and report storage
   volume.

@@ -401,7 +401,9 @@ export const uiText = {
       finished: "Dokončeno",
       capability: "Schopnost",
       implemented: "Hotovo",
-      gap: "Mezera"
+      gap: "Mezera",
+      owner: "Vlastník",
+      updated: "Aktualizováno"
     },
     dashboard: {
       maturityAria: "Souhrn zralosti SecurityPreflight",
@@ -420,6 +422,7 @@ export const uiText = {
       registryPending: "registr UI čeká",
       noProjects: "Žádné projekty",
       registeredProjects: "Registrované projekty",
+      loadingProjects: "Načítám projekty",
       recentScans: "Poslední běhy skenů",
       refreshing: "Obnovuji",
       refresh: "Obnovit",
@@ -430,6 +433,32 @@ export const uiText = {
       checked: "Zkontrolováno",
       check: "Zkontrolovat",
       toolVersionFallback: "nenahlášeno"
+    },
+    projects: {
+      registrationTitle: "Registrace projektu",
+      name: "Název",
+      path: "Cesta v kontejneru",
+      owner: "Vlastník",
+      dataClassification: "Klasifikace dat",
+      repositoryUrl: "Repository URL",
+      register: "Registrovat projekt",
+      registering: "Registruji",
+      refresh: "Obnovit projekty",
+      selectProject: "Vybraný projekt",
+      noSelectedProject: "Bez registrovaného projektu",
+      stackUnknown: "nezjištěno",
+      projectRegistered: (name: string) => `Projekt ${name} byl zaregistrován.`,
+      registrationFailed: "Registrace projektu selhala.",
+      loadFailed: "Nepodařilo se načíst projekty.",
+      authRequired: "Před správou projektů je vyžadována autentizace.",
+      pathHelp: "Cesta musí být absolutní a uvnitř PROJECTS_ROOT_CONTAINER.",
+      classifications: {
+        public: "veřejná",
+        internal: "interní",
+        confidential: "důvěrná",
+        sensitive: "citlivá",
+        "health-data": "zdravotní data"
+      }
     },
     capabilities: {
       title: "Celková funkčnost",
@@ -573,8 +602,8 @@ export const uiText = {
       authRequiredScan: "Před spuštěním skenů je vyžadována autentizace.",
       buildingPlan: "Sestavuji scan plán...",
       queueingScan: "Zařazuji scan job do fronty...",
-      planBlocked: "Scan plán byl vytvořen, ale guardraily blokují spuštění.",
-      planReady: "Scan plán je připraven a lze jej zařadit do fronty.",
+      planBlocked: "Plán skenu byl vytvořen, ale guardraily blokují spuštění.",
+      planReady: "Plán skenu je připraven a lze jej zařadit do fronty.",
       scanQueued: "Scan job byl zařazen do fronty. Worker zapíše evidenci do /reports.",
       scanActionFailed: "Akce skenu selhala.",
       loadProfilesFallback: "Načtěte profily z lokálního API pro zahájení skenování."
@@ -759,7 +788,9 @@ export const uiText = {
       finished: "Finished",
       capability: "Capability",
       implemented: "Implemented",
-      gap: "Gap"
+      gap: "Gap",
+      owner: "Owner",
+      updated: "Updated"
     },
     dashboard: {
       maturityAria: "SecurityPreflight maturity summary",
@@ -778,6 +809,7 @@ export const uiText = {
       registryPending: "registry UI pending",
       noProjects: "No projects",
       registeredProjects: "Registered projects",
+      loadingProjects: "Loading projects",
       recentScans: "Recent scan runs",
       refreshing: "Refreshing",
       refresh: "Refresh",
@@ -788,6 +820,32 @@ export const uiText = {
       checked: "Checked",
       check: "Check",
       toolVersionFallback: "not reported"
+    },
+    projects: {
+      registrationTitle: "Project registration",
+      name: "Name",
+      path: "Container path",
+      owner: "Owner",
+      dataClassification: "Data classification",
+      repositoryUrl: "Repository URL",
+      register: "Register project",
+      registering: "Registering",
+      refresh: "Refresh projects",
+      selectProject: "Selected project",
+      noSelectedProject: "No registered project",
+      stackUnknown: "not detected",
+      projectRegistered: (name: string) => `Project ${name} was registered.`,
+      registrationFailed: "Project registration failed.",
+      loadFailed: "Failed to load projects.",
+      authRequired: "Authentication is required before managing projects.",
+      pathHelp: "Path must be absolute and inside PROJECTS_ROOT_CONTAINER.",
+      classifications: {
+        public: "public",
+        internal: "internal",
+        confidential: "confidential",
+        sensitive: "sensitive",
+        "health-data": "health data"
+      }
     },
     capabilities: {
       title: "Overall functionality",

@@ -64,6 +64,10 @@ The API uses path versioning:
 | GET | `/ready` | Readiness check |
 | GET | `/api/v1/auth/status` | Report API auth mode, OIDC public config, and RBAC roles without secrets |
 | GET | `/api/v1/projects` | List registered local projects |
+| POST | `/api/v1/projects` | Register a local project, validate its mounted path, and detect its stack |
+| GET | `/api/v1/projects/{projectId}` | Get one registered project |
+| PATCH | `/api/v1/projects/{projectId}` | Update project metadata and refresh stack detection when path changes |
+| DELETE | `/api/v1/projects/{projectId}` | Delete a registered project |
 | GET | `/api/v1/scan-profiles` | List built-in scan profiles |
 | POST | `/api/v1/scans/plan` | Build a guarded scan execution plan without running scanners |
 | POST | `/api/v1/scans/queue` | Queue an unblocked scan execution plan for worker execution |
@@ -105,6 +109,29 @@ curl http://localhost:8781/health
 ```bash
 curl http://localhost:8781/api/v1/scan-profiles
 ```
+
+### Project registry
+
+```bash
+curl -X POST http://localhost:8781/api/v1/projects \
+  -H 'content-type: application/json' \
+  -d '{
+    "name": "Hospital API",
+    "path": "/workspace/projects/hospital-api",
+    "dataClassification": "health-data",
+    "owner": "Platform Security"
+  }'
+
+curl http://localhost:8781/api/v1/projects
+curl http://localhost:8781/api/v1/projects/project_abc123
+```
+
+Project paths must be absolute container paths and, when
+`PROJECTS_ROOT_CONTAINER` is set, must stay inside that mount. The API validates
+that the directory exists in the API container, detects the technology stack
+from bounded file-name inspection, and persists the durable registry in
+`REPORTS_PATH/projects.json`. Repository URLs are sanitized before persistence
+so embedded credentials are stripped.
 
 ### Scan execution plan
 

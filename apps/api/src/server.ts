@@ -14,6 +14,15 @@ import {
   isPublicRoute,
   type SecurityPreflightAuthContext
 } from "./auth.js";
+import {
+  createProject,
+  deleteProject,
+  getProject,
+  listProjects,
+  projectRegistryPath,
+  ProjectRegistryError,
+  updateProject
+} from "./projects.js";
 import { buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
 
 export interface CreateServerOptions {
@@ -89,8 +98,21 @@ interface ScanRunDetailDto extends ScanRunSummaryDto {
 }
 
 const dataClassificationSchema = z.enum(["public", "internal", "confidential", "sensitive", "health-data"]);
+const projectIdSchema = z.string().min(1).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{1,119}$/, "Project ID contains unsupported characters.");
 const scanRunIdSchema = z.string().min(1).regex(/^[A-Za-z0-9_.:-]+$/, "Scan run ID contains unsupported characters.");
 const reportFormatSchema = z.enum(["markdown", "json"]).default("markdown");
+const projectCreateRequestSchema = z.object({
+  id: projectIdSchema.optional(),
+  name: z.string().min(1).max(160),
+  path: z.string().min(1).max(2000),
+  repositoryUrl: z.string().min(1).max(2000).nullable().optional(),
+  defaultBranch: z.string().min(1).max(160).nullable().optional(),
+  dataClassification: dataClassificationSchema.default("internal"),
+  owner: z.string().min(1).max(160).nullable().optional()
+});
+const projectUpdateRequestSchema = projectCreateRequestSchema.omit({ id: true }).partial().refine((value) => Object.keys(value).length > 0, {
+  message: "At least one project field must be provided."
+});
 const reportExportRequestSchema = z.object({
   scanRunId: scanRunIdSchema,
   format: z.enum(["PDF", "PPTX", "pdf", "pptx"]).default("PDF"),
@@ -261,12 +283,150 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     data: getAuthStatus()
   }));
 
-  server.get("/api/v1/projects", async () => ({
-    data: [],
-    meta: {
-      total: 0
+  server.get("/api/v1/projects", async () => {
+    const data = await listProjects();
+
+    return {
+      data,
+      meta: {
+        total: data.length,
+        registryPath: projectRegistryPath()
+      }
+    };
+  });
+
+  server.post("/api/v1/projects", async (request, reply) => {
+    const parsed = projectCreateRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid project registration request.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
     }
-  }));
+
+    try {
+      const project = await createProject(parsed.data);
+
+      return reply.status(201).send({
+        data: project
+      });
+    } catch (error) {
+      if (error instanceof ProjectRegistryError) {
+        return reply.status(error.statusCode).send({
+          error: {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            requestId: request.id
+          }
+        });
+      }
+
+      throw error;
+    }
+  });
+
+  server.get("/api/v1/projects/:projectId", async (request, reply) => {
+    const parsed = projectIdSchema.safeParse((request.params as { projectId?: string }).projectId);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid project ID.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
+    }
+
+    const project = await getProject(parsed.data);
+
+    if (!project) {
+      return reply.status(404).send({
+        error: {
+          code: "PROJECT_NOT_FOUND",
+          message: "Registered project was not found.",
+          requestId: request.id
+        }
+      });
+    }
+
+    return {
+      data: project
+    };
+  });
+
+  server.patch("/api/v1/projects/:projectId", async (request, reply) => {
+    const projectId = projectIdSchema.safeParse((request.params as { projectId?: string }).projectId);
+    const body = projectUpdateRequestSchema.safeParse(request.body);
+
+    if (!projectId.success || !body.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid project update request.",
+          details: [projectId.success ? null : projectId.error.flatten(), body.success ? null : body.error.flatten()].filter(Boolean),
+          requestId: request.id
+        }
+      });
+    }
+
+    try {
+      const project = await updateProject(projectId.data, body.data);
+
+      return {
+        data: project
+      };
+    } catch (error) {
+      if (error instanceof ProjectRegistryError) {
+        return reply.status(error.statusCode).send({
+          error: {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            requestId: request.id
+          }
+        });
+      }
+
+      throw error;
+    }
+  });
+
+  server.delete("/api/v1/projects/:projectId", async (request, reply) => {
+    const parsed = projectIdSchema.safeParse((request.params as { projectId?: string }).projectId);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid project ID.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
+    }
+
+    const deleted = await deleteProject(parsed.data);
+
+    if (!deleted) {
+      return reply.status(404).send({
+        error: {
+          code: "PROJECT_NOT_FOUND",
+          message: "Registered project was not found.",
+          requestId: request.id
+        }
+      });
+    }
+
+    return reply.status(204).send();
+  });
 
   server.get("/api/v1/scan-profiles", async () => ({
     data: defaultScanProfiles

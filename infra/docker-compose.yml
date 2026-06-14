@@ -48,6 +48,7 @@ services:
       DATABASE_URL: postgresql://security_preflight:security_preflight@postgres:5432/security_preflight
       REDIS_URL: redis://redis:6379/0
       REPORTS_PATH: /reports
+      PROJECTS_ROOT_CONTAINER: ${PROJECTS_ROOT_CONTAINER:-/workspace/projects}
       SECURITY_PREFLIGHT_AUTH_MODE: ${SECURITY_PREFLIGHT_AUTH_MODE:-}
       SECURITY_PREFLIGHT_API_TOKEN: ${SECURITY_PREFLIGHT_API_TOKEN:-}
       SECURITY_PREFLIGHT_CORS_ORIGINS: ${SECURITY_PREFLIGHT_CORS_ORIGINS:-http://localhost:8780,http://127.0.0.1:8780}
@@ -75,6 +76,7 @@ services:
       - "8781:8781"
     volumes:
       - security_preflight_reports:/reports
+      - ${PROJECTS_ROOT_HOST:-${PWD}}:${PROJECTS_ROOT_CONTAINER:-/workspace/projects}:ro
     depends_on:
       - postgres
       - redis

@@ -110,10 +110,12 @@ documentation evidence, and central result envelope export readiness.
 
 ## Scanner Isolation
 
-Scanner workloads run with read-only project mounts by default. Scanner
-containers should drop unnecessary capabilities, avoid privileged mode, avoid
-the Docker socket, and disable network access unless a check explicitly needs
-it.
+Scanner workloads run with read-only project mounts by default. The API also
+receives the same read-only project root for project registration validation and
+bounded stack detection; it persists metadata only and must not copy source code
+into the registry. Scanner containers should drop unnecessary capabilities,
+avoid privileged mode, avoid the Docker socket, and disable network access
+unless a check explicitly needs it.
 
 The default execution model runs scanner commands inside the constrained worker
 container with a read-only project mount. A Docker runner can use the

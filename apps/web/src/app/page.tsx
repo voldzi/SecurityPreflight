@@ -65,7 +65,6 @@ import {
   localizedCapabilityRows,
   localizedExecutionStages,
   localizedFallbackTools,
-  localizedProjectRows,
   profileDescription,
   profileName,
   translateGate,
@@ -73,8 +72,7 @@ import {
   uiText,
   type AppLocale,
   type CapabilityRow,
-  type CapabilityStatus,
-  type ProjectRow
+  type CapabilityStatus
 } from "./i18n";
 import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type OidcClientConfig } from "./oidc";
 
@@ -257,6 +255,30 @@ interface ScanRow {
   finished: string;
 }
 
+interface ProjectRow {
+  id: string;
+  name: string;
+  path: string;
+  stack: string;
+  data: string;
+  dataClassification: RegisteredProject["dataClassification"];
+  owner: string;
+  updatedAt: string;
+}
+
+interface RegisteredProject {
+  id: string;
+  name: string;
+  path: string;
+  repositoryUrl: string | null;
+  defaultBranch: string | null;
+  technologyStack: string[];
+  dataClassification: "public" | "internal" | "confidential" | "sensitive" | "health-data";
+  owner: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8781";
 const dockerProjectPath = "/workspace/projects";
 const authTokenStorageKey = "security-preflight.auth.token";
@@ -401,6 +423,24 @@ export default function DashboardPage() {
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("documentation-compliance");
   const [doctor, setDoctor] = useState<ToolchainDoctor | null>(null);
+  const [projects, setProjects] = useState<RegisteredProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [registeringProject, setRegisteringProject] = useState(false);
+  const [projectMessage, setProjectMessage] = useState<string>(uiText[defaultLocale].projects.pathHelp);
+  const [projectForm, setProjectForm] = useState<{
+    name: string;
+    path: string;
+    owner: string;
+    repositoryUrl: string;
+    dataClassification: RegisteredProject["dataClassification"];
+  }>({
+    name: "SecurityPreflight",
+    path: dockerProjectPath,
+    owner: "",
+    repositoryUrl: "",
+    dataClassification: "internal"
+  });
   const [scanRuns, setScanRuns] = useState<ScanRunSummary[]>([]);
   const [selectedRun, setSelectedRun] = useState<ScanRunDetail | null>(null);
   const [loadingDoctor, setLoadingDoctor] = useState(false);
@@ -428,10 +468,16 @@ export default function DashboardPage() {
     message: uiText[defaultLocale].messages.scanReady
   });
   const copy = uiText[locale];
-  const projectRows = localizedProjectRows[locale];
   const fallbackTools = localizedFallbackTools[locale];
   const capabilityRows = localizedCapabilityRows[locale];
   const executionStages = localizedExecutionStages[locale];
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null;
+  const activeScanProject = selectedProject ?? {
+    id: "security-preflight-local",
+    name: "SecurityPreflight",
+    path: dockerProjectPath,
+    dataClassification: selectedProfileId === "healthcare-reference" ? "health-data" : "internal"
+  };
 
   const selectedProfile = useMemo(
     () => profiles.find((profile) => profile.id === selectedProfileId),
@@ -440,6 +486,20 @@ export default function DashboardPage() {
   const selectedProfileDescription = selectedProfile
     ? profileDescription(locale, selectedProfile.id, selectedProfile.description)
     : copy.messages.loadProfilesFallback;
+  const projectRows = useMemo<ProjectRow[]>(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        path: project.path,
+        stack: project.technologyStack.length ? project.technologyStack.join(" / ") : copy.projects.stackUnknown,
+        data: copy.projects.classifications[project.dataClassification],
+        dataClassification: project.dataClassification,
+        owner: project.owner ?? "-",
+        updatedAt: formatDateTime(project.updatedAt, locale)
+      })),
+    [copy.projects, locale, projects]
+  );
   const healthcareDoctor = doctor
     ? {
         available: doctor.summary.healthcareAvailable ?? doctor.summary.available,
@@ -623,19 +683,19 @@ export default function DashboardPage() {
         id: "data",
         label: copy.columns.data,
         width: 132,
-        render: (row) => <Badge tone={row.id === "hospital-api" ? "danger" : "neutral"}>{row.data}</Badge>
+        render: (row) => <Badge tone={row.dataClassification === "health-data" || row.dataClassification === "sensitive" ? "danger" : "neutral"}>{row.data}</Badge>
       },
       {
-        id: "gate",
-        label: copy.columns.gate,
-        width: 110,
-        render: (row) => <RagBadge status={statusRag(row.gate)} label={gateDisplayLabel(row.gate, locale)} />
+        id: "owner",
+        label: copy.columns.owner,
+        width: "minmax(130px, 0.8fr)",
+        render: (row) => row.owner
       },
       {
-        id: "findings",
-        label: copy.columns.open,
-        width: 140,
-        render: (row) => row.findings
+        id: "updated",
+        label: copy.columns.updated,
+        width: "minmax(170px, 1fr)",
+        render: (row) => row.updatedAt
       }
     ],
     [copy.columns, locale]
@@ -795,11 +855,13 @@ export default function DashboardPage() {
     const akbDefaults: string[] = [uiText.cs.messages.akbInitial, uiText.en.messages.akbInitial];
     const scanDefaults: string[] = [uiText.cs.messages.scanReady, uiText.en.messages.scanReady];
     const auditPrompts: string[] = [uiText.cs.telemetry.auditPromptText, uiText.en.telemetry.auditPromptText];
+    const projectDefaults: string[] = [uiText.cs.projects.pathHelp, uiText.en.projects.pathHelp];
 
     setExportMessage((current) => (exportDefaults.includes(current) ? copy.messages.exportInitial : current));
     setAuthMessage((current) => (authDefaults.includes(current) ? copy.auth.initial : current));
     setAkbMessage((current) => (akbDefaults.includes(current) ? copy.messages.akbInitial : current));
     setAkbQuestion((current) => (auditPrompts.includes(current) ? copy.telemetry.auditPromptText : current));
+    setProjectMessage((current) => (projectDefaults.includes(current) ? copy.projects.pathHelp : current));
     setScanResult((current) =>
       scanDefaults.includes(current.message) ? { ...current, message: copy.messages.scanReady } : current
     );
@@ -900,6 +962,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (authReady) {
+      void refreshProjects();
+    }
+  }, [authReady, authToken]);
+
+  useEffect(() => {
+    if (authReady) {
       void refreshScanRuns();
     }
   }, [authReady, authToken]);
@@ -921,6 +989,70 @@ export default function DashboardPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  async function refreshProjects() {
+    if (!authReady) {
+      setProjectMessage(copy.projects.authRequired);
+      return;
+    }
+
+    setLoadingProjects(true);
+
+    try {
+      const payload = await fetchJson<{ data: RegisteredProject[] }>(`${apiBaseUrl}/api/v1/projects`, undefined, authToken);
+      setProjects(payload.data);
+
+      if (payload.data.length && !payload.data.some((project) => project.id === selectedProjectId)) {
+        setSelectedProjectId(payload.data[0]?.id ?? "");
+      }
+
+      if (!payload.data.length) {
+        setSelectedProjectId("");
+      }
+    } catch (error) {
+      setProjectMessage(error instanceof Error ? error.message : copy.projects.loadFailed);
+    } finally {
+      setLoadingProjects(false);
+    }
+  }
+
+  async function registerProject() {
+    if (!authReady) {
+      setProjectMessage(copy.projects.authRequired);
+      return;
+    }
+
+    const name = projectForm.name.trim();
+    const projectPath = projectForm.path.trim();
+
+    if (!name || !projectPath) {
+      setProjectMessage(copy.projects.pathHelp);
+      return;
+    }
+
+    setRegisteringProject(true);
+
+    try {
+      const payload = await fetchJson<{ data: RegisteredProject }>(`${apiBaseUrl}/api/v1/projects`, {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          path: projectPath,
+          owner: projectForm.owner.trim() || null,
+          repositoryUrl: projectForm.repositoryUrl.trim() || null,
+          dataClassification: projectForm.dataClassification
+        })
+      }, authToken);
+
+      setProjects((current) => [...current.filter((project) => project.id !== payload.data.id), payload.data]);
+      setSelectedProjectId(payload.data.id);
+      setProjectMessage(copy.projects.projectRegistered(payload.data.name));
+    } catch (error) {
+      setProjectMessage(error instanceof Error ? error.message : copy.projects.registrationFailed);
+    } finally {
+      setRegisteringProject(false);
+    }
+  }
 
   async function refreshAuthStatus() {
     try {
@@ -1198,10 +1330,10 @@ export default function DashboardPage() {
         profileId: selectedProfileId,
         reportsRoot: "/reports",
         project: {
-          id: "security-preflight-local",
-          name: "SecurityPreflight",
-          path: dockerProjectPath,
-          dataClassification: selectedProfileId === "healthcare-reference" ? "health-data" : "internal"
+          id: activeScanProject.id,
+          name: activeScanProject.name,
+          path: activeScanProject.path,
+          dataClassification: activeScanProject.dataClassification
         }
       };
       const endpoint = mode === "plan" ? "plan" : "queue";
@@ -1288,14 +1420,101 @@ export default function DashboardPage() {
 
         <DataGridShell
           title={<strong>{copy.dashboard.projects}</strong>}
-          toolbar={<Badge tone="warning">{copy.dashboard.registryPending}</Badge>}
+          toolbar={
+            <Button disabled={loadingProjects || !authReady} onClick={refreshProjects} size="compact">
+              <History size={14} />
+              {loadingProjects ? copy.dashboard.loadingProjects : copy.projects.refresh}
+            </Button>
+          }
           className="security-grid-shell"
         >
+          <div className="security-project-form">
+            <label className="security-akb-question" htmlFor="project-name">
+              <span>{copy.projects.name}</span>
+              <input
+                id="project-name"
+                aria-label={copy.projects.name}
+                value={projectForm.name}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setProjectForm((current) => ({ ...current, name: value }));
+                }}
+                autoComplete="off"
+              />
+            </label>
+            <label className="security-akb-question security-project-path" htmlFor="project-path">
+              <span>{copy.projects.path}</span>
+              <input
+                id="project-path"
+                aria-label={copy.projects.path}
+                value={projectForm.path}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setProjectForm((current) => ({ ...current, path: value }));
+                }}
+                autoComplete="off"
+              />
+            </label>
+            <label className="security-akb-question" htmlFor="project-data-classification">
+              <span>{copy.projects.dataClassification}</span>
+              <select
+                id="project-data-classification"
+                aria-label={copy.projects.dataClassification}
+                value={projectForm.dataClassification}
+                onChange={(event) => {
+                  const value = event.currentTarget.value as RegisteredProject["dataClassification"];
+                  setProjectForm((current) => ({
+                    ...current,
+                    dataClassification: value
+                  }));
+                }}
+              >
+                {(["internal", "sensitive", "health-data", "confidential", "public"] as const).map((classification) => (
+                  <option key={classification} value={classification}>
+                    {copy.projects.classifications[classification]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="security-akb-question" htmlFor="project-owner">
+              <span>{copy.projects.owner}</span>
+              <input
+                id="project-owner"
+                aria-label={copy.projects.owner}
+                value={projectForm.owner}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setProjectForm((current) => ({ ...current, owner: value }));
+                }}
+                autoComplete="off"
+              />
+            </label>
+            <label className="security-akb-question security-project-path" htmlFor="project-repository-url">
+              <span>{copy.projects.repositoryUrl}</span>
+              <input
+                id="project-repository-url"
+                aria-label={copy.projects.repositoryUrl}
+                value={projectForm.repositoryUrl}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setProjectForm((current) => ({ ...current, repositoryUrl: value }));
+                }}
+                autoComplete="off"
+              />
+            </label>
+            <div className="security-project-form-actions">
+              <Button variant="primary" disabled={registeringProject || !authReady} onClick={registerProject}>
+                <FolderGit2 size={14} />
+                {registeringProject ? copy.projects.registering : copy.projects.register}
+              </Button>
+              <span>{projectMessage}</span>
+            </div>
+          </div>
           <DataTable
             rows={projectRows}
             columns={projectColumns}
             getRowId={(row) => row.id}
-            emptyLabel={copy.dashboard.noProjects}
+            emptyLabel={loadingProjects ? copy.dashboard.loadingProjects : copy.dashboard.noProjects}
             aria-label={copy.dashboard.registeredProjects}
           />
         </DataGridShell>
@@ -1881,10 +2100,24 @@ export default function DashboardPage() {
           <div className="security-run-header">
             <div>
               <h2>{copy.runPanel.title}</h2>
-              <span>{dockerProjectPath}</span>
+              <span>{activeScanProject.path}</span>
             </div>
             <RagBadge status={statusRag(scanGate)} label={scanResult.gate ? actionGateDisplayLabel(scanResult.gate, locale) : statusDisplayLabel(scanResult.status, locale)} />
           </div>
+
+          <SelectField
+            label={copy.projects.selectProject}
+            value={selectedProject?.id ?? ""}
+            onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
+            searchPlaceholder={copy.projects.selectProject}
+          >
+            {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </SelectField>
 
           <SelectField
             label={copy.runPanel.scanProfile}
@@ -1904,11 +2137,15 @@ export default function DashboardPage() {
           <div className="security-facts">
             <div>
               <span>{copy.runPanel.project}</span>
-              <strong>SecurityPreflight</strong>
+              <strong>{activeScanProject.name}</strong>
             </div>
             <div>
               <span>{copy.runPanel.checks}</span>
               <strong>{selectedProfile?.checks.length ?? 0}</strong>
+            </div>
+            <div>
+              <span>{copy.projects.dataClassification}</span>
+              <strong>{copy.projects.classifications[activeScanProject.dataClassification]}</strong>
             </div>
             <div>
               <span>{copy.runPanel.tools}</span>
