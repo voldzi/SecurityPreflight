@@ -66,10 +66,7 @@ docker compose up -d
 Provision the STRATOS Keycloak client on the production host when deploying:
 
 ```bash
-KEYCLOAK_USE_CONTAINER_BOOTSTRAP_PASSWORD=true \
-SECURITY_PREFLIGHT_ENV_FILE=/srv/SecurityPreflight/.env \
-SECURITY_PREFLIGHT_PUBLIC_BASE_URL=http://docker.home.cz:8780 \
-./infra/keycloak/ensure-security-preflight-client.sh
+./infra/keycloak/provision-production-keycloak-client.sh
 ```
 
 Preview a scan execution plan without running scanners:

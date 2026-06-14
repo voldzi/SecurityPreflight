@@ -161,21 +161,22 @@ SecurityPreflight follows the STRATOS Keycloak pattern:
   `security-preflight.admin`, `stratos_security_admin`, `stratos_superadmin`
 
 Provision or update the Keycloak client from the production host after the code
-is present:
+is present. The wrapper prompts only for the Keycloak admin password and uses
+the STRATOS/SecurityPreflight production defaults:
 
 ```bash
-KEYCLOAK_USE_CONTAINER_BOOTSTRAP_PASSWORD=true \
-SECURITY_PREFLIGHT_ENV_FILE=/srv/SecurityPreflight/.env \
-SECURITY_PREFLIGHT_PUBLIC_BASE_URL=http://docker.home.cz:8780 \
-./infra/keycloak/ensure-security-preflight-client.sh
+cd /srv/SecurityPreflight
+./infra/keycloak/provision-production-keycloak-client.sh
 ```
 
 Override `KEYCLOAK_CONTAINER`, `KEYCLOAK_INTERNAL_URL`, `KEYCLOAK_PUBLIC_URL`,
 `KEYCLOAK_REALM`, `SECURITY_PREFLIGHT_REDIRECT_URIS`, or
-`SECURITY_PREFLIGHT_WEB_ORIGINS` when the STRATOS deployment differs. The script
-creates a public authorization-code/PKCE client and writes only public OIDC
-values to `SECURITY_PREFLIGHT_ENV_FILE`; it does not create or persist a web
-client secret.
+`SECURITY_PREFLIGHT_WEB_ORIGINS` when the STRATOS deployment differs. For
+non-interactive automation, call
+`infra/keycloak/ensure-security-preflight-client.sh` directly with the required
+environment variables. The scripts create a public authorization-code/PKCE
+client and write only public OIDC values to `SECURITY_PREFLIGHT_ENV_FILE`; they
+do not create or persist a web client secret.
 
 ## Configuration
 

@@ -32,6 +32,10 @@ public client, adds a client audience mapper, and ensures realm roles:
 The script may update the deployment `.env` with public OIDC values. It does
 not create or store a web client secret.
 
+For manual production operation, `infra/keycloak/provision-production-keycloak-client.sh`
+wraps the provisioning defaults and prompts only for the Keycloak admin
+password.
+
 ## Consequences
 
 SecurityPreflight shares STRATOS login, role assignment, and operational
