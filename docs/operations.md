@@ -194,6 +194,8 @@ systemctl reload nginx
 
 The include keeps the Next.js Web UI prefix intact for `/sp/`, while API calls
 under `/sp/api/` are mapped to the Fastify API `/api/` paths.
+The Web UI is built with trailing-slash routing so `/sp/` is a terminal route
+and does not redirect back to `/sp`.
 
 ## Configuration
 
