@@ -131,6 +131,11 @@ Only unblocked plans are queued. A blocked plan returns HTTP 409 with
 curl http://localhost:8781/api/v1/toolchain/doctor
 ```
 
+The response includes overall `available`/`missing`/`error` counts and
+healthcare-specific `healthcareAvailable`/`healthcareMissing`/`healthcareError`
+counts. Optional tools such as controlled DAST/ZAP remain visible in the tool
+list but do not make the healthcare summary fail when active DAST is disabled.
+
 ### Healthcare tool requirements
 
 ```bash

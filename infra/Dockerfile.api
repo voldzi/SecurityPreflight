@@ -3,6 +3,9 @@ FROM node:26-bookworm-slim
 WORKDIR /app
 RUN npm install -g pnpm@10.33.0
 
+COPY infra/install-scanners.sh infra/install-scanners.sh
+RUN bash infra/install-scanners.sh
+
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/core/package.json packages/core/package.json

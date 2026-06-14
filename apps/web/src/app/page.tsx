@@ -61,7 +61,10 @@ interface ScanProfile {
 interface ToolchainDoctor {
   checkedAt: string;
   tools: Array<{
+    id: string;
     name: string;
+    category: string;
+    requiredForHealthcare: boolean;
     status: string;
     version: string | null;
     message: string | null;
@@ -70,6 +73,12 @@ interface ToolchainDoctor {
     available: number;
     missing: number;
     error: number;
+    healthcareAvailable: number;
+    healthcareMissing: number;
+    healthcareError: number;
+    optionalAvailable: number;
+    optionalMissing: number;
+    optionalError: number;
   };
 }
 
@@ -337,10 +346,19 @@ export default function DashboardPage() {
     () => profiles.find((profile) => profile.id === selectedProfileId),
     [profiles, selectedProfileId]
   );
+  const healthcareDoctor = doctor
+    ? {
+        available: doctor.summary.healthcareAvailable ?? doctor.summary.available,
+        missing: doctor.summary.healthcareMissing ?? doctor.summary.missing,
+        error: doctor.summary.healthcareError ?? doctor.summary.error,
+        optionalMissing: doctor.summary.optionalMissing ?? 0,
+        optionalError: doctor.summary.optionalError ?? 0
+      }
+    : null;
   const renderedTools = doctor?.tools.length
     ? doctor.tools.map((tool) => ({
         name: tool.name,
-        status: tool.status,
+        status: !tool.requiredForHealthcare && tool.status !== "available" ? "optional" : tool.status,
         version: tool.version ?? tool.message ?? "not reported"
       }))
     : fallbackTools;
@@ -654,11 +672,17 @@ export default function DashboardPage() {
           <MetricCard
             icon={Wrench}
             label="Toolchain"
-            value={doctor ? doctor.summary.available : "not checked"}
-            detail={doctor ? `${doctor.summary.missing} missing / ${doctor.summary.error} error` : "Run doctor to verify scanner availability."}
-            tone={doctor?.summary.error || doctor?.summary.missing ? "danger" : doctor ? "good" : "neutral"}
+            value={healthcareDoctor ? healthcareDoctor.available : "not checked"}
+            detail={
+              healthcareDoctor
+                ? `${healthcareDoctor.missing} healthcare missing / ${healthcareDoctor.error} error${
+                    healthcareDoctor.optionalMissing || healthcareDoctor.optionalError ? " / optional DAST gap" : ""
+                  }`
+                : "Run doctor to verify scanner availability."
+            }
+            tone={healthcareDoctor?.error || healthcareDoctor?.missing ? "danger" : doctor ? "good" : "neutral"}
             chartType="bar"
-            chartData={doctor ? [doctor.summary.available, doctor.summary.missing, doctor.summary.error] : undefined}
+            chartData={healthcareDoctor ? [healthcareDoctor.available, healthcareDoctor.missing, healthcareDoctor.error] : undefined}
           />
           <MetricCard
             icon={FileJson}
@@ -696,7 +720,11 @@ export default function DashboardPage() {
           <StructuredList
             title="Toolchain doctor"
             description={doctor ? `Checked ${new Date(doctor.checkedAt).toLocaleTimeString()}` : "Docker scanner stack"}
-            count={<Badge tone={doctor ? statusTone(doctor.summary.error || doctor.summary.missing ? "error" : "available") : "neutral"}>{doctor ? "live" : "fallback"}</Badge>}
+            count={
+              <Badge tone={healthcareDoctor ? statusTone(healthcareDoctor.error || healthcareDoctor.missing ? "error" : "available") : "neutral"}>
+                {doctor ? "live" : "fallback"}
+              </Badge>
+            }
             toolbar={
               <Button disabled={loadingDoctor} onClick={refreshDoctor} size="compact">
                 <Wrench size={14} />
@@ -976,7 +1004,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <span>Tools</span>
-              <strong>{doctor ? `${doctor.summary.available} available` : "not checked"}</strong>
+              <strong>{healthcareDoctor ? `${healthcareDoctor.available} healthcare ready` : "not checked"}</strong>
             </div>
           </div>
 

@@ -117,9 +117,22 @@ pnpm validate
 Primary deployment is local Docker Desktop on the developer workstation.
 SecurityPreflight is offline-first and does not require a cloud service.
 
-Production-like or centralized deployment is out of scope for MVP. Any future
-central platform mode must introduce authentication, authorization, TLS,
-central secret handling, and a documented export/synchronization model.
+For an internal production-like host, build from the Git repository and apply
+the production Compose override so only the Web UI and API ports are published:
+
+```bash
+docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -d --build
+```
+
+Set `APP_ENV=production`, `NEXT_PUBLIC_API_URL` to the browser-reachable API
+URL, and `PROJECTS_ROOT_HOST` to the host directory that may be scanned. The
+production override removes PostgreSQL and Redis host port publishing; they
+remain reachable only inside the Compose network.
+
+Before exposing the service beyond a controlled internal network, add an
+external authentication, authorization, and TLS boundary. Do not place GitHub
+Packages tokens, scanner tokens, production secrets, private keys, or
+certificate material in the repository or generated reports.
 
 ## Configuration
 
@@ -155,9 +168,10 @@ table and must stay in sync.
 
 - Docker Desktop and Docker Compose.
 - PostgreSQL and Redis services from the local Compose stack.
-- Scanner tools packaged in local containers: Gitleaks, Semgrep, Trivy, Syft,
-  Grype, OSV Scanner, Checkov, Redocly/OpenAPI tooling, and optional ZAP
-  baseline planning for controlled DAST.
+- Scanner tools packaged in local containers and the API doctor runtime:
+  Docker CLI/Compose plugin, Gitleaks, Semgrep, Trivy, Syft, Grype, OSV
+  Scanner, Checkov, Redocly/OpenAPI tooling, and optional ZAP baseline planning
+  for controlled DAST.
 - Optional scanner network access for vulnerability database updates.
 - Optional controlled DAST target on localhost or allowlisted staging hosts.
 

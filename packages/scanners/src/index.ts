@@ -12,6 +12,7 @@ import {
   type FindingType,
   type GateEvaluation,
   type ScanProfile,
+  type ToolRequirement,
   type Severity
 } from "@security-preflight/core";
 
@@ -20,7 +21,10 @@ const execFileAsync = promisify(execFile);
 export type ToolStatus = "available" | "missing" | "error";
 
 export interface ToolCheckResult {
+  id: string;
   name: string;
+  category: ToolRequirement["category"];
+  requiredForHealthcare: boolean;
   command: string;
   status: ToolStatus;
   version: string | null;
@@ -34,20 +38,29 @@ export interface ToolchainDoctorResult {
     available: number;
     missing: number;
     error: number;
+    healthcareAvailable: number;
+    healthcareMissing: number;
+    healthcareError: number;
+    optionalAvailable: number;
+    optionalMissing: number;
+    optionalError: number;
   };
 }
 
-export const defaultToolChecks: Array<{ name: string; command: string; args: string[] }> = [
+export type ToolCheckDefinition = Pick<ToolRequirement, "id" | "name" | "category" | "requiredForHealthcare" | "command" | "args">;
+
+export const defaultToolChecks: ToolCheckDefinition[] = [
   ...requiredScannerTools.map((tool) => ({
+    id: tool.id,
     name: tool.name,
+    category: tool.category,
+    requiredForHealthcare: tool.requiredForHealthcare,
     command: tool.command,
     args: tool.args
   }))
 ];
 
-export async function runToolchainDoctor(
-  checks: Array<{ name: string; command: string; args: string[] }> = defaultToolChecks
-): Promise<ToolchainDoctorResult> {
+export async function runToolchainDoctor(checks: ToolCheckDefinition[] = defaultToolChecks): Promise<ToolchainDoctorResult> {
   const tools = await Promise.all(
     checks.map(async (check) => {
       try {
@@ -55,7 +68,10 @@ export async function runToolchainDoctor(
         const version = (stdout || stderr).trim().split("\n")[0] ?? null;
 
         return {
+          id: check.id,
           name: check.name,
+          category: check.category,
+          requiredForHealthcare: check.requiredForHealthcare,
           command: [check.command, ...check.args].join(" "),
           status: "available" as const,
           version,
@@ -66,7 +82,10 @@ export async function runToolchainDoctor(
         const isMissing = nodeError.code === "ENOENT";
 
         return {
+          id: check.id,
           name: check.name,
+          category: check.category,
+          requiredForHealthcare: check.requiredForHealthcare,
           command: [check.command, ...check.args].join(" "),
           status: isMissing ? ("missing" as const) : ("error" as const),
           version: null,
@@ -75,14 +94,23 @@ export async function runToolchainDoctor(
       }
     })
   );
+  const healthcareTools = tools.filter((tool) => tool.requiredForHealthcare);
+  const optionalTools = tools.filter((tool) => !tool.requiredForHealthcare);
+  const countStatus = (items: ToolCheckResult[], status: ToolStatus) => items.filter((tool) => tool.status === status).length;
 
   return {
     checkedAt: new Date().toISOString(),
     tools,
     summary: {
-      available: tools.filter((tool) => tool.status === "available").length,
-      missing: tools.filter((tool) => tool.status === "missing").length,
-      error: tools.filter((tool) => tool.status === "error").length
+      available: countStatus(tools, "available"),
+      missing: countStatus(tools, "missing"),
+      error: countStatus(tools, "error"),
+      healthcareAvailable: countStatus(healthcareTools, "available"),
+      healthcareMissing: countStatus(healthcareTools, "missing"),
+      healthcareError: countStatus(healthcareTools, "error"),
+      optionalAvailable: countStatus(optionalTools, "available"),
+      optionalMissing: countStatus(optionalTools, "missing"),
+      optionalError: countStatus(optionalTools, "error")
     }
   };
 }

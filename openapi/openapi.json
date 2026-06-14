@@ -853,7 +853,17 @@
           },
           "summary": {
             "type": "object",
-            "required": ["available", "missing", "error"],
+            "required": [
+              "available",
+              "missing",
+              "error",
+              "healthcareAvailable",
+              "healthcareMissing",
+              "healthcareError",
+              "optionalAvailable",
+              "optionalMissing",
+              "optionalError"
+            ],
             "properties": {
               "available": {
                 "type": "integer",
@@ -866,6 +876,30 @@
               "error": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "healthcareAvailable": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "healthcareMissing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "healthcareError": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "optionalAvailable": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "optionalMissing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "optionalError": {
+                "type": "integer",
+                "minimum": 0
               }
             }
           }
@@ -873,10 +907,33 @@
       },
       "ToolCheck": {
         "type": "object",
-        "required": ["name", "command", "status", "version", "message"],
+        "required": ["id", "name", "category", "requiredForHealthcare", "command", "status", "version", "message"],
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "secret-scanning",
+              "sast",
+              "sca",
+              "sbom",
+              "license",
+              "container",
+              "iac",
+              "openapi",
+              "dast",
+              "attestation",
+              "telemetry"
+            ]
+          },
+          "requiredForHealthcare": {
+            "type": "boolean"
           },
           "command": {
             "type": "string"

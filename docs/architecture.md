@@ -94,7 +94,9 @@ flowchart LR
 ## External Systems and Integrations
 
 - Required local dependencies: Docker Desktop, Docker Compose, PostgreSQL,
-  Redis, and scanner tooling packaged in the worker/scanner-toolbox images.
+  Redis, and scanner tooling packaged in the API, worker, and scanner-toolbox
+  images so UI/CLI doctor checks and queued scan execution report the same
+  healthcare-required toolchain.
 - Optional network access: vulnerability database updates for dependency
   scanners and explicitly allowed local/staging DAST targets.
 - STRATOS UI alignment: the Web UI consumes `@voldzi/stratos-ui` through GitHub
