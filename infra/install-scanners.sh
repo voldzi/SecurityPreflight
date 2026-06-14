@@ -9,6 +9,7 @@ apt-get install -y --no-install-recommends \
   curl \
   git \
   jq \
+  openscap-scanner \
   python3 \
   python3-pip \
   pipx \
@@ -31,10 +32,12 @@ arch="$(dpkg --print-architecture)"
 case "${arch}" in
   amd64)
     gitleaks_arch="x64"
+    nuclei_arch="amd64"
     osv_arch="amd64"
     ;;
   arm64)
     gitleaks_arch="arm64"
+    nuclei_arch="arm64"
     osv_arch="arm64"
     ;;
   *) echo "Unsupported scanner architecture: ${arch}" >&2; exit 1 ;;
@@ -54,5 +57,14 @@ curl -sSfL "https://github.com/google/osv-scanner/releases/latest/download/osv-s
   -o /usr/local/bin/osv-scanner
 chmod +x /usr/local/bin/osv-scanner
 
+nuclei_version="$(curl -sSfL https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | jq -r '.tag_name | sub("^v"; "")')"
+curl -sSfL "https://github.com/projectdiscovery/nuclei/releases/download/v${nuclei_version}/nuclei_${nuclei_version}_linux_${nuclei_arch}.zip" \
+  -o /tmp/nuclei.zip
+unzip -q /tmp/nuclei.zip -d /tmp/nuclei
+install -m 0755 /tmp/nuclei/nuclei /usr/local/bin/nuclei
+rm -rf /tmp/nuclei /tmp/nuclei.zip
+git clone --depth 1 https://github.com/projectdiscovery/nuclei-templates.git /opt/nuclei-templates
+
 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install semgrep
 PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install checkov
+PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install gvm-tools

@@ -151,6 +151,28 @@ curl -X POST http://localhost:8781/api/v1/scans/plan \
 `project.path` must be an absolute host path. CLI dry-run resolves relative
 paths against the directory where the CLI command was invoked.
 
+Web/API profiles such as `web-perimeter-safe`, `openapi-runtime-safe`,
+`controlled-dast-local`, and `external-vps-safe` require an explicit `dast`
+object:
+
+```json
+{
+  "profileId": "web-perimeter-safe",
+  "project": {
+    "id": "hospital-api",
+    "name": "Hospital API",
+    "path": "/workspace/projects/hospital-api",
+    "dataClassification": "health-data"
+  },
+  "dast": {
+    "targetUrl": "https://staging.example.com",
+    "allowedHosts": ["staging.example.com"],
+    "allowActiveScan": true,
+    "allowProductionTargets": false
+  }
+}
+```
+
 Guardrail failures, such as an active DAST target outside the allowlist, return
 HTTP 200 with `blocked: true` and concrete `blockedReasons`. Invalid requests
 and unknown scan profiles still use `ErrorResponse`.

@@ -73,6 +73,18 @@ pnpm --filter @security-preflight/cli preflight scan \
   --dry-run
 ```
 
+Safe web perimeter dry-run example:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan \
+  --project . \
+  --profile web-perimeter-safe \
+  --dast-target https://staging.example.com \
+  --allow-active-dast \
+  --allow-host staging.example.com \
+  --dry-run
+```
+
 The dry-run command calls `POST /api/v1/scans/plan`. It does not run scanners.
 It returns the planned commands, evidence paths, read-only project mount,
 network mode, and any guardrail block reasons.
@@ -93,9 +105,26 @@ The Web UI supports two scan target modes in the run panel:
   `PROJECTS_ROOT_CONTAINER`, for example `/workspace/projects/app`. The matching
   host directory must be mounted through `PROJECTS_ROOT_HOST`.
 - Web/API target: switch the run panel to `Web/API`, enter an `http` or `https`
-  URL, and SecurityPreflight uses the controlled DAST profile with that host as
-  the explicit allowlisted target. Only use this for systems you own or are
-  explicitly authorized to test.
+  URL, and select one of the web profiles such as `web-perimeter-safe`,
+  `openapi-runtime-safe`, `controlled-dast-local`, or `external-vps-safe`. The
+  UI sends the URL host as the explicit allowlist. Only use this for systems you
+  own or are explicitly authorized to test.
+
+Web/API profiles provide bounded safe checks:
+
+- `web-perimeter-safe` checks DNS resolution, TLS certificate state, TLS version
+  acceptance, a small fixed common-port inventory, HTTP security headers,
+  discoverable admin/debug/API documentation endpoints, WAF/edge indicators, and
+  Nuclei safe templates.
+- `openapi-runtime-safe` validates the local OpenAPI contract and probes only
+  documented `GET`/`HEAD` operations without path parameters.
+- `controlled-dast-local` adds OWASP ZAP baseline when the runner can execute
+  ZAP.
+- `external-vps-safe` verifies the hardened external scanner handoff contract in
+  addition to safe perimeter checks.
+
+The profiles do not perform brute force, credential attacks, denial-of-service,
+exploit chaining, destructive fuzzing, or third-party scanning.
 
 When the stack runs in Docker Compose, set `PROJECTS_ROOT_HOST` to a host
 directory containing the projects to scan. The API and worker mount it
@@ -143,6 +172,35 @@ the production Compose override so only the Web UI and API ports are published:
 
 ```bash
 docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -d --build
+```
+
+SecurityPreflight uses an explicit Docker Compose default network outside
+common LAN ranges:
+
+- default subnet: `10.246.250.0/24`
+- default gateway: `10.246.250.1`
+- default network name: `security-preflight_default`
+
+Do not configure SecurityPreflight Docker IPAM with `192.168.x.x` ranges. Those
+ranges are reserved for local LANs on `docker.home.cz`; using them can hijack
+routes to real hosts such as Ollama on `192.168.200.2:11434`. If a previous
+deployment already created a conflicting network, stop the stack and remove the
+old Docker network before starting the updated compose file:
+
+```bash
+docker compose -f docker-compose.yml -f infra/docker-compose.production.yml down
+for network in security-preflight_default securitypreflight_default; do
+  docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network"
+done
+docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -d --build
+```
+
+After startup, verify that no Docker network uses the LAN subnet:
+
+```bash
+docker network inspect $(docker network ls -q) \
+  --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
+  | grep '192.168.200' || echo OK
 ```
 
 Set `APP_ENV=production`, `NEXT_PUBLIC_API_URL` to the browser-reachable API
@@ -248,9 +306,20 @@ table and must stay in sync.
 | `SCANNER_RUNNER_ENABLED` | no | `true` | Enables worker execution of planned external scanner commands |
 | `SCANNER_RUNNER_MODE` | no | `direct` | `direct` runs scanners inside the worker; `docker` runs them through Docker with the scanner-toolbox image |
 | `SCANNER_TOOLBOX_IMAGE` | no | `security-preflight/scanner-toolbox:local` | Image used by the Docker scanner runner |
+| `SECURITY_PREFLIGHT_DOCKER_NETWORK_NAME` | no | `security-preflight_default` | Explicit Docker Compose network name |
+| `SECURITY_PREFLIGHT_DOCKER_SUBNET` | no | `10.246.250.0/24` | Explicit Docker IPAM subnet; must not use LAN ranges such as `192.168.x.x` |
+| `SECURITY_PREFLIGHT_DOCKER_GATEWAY` | no | `10.246.250.1` | Explicit Docker IPAM gateway for the configured subnet |
 | `ALLOW_DOCKER_SOCKET` | no | `false` | Explicit opt-in for future Docker socket based scanning |
 | `ALLOW_ACTIVE_DAST` | no | `false` | Enables controlled active DAST profiles |
 | `DAST_ALLOWED_HOSTS` | no | `localhost,127.0.0.1,host.docker.internal` | Comma-separated active DAST allowlist |
+| `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL` | no | unset | Hardened external scanner VPS API endpoint for signed result exchange |
+| `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY` | no | unset | Public key used to verify external scanner result signatures |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_URL` | no | unset | DefectDojo base URL for future/import-controlled central triage integration |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF` | no | unset | Secret-store reference for the DefectDojo API token; never commit the token |
+| `SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT` | no | unset | DefectDojo product mapping for imported findings |
+| `SECURITY_PREFLIGHT_GREENBONE_URL` | no | unset | Greenbone/OpenVAS manager endpoint for enterprise assurance evidence |
+| `SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF` | no | unset | Secret-store reference for Greenbone credentials; never commit credentials |
+| `SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH` | no | unset | Mounted path to approved SCAP content for OpenSCAP readiness checks |
 | `SECURITY_PREFLIGHT_AKB_RAG_BASE_URL` | no | unset | AKB RAG API base URL, normally ending in `/api/v1` |
 | `SECURITY_PREFLIGHT_AKB_PUBLIC_BASE_URL` | no | `https://stratos.zeleznalady.cz/akb` | Human-facing AKB URL shown in UI status |
 | `SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN` | no | unset | Compatibility bearer token for AKB when OIDC is unavailable; never commit |
@@ -273,10 +342,15 @@ table and must stay in sync.
 - PostgreSQL and Redis services from the local Compose stack.
 - Scanner tools packaged in local containers and the API doctor runtime:
   Docker CLI/Compose plugin, Gitleaks, Semgrep, Trivy, Syft, Grype, OSV
-  Scanner, Checkov, Redocly/OpenAPI tooling, and optional ZAP baseline planning
-  for controlled DAST.
+  Scanner, Checkov, Redocly/OpenAPI tooling, Nuclei, OpenSCAP, Greenbone
+  `gvm-cli`, and optional ZAP baseline/API scan planning for controlled DAST.
 - Optional scanner network access for vulnerability database updates.
 - Optional controlled DAST target on localhost or allowlisted staging hosts.
+- Optional hardened external scanner VPS for internet vantage-point checks. It
+  must return signed, redacted result envelopes; raw source code and secrets stay
+  out of the external scanner.
+- Optional DefectDojo instance for centralized finding triage. Production tokens
+  must live in a secret store and be referenced by name only.
 - Optional AKB RAG service for STRATOS document-grounded AI. Production should
   use OIDC client credentials or a controlled backend token, never browser-side
   direct AKB calls.

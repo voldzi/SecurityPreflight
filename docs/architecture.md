@@ -127,8 +127,12 @@ flowchart LR
   answers. Browser clients never call internal AKB services directly, and
   SecurityPreflight does not store prompts, answers, chunks, embeddings, or
   document text outside AKB.
-- Future integrations: DefectDojo/Security Assurance Platform export, CI/CD
-  templates, SARIF upload, SBOM workflows, and macOS Keychain support through a
+- Assurance integrations: SecurityPreflight exposes readiness checks for
+  DefectDojo, Greenbone/OpenVAS, OpenSCAP, and a hardened external scanner VPS.
+  These checks verify configured endpoints, content paths, and secret
+  references without storing credentials in Git or reports.
+- Future integrations: SARIF upload, richer DefectDojo import automation,
+  signed external-runner delivery status, and macOS Keychain support through a
   host-side CLI helper.
 
 ## Authentication and Authorization

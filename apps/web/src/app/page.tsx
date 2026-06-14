@@ -88,6 +88,7 @@ interface ScanProfile {
   name: string;
   description: string;
   checks: string[];
+  allowActiveDast: boolean;
 }
 
 interface ToolchainDoctor {
@@ -491,7 +492,7 @@ export default function DashboardPage() {
   const capabilityRows = localizedCapabilityRows[locale];
   const executionStages = localizedExecutionStages[locale];
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null;
-  const effectiveProfileId = scanTargetMode === "web" ? "controlled-dast-local" : selectedProfileId;
+  const effectiveProfileId = selectedProfileId;
   const activeScanProject = selectedProject ?? {
     id: "security-preflight-local",
     name: "SecurityPreflight",
@@ -506,6 +507,10 @@ export default function DashboardPage() {
   const selectedProfileDescription = selectedProfile
     ? profileDescription(locale, selectedProfile.id, selectedProfile.description)
     : copy.messages.loadProfilesFallback;
+  const profileOptions = useMemo(
+    () => (scanTargetMode === "web" ? profiles.filter((profile) => profile.allowActiveDast) : profiles),
+    [profiles, scanTargetMode]
+  );
   const projectRows = useMemo<ProjectRow[]>(
     () =>
       projects.map((project) => ({
@@ -2324,7 +2329,10 @@ export default function DashboardPage() {
               type="button"
               className={scanTargetMode === "project" ? "is-active" : undefined}
               aria-pressed={scanTargetMode === "project"}
-              onClick={() => setScanTargetMode("project")}
+              onClick={() => {
+                setScanTargetMode("project");
+                setSelectedProfileId("documentation-compliance");
+              }}
             >
               <FolderGit2 size={14} aria-hidden="true" />
               {copy.runPanel.directoryTarget}
@@ -2335,7 +2343,7 @@ export default function DashboardPage() {
               aria-pressed={scanTargetMode === "web"}
               onClick={() => {
                 setScanTargetMode("web");
-                setSelectedProfileId("controlled-dast-local");
+                setSelectedProfileId("web-perimeter-safe");
               }}
             >
               <Globe2 size={14} aria-hidden="true" />
@@ -2373,11 +2381,10 @@ export default function DashboardPage() {
           <SelectField
             label={copy.runPanel.scanProfile}
             value={effectiveProfileId}
-            disabled={scanTargetMode === "web"}
             onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
             searchPlaceholder={copy.runPanel.findProfile}
           >
-            {profiles.map((profile) => (
+            {profileOptions.map((profile) => (
               <option key={profile.id} value={profile.id}>
                 {profileName(locale, profile.id, profile.name)}
               </option>

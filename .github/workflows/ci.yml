@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
 
       - name: Enable pnpm
         run: corepack enable
@@ -43,6 +43,28 @@ jobs:
       - name: Lint OpenAPI
         if: ${{ hashFiles('openapi/openapi.json') != '' }}
         run: pnpm lint:openapi
+
+      - name: SecurityPreflight CLI dry-run
+        env:
+          APP_ENV: development
+          APP_HOST: 127.0.0.1
+          APP_PORT: 8781
+          SECURITY_PREFLIGHT_AUTH_MODE: disabled
+          REPORTS_PATH: ${{ runner.temp }}/security-preflight-reports
+          PROJECTS_ROOT_CONTAINER: ${{ github.workspace }}
+          PREFLIGHT_API_URL: http://127.0.0.1:8781
+        run: |
+          pnpm --filter @security-preflight/api start > "${RUNNER_TEMP}/security-preflight-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "${api_pid}" 2>/dev/null || true; cat "${RUNNER_TEMP}/security-preflight-api.log"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8781/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8781/health >/dev/null
+          pnpm --filter @security-preflight/cli preflight scan --project . --profile healthcare-reference --dry-run
 
   secret-scan:
     runs-on: ubuntu-latest

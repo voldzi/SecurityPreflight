@@ -56,7 +56,27 @@ export const globalConfigSchema = z.object({
     .object({
       enabled: z.boolean().default(false),
       baseUrl: z.string().default(""),
-      apiTokenRef: z.string().default("")
+      apiTokenRef: z.string().default(""),
+      product: z.string().default("")
+    })
+    .default({}),
+  greenbone: z
+    .object({
+      enabled: z.boolean().default(false),
+      baseUrl: z.string().default(""),
+      credentialRef: z.string().default("")
+    })
+    .default({}),
+  externalScanner: z
+    .object({
+      enabled: z.boolean().default(false),
+      baseUrl: z.string().default(""),
+      publicKey: z.string().default("")
+    })
+    .default({}),
+  openscap: z
+    .object({
+      contentPath: z.string().default("")
     })
     .default({}),
   resultSinks: z

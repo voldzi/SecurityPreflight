@@ -231,11 +231,41 @@ export const requiredScannerTools: ToolRequirement[] = [
     id: "zap",
     name: "OWASP ZAP",
     category: "dast",
-    requiredForHealthcare: false,
+    requiredForHealthcare: true,
     command: "zap-baseline.py",
     args: ["--version"],
-    checks: ["zap:baseline"],
+    checks: ["zap:baseline", "zap:api-scan"],
     purpose: "Controlled baseline DAST for explicitly allowlisted owned targets."
+  },
+  {
+    id: "nuclei",
+    name: "Nuclei",
+    category: "dast",
+    requiredForHealthcare: true,
+    command: "nuclei",
+    args: ["-version"],
+    checks: ["nuclei:safe"],
+    purpose: "Safe-template exposure and misconfiguration checks for explicitly allowlisted owned web targets."
+  },
+  {
+    id: "gvm-cli",
+    name: "Greenbone/OpenVAS CLI",
+    category: "dast",
+    requiredForHealthcare: true,
+    command: "gvm-cli",
+    args: ["--version"],
+    checks: ["greenbone:openvas"],
+    purpose: "Integration point for authenticated Greenbone/OpenVAS network vulnerability evidence."
+  },
+  {
+    id: "openscap",
+    name: "OpenSCAP",
+    category: "attestation",
+    requiredForHealthcare: true,
+    command: "oscap",
+    args: ["--version"],
+    checks: ["openscap:system"],
+    purpose: "Compliance evidence for host or image baselines when a hardened scanner environment provides SCAP content."
   }
 ];
 
@@ -273,23 +303,97 @@ export const defaultScanProfiles: ScanProfile[] = [
   {
     id: "api-security",
     name: "api-security",
-    description: "OpenAPI JSON-first checks, ErrorResponse compliance, health/readiness endpoints, and safe DAST readiness.",
-    checks: ["openapi", "openapi:lint", "api:error-response", "api:health", "api:ready"],
+    description: "OpenAPI JSON-first checks, ErrorResponse compliance, health/readiness endpoints, and safe runtime API probes.",
+    checks: ["openapi", "openapi:lint", "api:error-response", "api:health", "api:ready", "openapi:runtime-safe"],
     failThreshold: "high",
-    allowActiveDast: false,
+    allowActiveDast: true,
     allowProductionTargets: false,
     timeoutSeconds: 900
+  },
+  {
+    id: "web-perimeter-safe",
+    name: "web-perimeter-safe",
+    description:
+      "Safe DNS, TLS, common-port, HTTP header, exposed endpoint, WAF fingerprint, and Nuclei safe-template checks for an explicitly allowlisted web target.",
+    checks: [
+      "dns:records",
+      "tls:certificate",
+      "tls:configuration",
+      "ports:common",
+      "http:security-headers",
+      "endpoint:admin",
+      "endpoint:debug",
+      "api:discovery",
+      "waf:behavior",
+      "nuclei:safe"
+    ],
+    failThreshold: "high",
+    allowActiveDast: true,
+    allowProductionTargets: false,
+    timeoutSeconds: 1200
   },
   {
     id: "controlled-dast-local",
     name: "controlled-dast-local",
     description:
       "Controlled OWASP ZAP baseline profile for localhost or explicitly allowlisted staging targets owned by the user.",
-    checks: ["api:health", "api:ready", "zap:baseline"],
+    checks: ["api:health", "api:ready", "http:security-headers", "api:discovery", "zap:baseline"],
     failThreshold: "high",
     allowActiveDast: true,
     allowProductionTargets: false,
     timeoutSeconds: 1200
+  },
+  {
+    id: "openapi-runtime-safe",
+    name: "openapi-runtime-safe",
+    description:
+      "OpenAPI contract validation plus bounded safe GET/HEAD runtime probes against an explicitly allowlisted API target.",
+    checks: ["openapi", "openapi:lint", "api:error-response", "api:health", "api:ready", "openapi:runtime-safe", "zap:api-scan"],
+    failThreshold: "high",
+    allowActiveDast: true,
+    allowProductionTargets: false,
+    timeoutSeconds: 1200
+  },
+  {
+    id: "external-vps-safe",
+    name: "external-vps-safe",
+    description:
+      "External scanner readiness profile for a hardened VPS runner using safe web probes, OWASP ZAP baseline, Nuclei safe templates, and signed result return.",
+    checks: [
+      "external-runner:vps",
+      "dns:records",
+      "tls:certificate",
+      "tls:configuration",
+      "http:security-headers",
+      "api:discovery",
+      "waf:behavior",
+      "nuclei:safe",
+      "zap:baseline"
+    ],
+    failThreshold: "high",
+    allowActiveDast: true,
+    allowProductionTargets: false,
+    timeoutSeconds: 1800
+  },
+  {
+    id: "enterprise-assurance",
+    name: "enterprise-assurance",
+    description:
+      "Enterprise assurance profile for healthcare evidence pipelines that combine local checks with Greenbone/OpenVAS, OpenSCAP, and DefectDojo export readiness.",
+    checks: [
+      "greenbone:openvas",
+      "openscap:system",
+      "defectdojo:export",
+      "telemetry-export",
+      "syft:sbom",
+      "grype:sbom",
+      "iac:checkov",
+      "openapi"
+    ],
+    failThreshold: "medium",
+    allowActiveDast: true,
+    allowProductionTargets: false,
+    timeoutSeconds: 2400
   },
   {
     id: "container-security",

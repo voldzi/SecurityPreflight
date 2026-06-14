@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
+import dns from "node:dns/promises";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
+import tls from "node:tls";
 import { promisify } from "node:util";
 import {
   createFindingFingerprint,
@@ -222,6 +225,114 @@ const projectMountTarget = "/workspace/project";
 const evidenceMountTarget = "/workspace/evidence";
 
 const checkDefinitions: Record<string, CheckDefinition> = {
+  "dns:records": {
+    tool: "security-preflight-web-probe",
+    type: "configuration",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "tls:certificate": {
+    tool: "security-preflight-web-probe",
+    type: "configuration",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "tls:configuration": {
+    tool: "security-preflight-web-probe",
+    type: "configuration",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "ports:common": {
+    tool: "security-preflight-web-probe",
+    type: "configuration",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "http:security-headers": {
+    tool: "security-preflight-web-probe",
+    type: "configuration",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "endpoint:admin": {
+    tool: "security-preflight-web-probe",
+    type: "dast",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "endpoint:debug": {
+    tool: "security-preflight-web-probe",
+    type: "dast",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "api:discovery": {
+    tool: "security-preflight-web-probe",
+    type: "dast",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "waf:behavior": {
+    tool: "security-preflight-web-probe",
+    type: "configuration",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "openapi:runtime-safe": {
+    tool: "security-preflight-api-probe",
+    type: "openapi",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "external-runner:vps": {
+    tool: "security-preflight-external-runner",
+    type: "configuration",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "defectdojo:export": {
+    tool: "security-preflight-defectdojo",
+    type: "configuration",
+    executionMode: "internal",
+    evidenceExtensions: ["json"]
+  },
+  "greenbone:openvas": {
+    tool: "greenbone",
+    type: "dast",
+    executionMode: "internal",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json"]
+  },
+  "openscap:system": {
+    tool: "openscap",
+    type: "configuration",
+    executionMode: "internal",
+    evidenceExtensions: ["json"]
+  },
   "gitleaks:quick": {
     tool: "gitleaks",
     type: "secret",
@@ -468,6 +579,62 @@ const checkDefinitions: Record<string, CheckDefinition> = {
             `${evidenceBase}.html`,
             "-m",
             String(Math.ceil(timeoutSeconds / 60))
+          ]
+        : null
+  },
+  "zap:api-scan": {
+    tool: "zap",
+    type: "dast",
+    executionMode: "container",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["json", "html"],
+    buildCommand: ({ evidenceBase, timeoutSeconds }) => [
+      "zap-api-scan.py",
+      "-t",
+      `${projectMountTarget}/openapi/openapi.json`,
+      "-f",
+      "openapi",
+      "-J",
+      `${evidenceBase}.json`,
+      "-r",
+      `${evidenceBase}.html`,
+      "-m",
+      String(Math.ceil(timeoutSeconds / 60))
+    ]
+  },
+  "nuclei:safe": {
+    tool: "nuclei",
+    type: "dast",
+    executionMode: "container",
+    activeDast: true,
+    needsNetwork: true,
+    evidenceExtensions: ["jsonl"],
+    buildCommand: ({ evidenceBase, targetUrl }) =>
+      targetUrl
+        ? [
+            "nuclei",
+            "-u",
+            targetUrl,
+            "-templates",
+            "/opt/nuclei-templates",
+            "-jsonl",
+            "-o",
+            `${evidenceBase}.jsonl`,
+            "-severity",
+            "low,medium,high,critical",
+            "-tags",
+            "exposure,misconfig,tech,headers,tls,dns",
+            "-rl",
+            "3",
+            "-bs",
+            "1",
+            "-retries",
+            "0",
+            "-timeout",
+            "8",
+            "-duc",
+            "-no-color"
           ]
         : null
   }
@@ -810,6 +977,60 @@ const ignoredWalkSegments = new Set([
 
 const forbiddenFileNames = new Set([".env", ".env.local", ".env.production", "id_rsa", "id_dsa"]);
 const forbiddenFileExtensions = new Set([".key", ".p12", ".pfx", ".pem"]);
+const adminEndpointPaths = [
+  "/admin",
+  "/administrator",
+  "/login",
+  "/manage",
+  "/manager",
+  "/console",
+  "/wp-admin",
+  "/strapi/admin",
+  "/keycloak",
+  "/grafana"
+];
+const debugEndpointPaths = [
+  "/debug",
+  "/_debug",
+  "/__debug",
+  "/metrics",
+  "/actuator",
+  "/actuator/env",
+  "/actuator/heapdump",
+  "/server-status",
+  "/phpinfo.php",
+  "/trace"
+];
+const apiDiscoveryPaths = [
+  "/openapi.json",
+  "/swagger.json",
+  "/v3/api-docs",
+  "/api-docs",
+  "/swagger",
+  "/swagger-ui",
+  "/docs",
+  "/redoc",
+  "/graphql",
+  "/graphiql"
+];
+const commonPortChecks = [
+  { port: 22, service: "SSH", severity: "medium" as const },
+  { port: 80, service: "HTTP", severity: "info" as const },
+  { port: 443, service: "HTTPS", severity: "info" as const },
+  { port: 2375, service: "Docker API", severity: "critical" as const },
+  { port: 3000, service: "development web server", severity: "medium" as const },
+  { port: 3306, service: "MySQL/MariaDB", severity: "high" as const },
+  { port: 5432, service: "PostgreSQL", severity: "high" as const },
+  { port: 5672, service: "AMQP", severity: "high" as const },
+  { port: 6379, service: "Redis", severity: "critical" as const },
+  { port: 8080, service: "alternate HTTP/admin", severity: "medium" as const },
+  { port: 8081, service: "alternate HTTP/admin", severity: "medium" as const },
+  { port: 8443, service: "alternate HTTPS/admin", severity: "medium" as const },
+  { port: 9200, service: "Elasticsearch", severity: "high" as const },
+  { port: 9300, service: "Elasticsearch transport", severity: "high" as const },
+  { port: 15672, service: "RabbitMQ management", severity: "high" as const },
+  { port: 27017, service: "MongoDB", severity: "high" as const }
+];
 
 export async function executeScanPlan(
   plan: ScanExecutionPlan,
@@ -1227,6 +1448,8 @@ async function parseExternalFindings(
       return documents.flatMap((document) => parseRedoclyFindings(plan, step, document));
     case "zap":
       return documents.flatMap((document) => parseZapFindings(plan, step, document));
+    case "nuclei":
+      return documents.flatMap((document) => parseNucleiFindings(plan, step, document));
     default:
       return [];
   }
@@ -1236,6 +1459,22 @@ async function readJsonEvidenceDocuments(step: ScanExecutionStep, commandResult:
   const documents: unknown[] = [];
 
   for (const evidencePath of step.evidencePaths) {
+    if (evidencePath.endsWith(".jsonl")) {
+      try {
+        const lines = (await readFile(evidencePath, "utf8"))
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        for (const line of lines) {
+          documents.push(JSON.parse(line));
+        }
+      } catch {
+        // JSONL parse failures are represented by command metadata.
+      }
+      continue;
+    }
+
     if (!evidencePath.endsWith(".json")) {
       continue;
     }
@@ -1522,6 +1761,32 @@ function parseZapFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, docu
   return findings;
 }
 
+function parseNucleiFindings(plan: ScanExecutionPlan, step: ScanExecutionStep, document: unknown): Finding[] {
+  const item = asRecord(document);
+  const info = asRecord(item.info);
+  const ruleId = stringValue(item["template-id"]) ?? stringValue(item.templateID) ?? stringValue(item.template) ?? step.checkId;
+  const title = stringValue(info.name) ?? `Nuclei finding ${ruleId}`;
+  const matchedAt = stringValue(item["matched-at"]) ?? stringValue(item.matched) ?? stringValue(item.host);
+  const tags = stringListValue(info.tags);
+  const classification = asRecord(info.classification);
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: normalizeSeverity(stringValue(info.severity), "medium"),
+      title,
+      description: stringValue(info.description) ?? title,
+      endpoint: matchedAt,
+      ruleId,
+      cwe: stringListValue(classification["cwe-id"]),
+      cve: stringListValue(classification["cve-id"]),
+      recommendation:
+        stringValue(info.remediation) ??
+        (tags ? `Review the Nuclei safe-template finding and associated tags: ${tags}.` : "Review and remediate the Nuclei safe-template finding."),
+      evidence: JSON.stringify(redactObject(item))
+    })
+  ];
+}
+
 async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
   switch (step.checkId) {
     case "documentation":
@@ -1536,6 +1801,34 @@ async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep
       return checkOpenApiPath(plan, step, "/ready");
     case "telemetry-export":
       return checkOpenApiPath(plan, step, "/api/v1/results/ingest");
+    case "dns:records":
+      return checkDnsRecords(plan, step);
+    case "tls:certificate":
+      return checkTlsCertificate(plan, step);
+    case "tls:configuration":
+      return checkTlsConfiguration(plan, step);
+    case "ports:common":
+      return checkCommonPorts(plan, step);
+    case "http:security-headers":
+      return checkHttpSecurityHeaders(plan, step);
+    case "endpoint:admin":
+      return checkEndpointExposure(plan, step, adminEndpointPaths, "administration");
+    case "endpoint:debug":
+      return checkEndpointExposure(plan, step, debugEndpointPaths, "debug");
+    case "api:discovery":
+      return checkEndpointExposure(plan, step, apiDiscoveryPaths, "public API discovery");
+    case "waf:behavior":
+      return checkWafBehavior(plan, step);
+    case "openapi:runtime-safe":
+      return checkOpenApiRuntimeSafe(plan, step);
+    case "external-runner:vps":
+      return checkExternalRunnerReadiness(plan, step);
+    case "defectdojo:export":
+      return checkDefectDojoReadiness(plan, step);
+    case "greenbone:openvas":
+      return checkGreenboneReadiness(plan, step);
+    case "openscap:system":
+      return checkOpenScapReadiness(plan, step);
     case "privacy-impact":
       return checkDocumentationKeywords(plan, step, ["privacy", "data protection", "personal data", "health-data"]);
     case "threat-model":
@@ -1670,6 +1963,528 @@ async function checkOpenApiPath(plan: ScanExecutionPlan, step: ScanExecutionStep
       description: `The API contract must document ${apiPath}.`,
       filePath: "openapi/openapi.json",
       recommendation: `Add ${apiPath} to openapi/openapi.json.`
+    })
+  ];
+}
+
+async function checkDnsRecords(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  if (isLocalHost(target.hostname)) {
+    return [];
+  }
+
+  const [a, aaaa, cname, mx, ns, txt] = await Promise.all([
+    resolveDns(() => dns.resolve4(target.hostname)),
+    resolveDns(() => dns.resolve6(target.hostname)),
+    resolveDns(() => dns.resolveCname(target.hostname)),
+    resolveDns(() => dns.resolveMx(target.hostname)),
+    resolveDns(() => dns.resolveNs(target.hostname)),
+    resolveDns(() => dns.resolveTxt(target.hostname))
+  ]);
+  const hasAddress = a.records.length > 0 || aaaa.records.length > 0 || cname.records.length > 0;
+
+  if (!hasAddress) {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "Target hostname does not resolve to an address",
+        description: `DNS lookup for ${target.hostname} did not return A, AAAA, or CNAME records.`,
+        endpoint: target.origin,
+        recommendation: "Fix DNS records before relying on perimeter or API scan results.",
+        evidence: JSON.stringify(redactObject({ host: target.hostname, a, aaaa, cname, mx, ns, txt }))
+      })
+    ];
+  }
+
+  const findings: Finding[] = [];
+
+  if (mx.records.length === 0 && txt.records.flat().some((record) => /^v=spf1/i.test(record)) === false) {
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: "info",
+        title: "No mail security DNS evidence observed",
+        description: `No MX records or SPF TXT record were observed for ${target.hostname}.`,
+        endpoint: target.origin,
+        recommendation: "If this domain sends mail, publish SPF, DKIM, and DMARC evidence; otherwise document that mail is intentionally disabled.",
+        evidence: JSON.stringify(redactObject({ host: target.hostname, mx, txt }))
+      })
+    );
+  }
+
+  return findings;
+}
+
+async function checkTlsCertificate(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  if (target.protocol !== "https:") {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "Target does not use HTTPS",
+        description: `The configured target ${target.toString()} uses ${target.protocol.replace(":", "")}.`,
+        endpoint: target.toString(),
+        recommendation: "Use HTTPS for healthcare and other sensitive applications before running web/API assurance scans."
+      })
+    ];
+  }
+
+  const result = await inspectTlsCertificate(target.hostname, Number(target.port || 443));
+
+  if (!result.ok) {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "TLS certificate could not be inspected",
+        description: result.error,
+        endpoint: target.origin,
+        recommendation: "Confirm the HTTPS endpoint is reachable and presents a valid certificate chain.",
+        evidence: JSON.stringify(redactObject(result))
+      })
+    ];
+  }
+
+  const findings: Finding[] = [];
+  const validTo = Date.parse(result.certificate.validTo ?? "");
+  const daysRemaining = Number.isFinite(validTo) ? Math.floor((validTo - Date.now()) / 86_400_000) : null;
+
+  if (!result.authorized) {
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "TLS certificate is not trusted by the runtime",
+        description: result.authorizationError ?? "The TLS peer certificate chain was not authorized.",
+        endpoint: target.origin,
+        recommendation: "Install a trusted certificate chain with a hostname that matches the target.",
+        evidence: JSON.stringify(redactObject(result))
+      })
+    );
+  }
+
+  if (daysRemaining !== null && daysRemaining < 0) {
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: "critical",
+        title: "TLS certificate is expired",
+        description: `The certificate expired ${Math.abs(daysRemaining)} days ago.`,
+        endpoint: target.origin,
+        recommendation: "Renew and deploy the certificate immediately.",
+        evidence: JSON.stringify(redactObject(result))
+      })
+    );
+  } else if (daysRemaining !== null && daysRemaining < 30) {
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: daysRemaining < 14 ? "high" : "medium",
+        title: "TLS certificate expires soon",
+        description: `The certificate expires in ${daysRemaining} days.`,
+        endpoint: target.origin,
+        recommendation: "Renew the certificate before the healthcare assurance gate.",
+        evidence: JSON.stringify(redactObject(result))
+      })
+    );
+  }
+
+  if (!result.certificate.subjectaltname?.includes(target.hostname) && !isLocalHost(target.hostname)) {
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: "medium",
+        title: "TLS certificate SAN does not visibly include the target host",
+        description: `The certificate SAN list did not include ${target.hostname}.`,
+        endpoint: target.origin,
+        recommendation: "Verify the certificate includes the public service hostname.",
+        evidence: JSON.stringify(redactObject(result))
+      })
+    );
+  }
+
+  return findings;
+}
+
+async function checkTlsConfiguration(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  if (target.protocol !== "https:") {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "TLS configuration cannot be evaluated on a non-HTTPS target",
+        description: `The configured target ${target.toString()} does not use HTTPS.`,
+        endpoint: target.toString(),
+        recommendation: "Expose the application through HTTPS and rerun the TLS configuration check."
+      })
+    ];
+  }
+
+  const port = Number(target.port || 443);
+  const [tls10, tls11, tls12, tls13] = await Promise.all([
+    probeTlsVersion(target.hostname, port, "TLSv1"),
+    probeTlsVersion(target.hostname, port, "TLSv1.1"),
+    probeTlsVersion(target.hostname, port, "TLSv1.2"),
+    probeTlsVersion(target.hostname, port, "TLSv1.3")
+  ]);
+  const findings: Finding[] = [];
+
+  for (const legacy of [tls10, tls11]) {
+    if (legacy.accepted) {
+      findings.push(
+        createExecutionFinding(plan, step, {
+          severity: "high",
+          title: `${legacy.version} is accepted by the target`,
+          description: `The endpoint accepted a ${legacy.version} handshake.`,
+          endpoint: target.origin,
+          recommendation: "Disable TLS 1.0 and TLS 1.1; require TLS 1.2 or newer.",
+          evidence: JSON.stringify(redactObject({ tls10, tls11, tls12, tls13 }))
+        })
+      );
+    }
+  }
+
+  if (!tls12.accepted && !tls13.accepted) {
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: "critical",
+        title: "TLS 1.2 or newer was not confirmed",
+        description: "The probe could not establish TLS 1.2 or TLS 1.3.",
+        endpoint: target.origin,
+        recommendation: "Configure the service to support TLS 1.2 or TLS 1.3 with modern ciphers.",
+        evidence: JSON.stringify(redactObject({ tls10, tls11, tls12, tls13 }))
+      })
+    );
+  }
+
+  return findings;
+}
+
+async function checkCommonPorts(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  const targetPort = Number(target.port || (target.protocol === "https:" ? 443 : 80));
+  const probes = await Promise.all(commonPortChecks.map((portCheck) => probeTcpPort(target.hostname, portCheck.port)));
+
+  return probes.flatMap((probe, index) => {
+    const portCheck = commonPortChecks[index];
+
+    if (!portCheck || !probe.open || portCheck.port === targetPort || portCheck.severity === "info") {
+      return [];
+    }
+
+    return [
+      createExecutionFinding(plan, step, {
+        severity: portCheck.severity,
+        title: `${portCheck.service} port is reachable`,
+        description: `TCP port ${portCheck.port} on ${target.hostname} accepted a connection.`,
+        endpoint: `${target.hostname}:${portCheck.port}`,
+        recommendation: "Confirm the service is intentionally public, protected by network policy, and documented in the exposed-services inventory.",
+        evidence: JSON.stringify(redactObject({ host: target.hostname, ...probe, service: portCheck.service }))
+      })
+    ];
+  });
+}
+
+async function checkHttpSecurityHeaders(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  const response = await fetchTarget(target.toString(), { method: "GET", timeoutMs: 8_000 });
+
+  if (!response.ok) {
+    return [
+      createExecutionFinding(plan, step, {
+        severity: "medium",
+        title: "HTTP security headers could not be inspected",
+        description: response.error ?? `The target returned HTTP ${response.status ?? "unknown"}.`,
+        endpoint: target.toString(),
+        recommendation: "Confirm the target is reachable and rerun the header check.",
+        evidence: JSON.stringify(redactObject(response))
+      })
+    ];
+  }
+
+  const headers = response.headers;
+  const findings: Finding[] = [];
+  const hasCspFrameAncestors = /frame-ancestors/i.test(headers["content-security-policy"] ?? "");
+
+  if (target.protocol !== "https:") {
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: "high",
+        title: "Application is reachable over plain HTTP",
+        description: "The target URL uses HTTP instead of HTTPS.",
+        endpoint: target.toString(),
+        recommendation: "Serve healthcare and sensitive applications over HTTPS only."
+      })
+    );
+  }
+
+  if (target.protocol === "https:" && !headers["strict-transport-security"]) {
+    findings.push(headerFinding(plan, step, target, "Strict-Transport-Security", "high", "Enable HSTS with an appropriate max-age."));
+  }
+
+  if (!headers["x-content-type-options"]?.toLowerCase().includes("nosniff")) {
+    findings.push(headerFinding(plan, step, target, "X-Content-Type-Options", "medium", "Set X-Content-Type-Options: nosniff."));
+  }
+
+  if (!headers["x-frame-options"] && !hasCspFrameAncestors) {
+    findings.push(headerFinding(plan, step, target, "X-Frame-Options or CSP frame-ancestors", "medium", "Prevent clickjacking with X-Frame-Options or CSP frame-ancestors."));
+  }
+
+  if (!headers["content-security-policy"]) {
+    findings.push(headerFinding(plan, step, target, "Content-Security-Policy", "medium", "Define a Content-Security-Policy suited to the application."));
+  }
+
+  if (!headers["referrer-policy"]) {
+    findings.push(headerFinding(plan, step, target, "Referrer-Policy", "low", "Set a Referrer-Policy that avoids leaking sensitive paths."));
+  }
+
+  if (!headers["permissions-policy"]) {
+    findings.push(headerFinding(plan, step, target, "Permissions-Policy", "low", "Set a restrictive Permissions-Policy for browser capabilities."));
+  }
+
+  const evidence = JSON.stringify(redactObject({ url: target.toString(), status: response.status, headers }));
+
+  return findings.map((finding) => ({
+    ...finding,
+    evidence
+  }));
+}
+
+async function checkEndpointExposure(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  pathsToCheck: string[],
+  label: string
+): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  const findings: Finding[] = [];
+
+  for (const probePath of pathsToCheck) {
+    const url = buildTargetUrl(target, probePath);
+    const response = await probeHttpEndpoint(url);
+
+    if (!response.status) {
+      continue;
+    }
+
+    const isAccessible = response.status >= 200 && response.status < 300;
+    const isProtected = response.status === 401 || response.status === 403;
+    const isRedirect = response.status >= 300 && response.status < 400;
+
+    if (!isAccessible && !isProtected && !isRedirect) {
+      continue;
+    }
+
+    findings.push(
+      createExecutionFinding(plan, step, {
+        severity: isAccessible ? (label === "debug" ? "high" : label === "public API discovery" ? "low" : "medium") : "info",
+        title: `${label} endpoint is discoverable`,
+        description: `${url} returned HTTP ${response.status}.`,
+        endpoint: url,
+        recommendation: isAccessible
+          ? "Remove the endpoint from the public surface or require strong authentication, authorization, and audit logging."
+          : "Confirm the endpoint is intentionally exposed and remains protected by authentication and authorization.",
+        evidence: JSON.stringify(redactObject(response))
+      })
+    );
+  }
+
+  return findings;
+}
+
+async function checkWafBehavior(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  const baseline = await fetchTarget(target.toString(), { method: "GET", timeoutMs: 8_000 });
+  const probeUrl = buildTargetUrl(target, "/securitypreflight-safe-probe");
+  const probe = await fetchTarget(`${probeUrl}?securitypreflight_probe=%3Cscript%3E`, { method: "GET", timeoutMs: 8_000 });
+  const waf = detectWafSignals([baseline, probe]);
+
+  if (waf.length > 0 || [403, 406, 429].includes(probe.status ?? 0)) {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "low",
+      title: "No WAF or edge-protection behavior was observed",
+      description: "The safe WAF probe did not observe common WAF/CDN headers or blocking behavior.",
+      endpoint: target.origin,
+      recommendation: "For internet-exposed healthcare applications, document compensating controls or place the service behind an approved WAF/edge policy.",
+      evidence: JSON.stringify(redactObject({ baseline, probe, wafSignals: waf }))
+    })
+  ];
+}
+
+async function checkOpenApiRuntimeSafe(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  const openApi = await readOpenApi(plan);
+
+  if (!openApi.ok) {
+    return checkOpenApiDocument(plan, step);
+  }
+
+  const paths = asRecord(openApi.document.paths);
+  const candidates = Object.entries(paths)
+    .flatMap(([apiPath, methods]) =>
+      Object.keys(asRecord(methods))
+        .filter((method) => ["get", "head"].includes(method.toLowerCase()))
+        .map((method) => ({ method: method.toUpperCase(), apiPath }))
+    )
+    .filter((candidate) => !candidate.apiPath.includes("{"))
+    .slice(0, 25);
+  const findings: Finding[] = [];
+
+  for (const candidate of candidates) {
+    const url = buildTargetUrl(target, candidate.apiPath);
+    const response = await probeHttpEndpoint(url, candidate.method === "HEAD" ? "HEAD" : "GET");
+
+    if ((response.status ?? 0) >= 500) {
+      findings.push(
+        createExecutionFinding(plan, step, {
+          severity: "high",
+          title: "Documented OpenAPI operation returned a server error",
+          description: `${candidate.method} ${candidate.apiPath} returned HTTP ${response.status}.`,
+          endpoint: url,
+          recommendation: "Fix the operation or update the contract before relying on the API readiness gate.",
+          evidence: JSON.stringify(redactObject({ candidate, response }))
+        })
+      );
+    }
+  }
+
+  return findings;
+}
+
+async function checkExternalRunnerReadiness(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+  const endpoint = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL?.trim();
+  const publicKey = process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY?.trim();
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  if (endpoint && publicKey) {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "high",
+      title: "External scanner VPS is not configured",
+      description: "SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL and SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY are required for signed external scanner result exchange.",
+      endpoint: target.toString(),
+      recommendation: "Provision the hardened scanner VPS, configure signed result return, and keep credentials outside Git.",
+      evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), configuredPublicKey: Boolean(publicKey) }))
+    })
+  ];
+}
+
+async function checkDefectDojoReadiness(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const baseUrl = process.env.SECURITY_PREFLIGHT_DEFECTDOJO_URL?.trim();
+  const tokenRef = process.env.SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF?.trim();
+  const product = process.env.SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT?.trim();
+
+  if (baseUrl && tokenRef && product) {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "medium",
+      title: "DefectDojo export is not configured",
+      description: "DefectDojo URL, token reference, and product mapping are required before findings can be centrally triaged.",
+      recommendation: "Configure SECURITY_PREFLIGHT_DEFECTDOJO_URL, SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF, and SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT in the deployment secret store.",
+      evidence: JSON.stringify(redactObject({ configuredBaseUrl: Boolean(baseUrl), configuredTokenRef: Boolean(tokenRef), configuredProduct: Boolean(product) }))
+    })
+  ];
+}
+
+async function checkGreenboneReadiness(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const target = activeTarget(plan);
+  const endpoint = process.env.SECURITY_PREFLIGHT_GREENBONE_URL?.trim();
+  const credentialRef = process.env.SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF?.trim();
+
+  if (!target) {
+    return missingActiveTargetFinding(plan, step);
+  }
+
+  if (endpoint && credentialRef) {
+    return [];
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "high",
+      title: "Greenbone/OpenVAS integration is not configured",
+      description: "Greenbone/OpenVAS requires a configured manager endpoint and credential reference before network vulnerability evidence can be imported.",
+      endpoint: target.toString(),
+      recommendation: "Configure SECURITY_PREFLIGHT_GREENBONE_URL and SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF, then run the enterprise assurance profile from an approved scanner network.",
+      evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), configuredCredentialRef: Boolean(credentialRef) }))
+    })
+  ];
+}
+
+async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const contentPath = process.env.SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH?.trim();
+
+  if (contentPath) {
+    try {
+      await stat(contentPath);
+      return [];
+    } catch {
+      return [
+        createExecutionFinding(plan, step, {
+          severity: "high",
+          title: "OpenSCAP content path is not readable",
+          description: `Configured OpenSCAP content path '${contentPath}' could not be read.`,
+          recommendation: "Mount approved SCAP content into the scanner runtime and verify filesystem permissions.",
+          evidence: JSON.stringify(redactObject({ contentPath }))
+        })
+      ];
+    }
+  }
+
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "medium",
+      title: "OpenSCAP content is not configured",
+      description: "OpenSCAP needs approved SCAP content before compliance evidence can be generated.",
+      recommendation: "Configure SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH with approved SCAP content for the target environment."
     })
   ];
 }
@@ -1817,6 +2632,259 @@ async function readOpenApi(plan: ScanExecutionPlan): Promise<{ ok: true; documen
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function activeTarget(plan: ScanExecutionPlan): URL | null {
+  if (!plan.policy.activeDastTarget) {
+    return null;
+  }
+
+  try {
+    return new URL(plan.policy.activeDastTarget);
+  } catch {
+    return null;
+  }
+}
+
+function missingActiveTargetFinding(plan: ScanExecutionPlan, step: ScanExecutionStep): Finding[] {
+  return [
+    createExecutionFinding(plan, step, {
+      severity: "high",
+      title: "Web target is missing",
+      description: "This check requires an explicit, allowlisted HTTP or HTTPS target URL.",
+      recommendation: "Provide dast.targetUrl with the target host in dast.allowedHosts and rerun the profile."
+    })
+  ];
+}
+
+function isLocalHost(hostname: string): boolean {
+  return ["localhost", "127.0.0.1", "::1", "host.docker.internal"].includes(hostname.toLowerCase());
+}
+
+async function resolveDns<T>(resolver: () => Promise<T[]>): Promise<{ ok: boolean; records: T[]; error: string | null }> {
+  try {
+    return { ok: true, records: await resolver(), error: null };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code === "ENODATA" || code === "ENOTFOUND" || code === "ENODOMAIN") {
+      return { ok: true, records: [], error: null };
+    }
+
+    return { ok: false, records: [], error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function inspectTlsCertificate(
+  host: string,
+  port: number
+): Promise<
+  | {
+      ok: true;
+      authorized: boolean;
+      authorizationError: string | null;
+      protocol: string | null;
+      cipher: string | null;
+      certificate: {
+        subject: unknown;
+        issuer: unknown;
+        subjectaltname: string | null;
+        validFrom: string | null;
+        validTo: string | null;
+        fingerprint256: string | null;
+      };
+    }
+  | { ok: false; error: string }
+> {
+  return new Promise((resolve) => {
+    const socket = tls.connect({
+      host,
+      port,
+      servername: isLocalHost(host) ? undefined : host,
+      rejectUnauthorized: false,
+      timeout: 8_000
+    });
+
+    socket.once("secureConnect", () => {
+      const certificate = socket.getPeerCertificate();
+      resolve({
+        ok: true,
+        authorized: socket.authorized,
+        authorizationError: socket.authorizationError ? String(socket.authorizationError) : null,
+        protocol: socket.getProtocol(),
+        cipher: socket.getCipher()?.name ?? null,
+        certificate: {
+          subject: certificate.subject ?? null,
+          issuer: certificate.issuer ?? null,
+          subjectaltname: certificate.subjectaltname ?? null,
+          validFrom: certificate.valid_from ?? null,
+          validTo: certificate.valid_to ?? null,
+          fingerprint256: certificate.fingerprint256 ?? null
+        }
+      });
+      socket.end();
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve({ ok: false, error: "TLS certificate probe timed out." });
+    });
+    socket.once("error", (error) => {
+      resolve({ ok: false, error: error.message });
+    });
+  });
+}
+
+async function probeTlsVersion(
+  host: string,
+  port: number,
+  version: tls.SecureVersion
+): Promise<{ version: tls.SecureVersion; accepted: boolean; protocol: string | null; error: string | null }> {
+  return new Promise((resolve) => {
+    const socket = tls.connect({
+      host,
+      port,
+      servername: isLocalHost(host) ? undefined : host,
+      minVersion: version,
+      maxVersion: version,
+      rejectUnauthorized: false,
+      timeout: 5_000
+    });
+
+    socket.once("secureConnect", () => {
+      resolve({ version, accepted: true, protocol: socket.getProtocol(), error: null });
+      socket.end();
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve({ version, accepted: false, protocol: null, error: "TLS version probe timed out." });
+    });
+    socket.once("error", (error) => {
+      resolve({ version, accepted: false, protocol: null, error: error.message });
+    });
+  });
+}
+
+async function probeTcpPort(host: string, port: number): Promise<{ port: number; open: boolean; error: string | null }> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port, timeout: 1_500 });
+    let settled = false;
+    const finish = (open: boolean, error: string | null) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve({ port, open, error });
+    };
+
+    socket.once("connect", () => finish(true, null));
+    socket.once("timeout", () => finish(false, "Port probe timed out."));
+    socket.once("error", (error) => finish(false, error.message));
+  });
+}
+
+interface HttpProbeResult {
+  url: string;
+  method: string;
+  ok: boolean;
+  status: number | null;
+  headers: Record<string, string>;
+  error: string | null;
+}
+
+async function fetchTarget(url: string, options: { method: string; timeoutMs: number }): Promise<HttpProbeResult> {
+  try {
+    const response = await fetch(url, {
+      method: options.method,
+      redirect: "manual",
+      headers: {
+        accept: "*/*",
+        "user-agent": "SecurityPreflight/0.1 safe-probe"
+      },
+      signal: AbortSignal.timeout(options.timeoutMs)
+    });
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      headers[key.toLowerCase()] = value;
+    });
+
+    return {
+      url,
+      method: options.method,
+      ok: true,
+      status: response.status,
+      headers,
+      error: null
+    };
+  } catch (error) {
+    return {
+      url,
+      method: options.method,
+      ok: false,
+      status: null,
+      headers: {},
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+async function probeHttpEndpoint(url: string, method = "HEAD"): Promise<HttpProbeResult> {
+  const head = await fetchTarget(url, { method, timeoutMs: 6_000 });
+
+  if (method === "HEAD" && (head.status === 405 || head.status === 501 || !head.ok)) {
+    return fetchTarget(url, { method: "GET", timeoutMs: 6_000 });
+  }
+
+  return head;
+}
+
+function buildTargetUrl(target: URL, candidatePath: string): string {
+  const basePath = target.pathname.replace(/\/$/, "");
+  const normalizedCandidate = candidatePath.startsWith("/") ? candidatePath : `/${candidatePath}`;
+  const next = new URL(target.toString());
+  next.pathname = basePath && basePath !== "/" ? `${basePath}${normalizedCandidate}` : normalizedCandidate;
+  next.search = "";
+  next.hash = "";
+  return next.toString();
+}
+
+function headerFinding(
+  plan: ScanExecutionPlan,
+  step: ScanExecutionStep,
+  target: URL,
+  header: string,
+  severity: Severity,
+  recommendation: string
+): Finding {
+  return createExecutionFinding(plan, step, {
+    severity,
+    title: `Missing or weak HTTP security header: ${header}`,
+    description: `The response did not include an acceptable ${header} header.`,
+    endpoint: target.toString(),
+    recommendation
+  });
+}
+
+function detectWafSignals(probes: HttpProbeResult[]): string[] {
+  const haystack = probes
+    .flatMap((probe) => Object.entries(probe.headers).map(([key, value]) => `${key}: ${value}`))
+    .join("\n")
+    .toLowerCase();
+  const signals = [
+    "cloudflare",
+    "cf-ray",
+    "akamai",
+    "imperva",
+    "incapsula",
+    "sucuri",
+    "fastly",
+    "x-azure-ref",
+    "x-amz-cf",
+    "x-sucuri",
+    "x-waf",
+    "mod_security",
+    "barracuda"
+  ];
+
+  return signals.filter((signal) => haystack.includes(signal));
 }
 
 async function writeStepEvidence(

@@ -149,6 +149,21 @@ the request and the target URL is local or allowlisted. URLs with embedded
 credentials, non-HTTP protocols, non-allowlisted hosts, and production-like
 hostnames are blocked by the plan guardrails by default.
 
+The `web-perimeter-safe` profile adds bounded network and HTTP checks for
+explicitly allowlisted targets: DNS records, TLS certificate state, TLS protocol
+acceptance, common management ports, HTTP security headers, discoverable
+admin/debug/API endpoints, WAF or edge-protection indicators, and Nuclei safe
+templates. The built-in endpoint probes use a fixed short path list, short
+timeouts, and GET/HEAD-style requests only. The `openapi-runtime-safe` profile
+adds bounded GET/HEAD probes for documented OpenAPI operations without path
+parameters. The `external-vps-safe` profile verifies readiness for a hardened
+external scanner that returns signed redacted result envelopes.
+
+Greenbone/OpenVAS, OpenSCAP, and DefectDojo are handled as enterprise assurance
+integration points. SecurityPreflight records blocking readiness evidence when
+their endpoints, content paths, or secret references are not configured; actual
+production credentials must remain in a secret store outside Git and reports.
+
 The tool must not implement or enable brute-force attacks, denial-of-service
 tests, exploit chaining, authentication bypass attempts, data exfiltration, or
 scanning of third-party/public targets. Formal penetration testing remains a

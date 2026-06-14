@@ -35,6 +35,46 @@ symptoms, diagnosis, fix, verification.
 - If a DAST target is unavailable, verify it is a permitted localhost or
   allowlisted staging host before retrying.
 
+## Docker Network Collides With LAN
+
+- Symptoms: after starting SecurityPreflight, a real LAN host becomes
+  unreachable from `docker.home.cz`; for example `nc -vz -w 5 192.168.200.2
+  11434` returns `no route to host`.
+- Diagnosis: inspect Docker IPAM and host routing:
+
+```bash
+docker network inspect $(docker network ls -q) \
+  --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
+  | grep '192.168.200' || echo OK
+
+ip route get 192.168.200.2
+```
+
+- Fix: SecurityPreflight must use the explicit non-LAN Compose subnet
+  `10.246.250.0/24`. Stop the stack, remove the previously created conflicting
+  network, and restart:
+
+```bash
+docker compose -f docker-compose.yml -f infra/docker-compose.production.yml down
+for network in security-preflight_default securitypreflight_default; do
+  docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network"
+done
+docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -d --build
+```
+
+- Verification:
+
+```bash
+docker network inspect $(docker network ls -q) \
+  --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
+  | grep '192.168.200' || echo OK
+ip route get 192.168.200.2
+nc -vz -w 5 192.168.200.2 11434
+```
+
+The route to `192.168.200.2` must not go through a Docker `br-*` interface.
+Never configure SecurityPreflight Docker IPAM with `192.168.x.x` LAN ranges.
+
 ## Scan Evidence Is Missing or Skipped
 
 - Check `REPORTS_PATH/<scanRunId>/execution-result.json`.

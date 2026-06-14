@@ -365,11 +365,27 @@ export const uiText = {
       },
       "api-security": {
         name: "Bezpečnost API",
-        description: "OpenAPI JSON-first kontroly, ErrorResponse shoda, health/readiness endpointy a bezpečná DAST připravenost."
+        description: "OpenAPI JSON-first kontroly, ErrorResponse shoda, health/readiness endpointy a bezpečné runtime API sondy."
+      },
+      "web-perimeter-safe": {
+        name: "Bezpečný web perimeter",
+        description: "Bezpečné DNS, TLS, porty, HTTP hlavičky, endpoint discovery, WAF fingerprint a Nuclei safe-template kontroly pro povolený webový cíl."
       },
       "controlled-dast-local": {
         name: "Řízený lokální DAST",
         description: "Řízený OWASP ZAP baseline profil pro localhost nebo výslovně povolené staging cíle vlastněné uživatelem."
+      },
+      "openapi-runtime-safe": {
+        name: "Bezpečný OpenAPI runtime",
+        description: "OpenAPI kontrakt, bezpečné GET/HEAD runtime sondy a ZAP API scan pro výslovně povolený API cíl."
+      },
+      "external-vps-safe": {
+        name: "Externí VPS safe scan",
+        description: "Profil pro hardened externí scanner VPS se ZAP baseline, Nuclei safe templates a podepsaným návratem výsledků."
+      },
+      "enterprise-assurance": {
+        name: "Enterprise assurance",
+        description: "Profil pro zdravotnické evidence pipeline s Greenbone/OpenVAS, OpenSCAP, DefectDojo exportem a lokální SBOM/IaC evidencí."
       },
       "container-security": {
         name: "Bezpečnost kontejnerů",
@@ -621,7 +637,7 @@ export const uiText = {
       webTargetUrl: "Web nebo API URL",
       webTargetPlaceholder: "https://example.cz",
       directoryTargetHelp: "Adresář vyberete registrací projektu. Cesta musí být uvnitř Docker mountu PROJECTS_ROOT_CONTAINER, typicky /workspace/projects/...",
-      webTargetHelp: "Webový cíl používá řízený DAST profil. Spouštějte ho jen proti vlastním nebo výslovně povoleným URL.",
+      webTargetHelp: "Webový cíl používá vybraný webový/DAST profil s allowlistem hostu. Spouštějte ho jen proti vlastním nebo výslovně povoleným URL.",
       project: "Projekt",
       checks: "Kontroly",
       tools: "Nástroje",
@@ -771,11 +787,27 @@ export const uiText = {
       },
       "api-security": {
         name: "API security",
-        description: "OpenAPI JSON-first checks, ErrorResponse compliance, health/readiness endpoints, and safe DAST readiness."
+        description: "OpenAPI JSON-first checks, ErrorResponse compliance, health/readiness endpoints, and safe runtime API probes."
+      },
+      "web-perimeter-safe": {
+        name: "Safe web perimeter",
+        description: "Safe DNS, TLS, port, HTTP header, endpoint discovery, WAF fingerprint, and Nuclei safe-template checks for an allowlisted web target."
       },
       "controlled-dast-local": {
         name: "Controlled local DAST",
         description: "Controlled OWASP ZAP baseline profile for localhost or explicitly allowlisted staging targets owned by the user."
+      },
+      "openapi-runtime-safe": {
+        name: "Safe OpenAPI runtime",
+        description: "OpenAPI contract checks, safe GET/HEAD runtime probes, and ZAP API scan for an explicitly allowlisted API target."
+      },
+      "external-vps-safe": {
+        name: "External VPS safe scan",
+        description: "Hardened external scanner VPS profile with ZAP baseline, Nuclei safe templates, and signed result return."
+      },
+      "enterprise-assurance": {
+        name: "Enterprise assurance",
+        description: "Healthcare evidence pipeline profile with Greenbone/OpenVAS, OpenSCAP, DefectDojo export, and local SBOM/IaC evidence."
       },
       "container-security": {
         name: "Container security",
@@ -1027,7 +1059,7 @@ export const uiText = {
       webTargetUrl: "Web or API URL",
       webTargetPlaceholder: "https://example.com",
       directoryTargetHelp: "Choose a directory by registering a project. The path must be inside the Docker PROJECTS_ROOT_CONTAINER mount, usually /workspace/projects/...",
-      webTargetHelp: "The web target uses the controlled DAST profile. Run it only against URLs you own or are explicitly allowed to test.",
+      webTargetHelp: "The web target uses the selected web/DAST profile with the host allowlisted. Run it only against URLs you own or are explicitly allowed to test.",
       project: "Project",
       checks: "Checks",
       tools: "Tools",
