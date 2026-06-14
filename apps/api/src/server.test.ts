@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createServer } from "./server.js";
 
@@ -119,6 +122,150 @@ describe("api server", () => {
     });
     expect(queued).toHaveLength(1);
     expect(queued[0]?.name).toBe("scan.execute");
+  });
+
+  it("serves scan run history, detail, and report content from report evidence", async () => {
+    const previousReportsPath = process.env.REPORTS_PATH;
+    const reportsPath = await mkdtemp(path.join(tmpdir(), "security-preflight-api-test-"));
+    const scanRunId = "scan_history_test";
+    const evidenceRoot = path.join(reportsPath, scanRunId);
+
+    await mkdir(evidenceRoot, { recursive: true });
+    await writeFile(
+      path.join(evidenceRoot, "execution-result.json"),
+      `${JSON.stringify(
+        {
+          scanRunId,
+          status: "completed",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          finishedAt: "2026-01-01T00:00:05.000Z",
+          evidenceRoot,
+          stepResults: [
+            {
+              stepId: "step_01_documentation",
+              checkId: "documentation",
+              status: "passed",
+              startedAt: "2026-01-01T00:00:00.000Z",
+              finishedAt: "2026-01-01T00:00:01.000Z",
+              evidencePath: path.join(evidenceRoot, "documentation.json"),
+              findings: [],
+              message: "Documentation checks passed."
+            }
+          ],
+          findings: [],
+          gate: {
+            result: "pass",
+            blockingReasons: [],
+            summary: {
+              critical: 0,
+              high: 0,
+              medium: 0,
+              low: 0,
+              info: 0
+            }
+          }
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    await writeFile(
+      path.join(evidenceRoot, "report.json"),
+      `${JSON.stringify(
+        {
+          project: {
+            id: "project_test",
+            name: "Test Project",
+            dataClassification: "health-data"
+          },
+          scanRun: {
+            id: scanRunId,
+            projectId: "project_test",
+            profileId: "documentation-compliance",
+            status: "completed",
+            startedAt: "2026-01-01T00:00:00.000Z",
+            finishedAt: "2026-01-01T00:00:05.000Z",
+            gateResult: "pass",
+            summary: {
+              critical: 0,
+              high: 0,
+              medium: 0,
+              low: 0,
+              info: 0
+            }
+          },
+          profile: {
+            id: "documentation-compliance",
+            name: "documentation-compliance"
+          },
+          gate: {
+            result: "pass",
+            blockingReasons: [],
+            summary: {
+              critical: 0,
+              high: 0,
+              medium: 0,
+              low: 0,
+              info: 0
+            }
+          },
+          findings: []
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    await writeFile(path.join(evidenceRoot, "report.md"), "# Security Preflight Report\n\nNo findings.\n", "utf8");
+    await writeFile(path.join(evidenceRoot, "central-result-envelope.json"), "{}\n", "utf8");
+    process.env.REPORTS_PATH = reportsPath;
+
+    try {
+      const server = createServer({ logger: false });
+      const listResponse = await server.inject({ method: "GET", url: "/api/v1/scans/runs" });
+      const detailResponse = await server.inject({ method: "GET", url: `/api/v1/scans/runs/${scanRunId}` });
+      const reportResponse = await server.inject({ method: "GET", url: `/api/v1/scans/runs/${scanRunId}/report?format=markdown` });
+
+      expect(listResponse.statusCode).toBe(200);
+      expect(listResponse.json()).toMatchObject({
+        meta: {
+          total: 1
+        },
+        data: [
+          {
+            id: scanRunId,
+            status: "completed",
+            gateResult: "pass",
+            findingCount: 0,
+            durationMs: 5000,
+            project: {
+              name: "Test Project",
+              dataClassification: "health-data"
+            },
+            evidence: {
+              hasExecutionResult: true,
+              hasJsonReport: true,
+              hasMarkdownReport: true,
+              hasCentralEnvelope: true
+            }
+          }
+        ]
+      });
+      expect(detailResponse.statusCode).toBe(200);
+      expect(detailResponse.json().data.steps).toHaveLength(1);
+      expect(detailResponse.json().data.gate.result).toBe("pass");
+      expect(reportResponse.statusCode).toBe(200);
+      expect(reportResponse.json().data.content).toContain("Security Preflight Report");
+    } finally {
+      if (previousReportsPath === undefined) {
+        delete process.env.REPORTS_PATH;
+      } else {
+        process.env.REPORTS_PATH = previousReportsPath;
+      }
+
+      await rm(reportsPath, { recursive: true, force: true });
+    }
   });
 
   it("does not queue a blocked scan plan", async () => {

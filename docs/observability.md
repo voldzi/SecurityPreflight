@@ -68,4 +68,6 @@ checks.
 ## Dashboards
 
 The Web UI dashboard shows local scan health: recent scans, gate results,
-critical/high finding counts, scanner availability, and failed jobs.
+critical/high finding counts, scanner availability, failed jobs, and report
+evidence discovered under `REPORTS_PATH`. The Execution view includes a
+read-only evidence manifest and step summary for the latest loaded scan run.

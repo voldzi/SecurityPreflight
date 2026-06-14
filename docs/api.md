@@ -52,6 +52,9 @@ The API uses path versioning:
 | GET | `/api/v1/scan-profiles` | List built-in scan profiles |
 | POST | `/api/v1/scans/plan` | Build a guarded scan execution plan without running scanners |
 | POST | `/api/v1/scans/queue` | Queue an unblocked scan execution plan for worker execution |
+| GET | `/api/v1/scans/runs` | List scan runs discovered under `REPORTS_PATH` |
+| GET | `/api/v1/scans/runs/{scanRunId}` | Get redacted scan run detail, findings summary, steps, and evidence manifest |
+| GET | `/api/v1/scans/runs/{scanRunId}/report` | Read a generated markdown or JSON report artifact |
 | GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
 | GET | `/api/v1/toolchain/requirements` | List scanner/evidence tools required for healthcare reference coverage |
 | POST | `/api/v1/results/ingest` | Accept a redacted result envelope for central storage |
@@ -124,6 +127,18 @@ curl -X POST http://localhost:8781/api/v1/scans/queue \
 
 Only unblocked plans are queued. A blocked plan returns HTTP 409 with
 `SCAN_PLAN_BLOCKED` and the guarded plan in `details`.
+
+### Scan run history and report browser
+
+```bash
+curl http://localhost:8781/api/v1/scans/runs
+curl http://localhost:8781/api/v1/scans/runs/scan_abc123
+curl "http://localhost:8781/api/v1/scans/runs/scan_abc123/report?format=markdown"
+```
+
+The history endpoints are read-only over `REPORTS_PATH`. They expose redacted
+report summaries, step status, finding summaries, and the evidence file
+manifest. They do not expose raw scanner stdout/stderr command evidence.
 
 ### Toolchain doctor
 

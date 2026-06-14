@@ -92,6 +92,69 @@ interface ScanActionResult {
   stepCount?: number;
 }
 
+interface ScanRunSummary {
+  id: string;
+  status: string;
+  gateResult: string;
+  project: {
+    id: string;
+    name: string;
+    dataClassification: string;
+  };
+  profile: {
+    id: string;
+    name: string;
+  };
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  findingCount: number;
+  severitySummary: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    info: number;
+  };
+  evidence: {
+    root: string;
+    files: string[];
+    hasExecutionResult: boolean;
+    hasJsonReport: boolean;
+    hasMarkdownReport: boolean;
+    hasCentralEnvelope: boolean;
+  };
+}
+
+interface ScanRunDetail extends ScanRunSummary {
+  gate: {
+    result: string;
+    blockingReasons: string[];
+  };
+  findings: Array<{
+    id: string;
+    tool: string;
+    type: string;
+    severity: string;
+    title: string;
+    filePath: string | null;
+    line: number | null;
+    endpoint: string | null;
+    status: string;
+    recommendation: string;
+  }>;
+  steps: Array<{
+    stepId: string;
+    checkId: string;
+    status: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    evidenceFile: string | null;
+    findingCount: number;
+    message: string | null;
+  }>;
+}
+
 interface ProjectRow {
   id: string;
   name: string;
@@ -106,8 +169,10 @@ interface ScanRow {
   id: string;
   project: string;
   profile: string;
-  mode: string;
+  status: string;
   result: string;
+  findings: string;
+  finished: string;
 }
 
 interface CapabilityRow {
@@ -152,30 +217,6 @@ const projectRows: ProjectRow[] = [
   }
 ];
 
-const scanRows: ScanRow[] = [
-  {
-    id: "security-preflight-documentation",
-    project: "SecurityPreflight",
-    profile: "documentation-compliance",
-    mode: "queue",
-    result: "READY"
-  },
-  {
-    id: "hospital-healthcare",
-    project: "Hospital API",
-    profile: "healthcare-reference",
-    mode: "strict",
-    result: "FAIL"
-  },
-  {
-    id: "claims-fast",
-    project: "Claims Portal",
-    profile: "fast-local",
-    mode: "quick",
-    result: "WARNING"
-  }
-];
-
 const fallbackTools = [
   { name: "Docker Desktop", status: "available", version: "compose runtime" },
   { name: "Gitleaks", status: "container", version: "worker/toolbox" },
@@ -200,7 +241,7 @@ const capabilityRows: CapabilityRow[] = [
     area: "Worker execution",
     status: "Partial",
     implemented: "Queue endpoint, worker consumer, internal checks, external scanner runner.",
-    gap: "No live progress stream, cancellation, retry queue, or historical run detail screen yet.",
+    gap: "No live progress stream, cancellation, or retry queue yet.",
     priority: "P0"
   },
   {
@@ -223,8 +264,8 @@ const capabilityRows: CapabilityRow[] = [
     id: "reports",
     area: "Reports and evidence",
     status: "Partial",
-    implemented: "Markdown, JSON, execution-result, and central-result envelope files.",
-    gap: "No report browser, download workflow, SARIF/SBOM export view, or evidence retention controls.",
+    implemented: "Markdown, JSON, execution-result, central-result envelope files, and live evidence browser.",
+    gap: "No download workflow, SARIF/SBOM export view, or evidence retention controls.",
     priority: "P1"
   },
   {
@@ -309,17 +350,39 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
+async function fetchOptionalJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...init?.headers
+    }
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  const payload = (await response.json()) as T & { error?: { message?: string } };
+
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? `Request failed with status ${response.status}`);
+  }
+
+  return payload;
+}
+
 function statusTone(status: string): BadgeTone {
-  if (["Ready", "READY", "PASS", "available", "container", "success", "queued"].includes(status)) return "good";
-  if (["Partial", "WARNING", "MEDIUM", "idle", "loading"].includes(status)) return "warning";
-  if (["Gap", "Blocked", "FAIL", "HIGH", "missing", "error", "blocked"].includes(status)) return "danger";
+  if (["Ready", "READY", "PASS", "pass", "completed", "available", "container", "success", "queued"].includes(status)) return "good";
+  if (["Partial", "WARNING", "warning", "MEDIUM", "idle", "loading", "running"].includes(status)) return "warning";
+  if (["Gap", "Blocked", "FAIL", "fail", "failed", "error", "HIGH", "missing", "blocked"].includes(status)) return "danger";
   return "neutral";
 }
 
 function statusRag(status: string): RagStatus {
-  if (["Ready", "READY", "PASS", "available", "container", "success", "queued"].includes(status)) return "GREEN";
-  if (["Partial", "WARNING", "MEDIUM", "idle", "loading"].includes(status)) return "AMBER";
-  if (["Gap", "Blocked", "FAIL", "HIGH", "missing", "error", "blocked"].includes(status)) return "RED";
+  if (["Ready", "READY", "PASS", "pass", "completed", "available", "container", "success", "queued"].includes(status)) return "GREEN";
+  if (["Partial", "WARNING", "warning", "MEDIUM", "idle", "loading", "running"].includes(status)) return "AMBER";
+  if (["Gap", "Blocked", "FAIL", "fail", "failed", "error", "HIGH", "missing", "blocked"].includes(status)) return "RED";
   return "GRAY";
 }
 
@@ -327,12 +390,34 @@ function statusLabel(status: string) {
   return status === "success" ? "Ready" : status === "error" ? "Error" : status;
 }
 
+function gateLabel(gate: string): string {
+  return gate === "pass" ? "PASS" : gate === "warning" ? "WARNING" : gate === "fail" ? "FAIL" : gate === "error" ? "ERROR" : gate.toUpperCase();
+}
+
+function formatDateTime(value: string | null): string {
+  return value ? new Date(value).toLocaleString() : "not available";
+}
+
+function formatDuration(value: number | null): string {
+  if (value == null) return "not available";
+  if (value < 1000) return `${value} ms`;
+
+  return `${Math.round(value / 1000)} s`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("documentation-compliance");
   const [doctor, setDoctor] = useState<ToolchainDoctor | null>(null);
+  const [scanRuns, setScanRuns] = useState<ScanRunSummary[]>([]);
+  const [selectedRun, setSelectedRun] = useState<ScanRunDetail | null>(null);
   const [loadingDoctor, setLoadingDoctor] = useState(false);
+  const [loadingRuns, setLoadingRuns] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailMode, setDetailMode] = useState<DetailSurfaceMode>("sidebar");
@@ -362,6 +447,20 @@ export default function DashboardPage() {
         version: tool.version ?? tool.message ?? "not reported"
       }))
     : fallbackTools;
+  const scanRows = useMemo<ScanRow[]>(
+    () =>
+      scanRuns.map((run) => ({
+        id: run.id,
+        project: run.project.name,
+        profile: run.profile.id,
+        status: run.status,
+        result: gateLabel(run.gateResult),
+        findings: `${run.findingCount} total`,
+        finished: formatDateTime(run.finishedAt ?? run.startedAt)
+      })),
+    [scanRuns]
+  );
+  const latestRun = selectedRun ?? scanRuns[0] ?? null;
   const filteredCapabilityRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return capabilityRows;
@@ -397,7 +496,7 @@ export default function DashboardPage() {
         id: "stack",
         label: "Stack",
         width: "minmax(170px, 1fr)",
-        render: (row) => row.stack
+        render: (row) => <span className="security-wrap">{row.stack}</span>
       },
       {
         id: "data",
@@ -438,16 +537,28 @@ export default function DashboardPage() {
         render: (row) => <code>{row.profile}</code>
       },
       {
-        id: "mode",
-        label: "Mode",
-        width: 90,
-        render: (row) => row.mode
+        id: "status",
+        label: "Status",
+        width: 110,
+        render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge>
       },
       {
         id: "result",
         label: "Result",
         width: 120,
         render: (row) => <RagBadge status={statusRag(row.result)} label={row.result} />
+      },
+      {
+        id: "findings",
+        label: "Findings",
+        width: 120,
+        render: (row) => row.findings
+      },
+      {
+        id: "finished",
+        label: "Finished",
+        width: "minmax(170px, 1fr)",
+        render: (row) => row.finished
       }
     ],
     []
@@ -541,7 +652,7 @@ export default function DashboardPage() {
             label: "Report browser",
             icon: <ScrollText size={16} />,
             disabled: true,
-            disabledReason: "Report files exist; browser and download workflow are not implemented yet."
+            disabledReason: "Basic evidence browser is in Execution; download and retention workflows are pending."
           }
         ]
       }
@@ -579,6 +690,104 @@ export default function DashboardPage() {
       active = false;
     };
   }, [selectedProfileId]);
+
+  useEffect(() => {
+    void refreshScanRuns();
+  }, []);
+
+  async function loadScanRunDetail(scanRunId: string): Promise<ScanRunDetail | null> {
+    const payload = await fetchOptionalJson<{ data: ScanRunDetail }>(`${apiBaseUrl}/api/v1/scans/runs/${scanRunId}`);
+
+    if (!payload) {
+      return null;
+    }
+
+    setSelectedRun(payload.data);
+    return payload.data;
+  }
+
+  async function refreshScanRuns(preferredScanRunId?: string) {
+    setLoadingRuns(true);
+
+    try {
+      const payload = await fetchJson<{ data: ScanRunSummary[] }>(`${apiBaseUrl}/api/v1/scans/runs`);
+      setScanRuns(payload.data);
+
+      const nextScanRunId = preferredScanRunId ?? selectedRun?.id ?? payload.data[0]?.id;
+
+      if (nextScanRunId) {
+        await loadScanRunDetail(nextScanRunId);
+      } else {
+        setSelectedRun(null);
+      }
+    } catch (error) {
+      setScanResult({
+        mode: "plan",
+        status: "error",
+        message: error instanceof Error ? error.message : "Failed to load scan run history."
+      });
+    } finally {
+      setLoadingRuns(false);
+    }
+  }
+
+  async function pollScanRun(scanRunId: string) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await delay(1500);
+
+      let detail: ScanRunDetail | null;
+
+      try {
+        detail = await loadScanRunDetail(scanRunId);
+      } catch (error) {
+        setScanResult((current) =>
+          current.scanRunId === scanRunId
+            ? {
+                ...current,
+                status: "error",
+                message: error instanceof Error ? error.message : "Failed to load scan evidence."
+              }
+            : current
+        );
+        return;
+      }
+
+      if (detail) {
+        await refreshScanRuns(scanRunId);
+        setScanResult((current) =>
+          current.scanRunId === scanRunId
+            ? {
+                ...current,
+                status: "success",
+                message: `Scan finished with ${gateLabel(detail.gateResult)} gate.`,
+                gate: gateLabel(detail.gateResult),
+                stepCount: detail.steps.length
+              }
+            : current
+        );
+        return;
+      }
+
+      setScanResult((current) =>
+        current.scanRunId === scanRunId
+          ? {
+              ...current,
+              message: "Scan job is queued; waiting for worker evidence."
+            }
+          : current
+      );
+    }
+
+    await refreshScanRuns(scanRunId);
+    setScanResult((current) =>
+      current.scanRunId === scanRunId
+        ? {
+            ...current,
+            message: "Scan job was queued, but evidence is not available yet."
+          }
+        : current
+    );
+  }
 
   async function refreshDoctor() {
     setLoadingDoctor(true);
@@ -639,6 +848,10 @@ export default function DashboardPage() {
         gate: mode === "queue" ? "queued" : plan.blocked ? "blocked" : "ready",
         stepCount: plan.steps?.length ?? 0
       });
+
+      if (mode === "queue") {
+        void pollScanRun(scanRunId);
+      }
     } catch (error) {
       setScanResult({
         mode,
@@ -711,10 +924,21 @@ export default function DashboardPage() {
         <div className="security-split-grid">
           <DataGridShell
             title={<strong>Recent scan runs</strong>}
-            toolbar={<Badge tone="neutral">representative local history</Badge>}
+            toolbar={
+              <Button disabled={loadingRuns} onClick={() => refreshScanRuns()} size="compact">
+                <History size={14} />
+                {loadingRuns ? "Refreshing" : "Refresh"}
+              </Button>
+            }
             className="security-grid-shell"
           >
-            <DataTable rows={scanRows} columns={scanColumns} getRowId={(row) => row.id} aria-label="Recent scans" />
+            <DataTable
+              rows={scanRows}
+              columns={scanColumns}
+              getRowId={(row) => row.id}
+              emptyLabel="No completed scan evidence yet"
+              aria-label="Recent scans"
+            />
           </DataGridShell>
 
           <StructuredList
@@ -810,6 +1034,44 @@ export default function DashboardPage() {
             ariaLabel="Selected scan profile checks"
           />
         </DataGridShell>
+        <div className="security-split-grid">
+          <StructuredList
+            title="Latest report evidence"
+            description={latestRun ? `${latestRun.id} · ${formatDuration(latestRun.durationMs)}` : "Run a scan to create report evidence"}
+            count={<Badge tone={latestRun ? statusTone(latestRun.gateResult) : "neutral"}>{latestRun ? gateLabel(latestRun.gateResult) : "empty"}</Badge>}
+            toolbar={
+              <Button disabled={loadingRuns} onClick={() => refreshScanRuns(latestRun?.id)} size="compact">
+                <History size={14} />
+                Refresh
+              </Button>
+            }
+            items={(latestRun?.evidence.files ?? []).map((file) => ({
+              id: file,
+              title: file,
+              leading: file.endsWith(".md") ? <ScrollText size={15} /> : <FileJson size={15} />,
+              badges: <Badge tone={file === "central-result-envelope.json" ? "info" : "good"}>{file.endsWith(".json") ? "json" : "markdown"}</Badge>,
+              meta: "REPORTS_PATH evidence"
+            }))}
+            emptyLabel="No evidence files found"
+            ariaLabel="Latest report evidence"
+            className="security-list-card"
+          />
+          <StructuredList
+            title="Latest run steps"
+            description={selectedRun ? `${selectedRun.findingCount} findings · finished ${formatDateTime(selectedRun.finishedAt)}` : "Select or run a scan to load step detail"}
+            count={<Badge tone={selectedRun ? statusTone(selectedRun.status) : "neutral"}>{selectedRun?.status ?? "not loaded"}</Badge>}
+            items={(selectedRun?.steps ?? []).map((step) => ({
+              id: step.stepId,
+              title: step.checkId,
+              leading: <RagBadge status={statusRag(step.status)} label={step.status} />,
+              badges: step.findingCount ? <Badge tone="danger">{step.findingCount} findings</Badge> : <Badge tone="good">0 findings</Badge>,
+              meta: step.evidenceFile ?? step.message ?? "no evidence file"
+            }))}
+            emptyLabel="No step detail loaded"
+            ariaLabel="Latest run steps"
+            className="security-list-card"
+          />
+        </div>
       </div>
     );
   }
@@ -887,12 +1149,12 @@ export default function DashboardPage() {
           workspaceMark="SP"
           items={[
             { id: "security", label: "Security", icon: ShieldCheck },
-            { id: "evidence", label: "Evidence", icon: Archive, disabled: true, disabledReason: "Report browser is not implemented yet." }
+            { id: "evidence", label: "Evidence", icon: Archive }
           ]}
           footerItems={[{ id: "settings", label: "Settings", icon: Settings, disabled: true, disabledReason: "Settings surface is backlog." }]}
-          activeItemId="security"
+          activeItemId={activeView === "execution" ? "evidence" : "security"}
           panelOpen
-          onItemSelect={() => undefined}
+          onItemSelect={(itemId) => setActiveView(itemId === "evidence" ? "execution" : "dashboard")}
         />
       }
       sidebar={

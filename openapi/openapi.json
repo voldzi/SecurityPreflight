@@ -256,6 +256,148 @@
         }
       }
     },
+    "/api/v1/scans/runs": {
+      "get": {
+        "summary": "List scan runs with local report evidence",
+        "operationId": "listScanRuns",
+        "tags": ["Scans"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Scan runs discovered under the configured reports path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan run list request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs/{scanRunId}": {
+      "get": {
+        "summary": "Get scan run detail and redacted evidence manifest",
+        "operationId": "getScanRunDetail",
+        "tags": ["Scans"],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scan run detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan run ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs/{scanRunId}/report": {
+      "get": {
+        "summary": "Get a redacted scan report artifact",
+        "operationId": "getScanRunReport",
+        "tags": ["Scans"],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["markdown", "json"],
+              "default": "markdown"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan report request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan report evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/toolchain/doctor": {
       "get": {
         "summary": "Check local scanner and runtime tool availability",
@@ -834,6 +976,326 @@
           },
           "activeDast": {
             "type": "boolean"
+          }
+        }
+      },
+      "ScanRunListResponse": {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanRunSummary"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "required": ["total", "reportsPath"],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reportsPath": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ScanRunDetailResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScanRunDetail"
+          }
+        }
+      },
+      "ScanRunReportResponse": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["scanRunId", "format", "fileName", "contentType", "content"],
+            "properties": {
+              "scanRunId": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string",
+                "enum": ["markdown", "json"]
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "content": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "ScanRunSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "gateResult",
+          "project",
+          "profile",
+          "startedAt",
+          "finishedAt",
+          "durationMs",
+          "findingCount",
+          "severitySummary",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "failed", "cancelled", "unknown"]
+          },
+          "gateResult": {
+            "type": "string",
+            "enum": ["pass", "warning", "fail", "error", "unknown"]
+          },
+          "project": {
+            "$ref": "#/components/schemas/ScanRunProject"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ScanRunProfile"
+          },
+          "startedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "findingCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "severitySummary": {
+            "$ref": "#/components/schemas/SeveritySummary"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ScanRunEvidence"
+          }
+        }
+      },
+      "ScanRunDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScanRunSummary"
+          },
+          {
+            "type": "object",
+            "required": ["gate", "findings", "steps"],
+            "properties": {
+              "gate": {
+                "$ref": "#/components/schemas/ScanRunGate"
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ScanRunFinding"
+                }
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ScanRunStep"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ScanRunProject": {
+        "type": "object",
+        "required": ["id", "name", "dataClassification"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "dataClassification": {
+            "type": "string"
+          }
+        }
+      },
+      "ScanRunProfile": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "SeveritySummary": {
+        "type": "object",
+        "required": ["critical", "high", "medium", "low", "info"],
+        "properties": {
+          "critical": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "medium": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "low": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "info": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ScanRunEvidence": {
+        "type": "object",
+        "required": ["root", "files", "hasExecutionResult", "hasJsonReport", "hasMarkdownReport", "hasCentralEnvelope"],
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hasExecutionResult": {
+            "type": "boolean"
+          },
+          "hasJsonReport": {
+            "type": "boolean"
+          },
+          "hasMarkdownReport": {
+            "type": "boolean"
+          },
+          "hasCentralEnvelope": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanRunGate": {
+        "type": "object",
+        "required": ["result", "blockingReasons"],
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["pass", "warning", "fail", "error", "unknown"]
+          },
+          "blockingReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ScanRunFinding": {
+        "type": "object",
+        "required": ["id", "tool", "type", "severity", "title", "filePath", "line", "endpoint", "status", "recommendation"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": ["string", "null"]
+          },
+          "line": {
+            "type": ["integer", "null"]
+          },
+          "endpoint": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          }
+        }
+      },
+      "ScanRunStep": {
+        "type": "object",
+        "required": ["stepId", "checkId", "status", "startedAt", "finishedAt", "evidenceFile", "findingCount", "message"],
+        "properties": {
+          "stepId": {
+            "type": "string"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "evidenceFile": {
+            "type": ["string", "null"]
+          },
+          "findingCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "type": ["string", "null"]
           }
         }
       },

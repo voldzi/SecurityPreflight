@@ -276,6 +276,15 @@ code,
   white-space: nowrap;
 }
 
+.security-grid-shell code,
+.security-list-card code {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .security-wrap {
   min-width: 0;
   color: var(--stratos-color-text);
@@ -366,5 +375,16 @@ code,
 
   .security-content {
     padding: 8px;
+  }
+
+  .security-cell-stack strong,
+  .security-cell-stack small {
+    white-space: normal;
+  }
+
+  .security-grid-shell code,
+  .security-list-card code {
+    font-size: 11px;
+    line-height: 1.2;
   }
 }
