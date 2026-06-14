@@ -113,6 +113,11 @@ flowchart LR
   global topbar, command center, table, badge, metric, list, and form
   primitives. Package credentials must be supplied through local or CI registry
   configuration, never committed.
+- Localization: the Web UI is bilingual Czech/English. Czech is the default
+  language, the topbar exposes a CS/EN switch aligned with other STRATOS apps,
+  and the language preference is stored only in browser `localStorage`. Scanner
+  evidence, profile IDs, report file names, and API-origin diagnostic strings
+  remain technical audit artifacts and are not rewritten.
 - STRATOS report pattern: completed scan evidence can be exported as base64 PDF
   or PPTX payloads with filename, MIME type, hash, generation time, and
   parameters metadata.

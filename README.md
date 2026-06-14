@@ -15,6 +15,8 @@ CODEX and Claude Code, following the central application standards
 - Deployment readiness checks for local, CI, and production-oriented workflows.
 - Evidence-oriented reporting for issues, risks, and remediation status.
 - STRATOS-style report exports as redacted PDF and PPTX payloads.
+- Czech and English Web UI with a STRATOS topbar language switch; the selected
+  locale is stored only in browser `localStorage`.
 - Server-side AKB bridge for cited, scan-run-scoped AI questions without
   storing prompts, answers, chunks, embeddings, or document text locally.
 - Production API boundary with STRATOS OIDC/JWKS bearer validation, coarse RBAC,

@@ -4,12 +4,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SecurityPreflight",
-  description: "Local security preflight dashboard"
+  description: "Česko-anglický bezpečnostní preflight dashboard"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="cs">
       <body>{children}</body>
     </html>
   );

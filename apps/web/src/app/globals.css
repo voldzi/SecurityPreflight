@@ -216,6 +216,43 @@ code,
   gap: 8px;
 }
 
+.security-language-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: 9px;
+  background: var(--stratos-color-surface);
+}
+
+.security-language-switch button {
+  height: 22px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--stratos-color-muted);
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.security-language-switch button:hover,
+.security-language-switch button:focus-visible {
+  background: var(--stratos-color-surface-subtle);
+  color: var(--stratos-color-text);
+  outline: 0;
+}
+
+.security-language-switch button.is-active {
+  background: var(--stratos-color-success-soft);
+  color: var(--stratos-color-success);
+}
+
 .security-command-trigger {
   display: inline-flex;
   width: min(440px, 42vw);
