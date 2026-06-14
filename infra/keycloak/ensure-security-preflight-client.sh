@@ -4,7 +4,7 @@ set -euo pipefail
 KEYCLOAK_CONTAINER="${KEYCLOAK_CONTAINER:-keycloak}"
 KEYCLOAK_INTERNAL_URL="${KEYCLOAK_INTERNAL_URL:-http://127.0.0.1:8081}"
 KEYCLOAK_PUBLIC_URL="${KEYCLOAK_PUBLIC_URL:-https://login.zeleznalady.cz}"
-KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
+KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-}"
 REALM="${KEYCLOAK_REALM:-stratos}"
 SECURITY_PREFLIGHT_WEB_CLIENT_ID="${SECURITY_PREFLIGHT_OIDC_CLIENT_ID:-security-preflight-web}"
 SECURITY_PREFLIGHT_PUBLIC_BASE_URL="${SECURITY_PREFLIGHT_PUBLIC_BASE_URL:-${NEXT_PUBLIC_SECURITY_PREFLIGHT_PUBLIC_BASE_URL:-http://docker.home.cz:8780}}"
@@ -27,13 +27,25 @@ fail() {
 
 docker inspect "$KEYCLOAK_CONTAINER" >/dev/null 2>&1 || fail "Keycloak container not found: $KEYCLOAK_CONTAINER"
 
-if [ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ] && [ "${KEYCLOAK_USE_CONTAINER_BOOTSTRAP_PASSWORD:-false}" = "true" ]; then
-  KEYCLOAK_ADMIN_PASSWORD="$(
-    docker inspect "$KEYCLOAK_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' \
-      | sed -n 's/^KC_BOOTSTRAP_ADMIN_PASSWORD=//p; s/^KEYCLOAK_ADMIN_PASSWORD=//p' \
-      | head -n 1
-  )"
+if [ "${KEYCLOAK_USE_CONTAINER_BOOTSTRAP_PASSWORD:-false}" = "true" ]; then
+  if [ -z "$KEYCLOAK_ADMIN_USER" ]; then
+    KEYCLOAK_ADMIN_USER="$(
+      docker inspect "$KEYCLOAK_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+        | sed -n 's/^KC_BOOTSTRAP_ADMIN_USERNAME=//p; s/^KEYCLOAK_ADMIN=//p' \
+        | head -n 1
+    )"
+  fi
+
+  if [ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ]; then
+    KEYCLOAK_ADMIN_PASSWORD="$(
+      docker inspect "$KEYCLOAK_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+        | sed -n 's/^KC_BOOTSTRAP_ADMIN_PASSWORD=//p; s/^KEYCLOAK_ADMIN_PASSWORD=//p' \
+        | head -n 1
+    )"
+  fi
 fi
+
+KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
 
 if [ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ]; then
   read -rsp "Keycloak admin password: " KEYCLOAK_ADMIN_PASSWORD
