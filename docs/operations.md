@@ -131,6 +131,7 @@ table and must stay in sync.
 | `APP_ENV` | yes | `development` | Runtime environment |
 | `APP_PORT` | yes | `8781` | API HTTP port |
 | `WEB_PORT` | yes | `8780` | Web UI HTTP port |
+| `NEXT_PUBLIC_API_URL` | yes | `http://localhost:8781` | Browser-visible API base URL baked into the Web build and supplied at runtime |
 | `LOG_LEVEL` | no | `info` | Log verbosity |
 | `DATABASE_URL` | yes | unset | PostgreSQL connection string |
 | `REDIS_URL` | yes | unset | Redis connection string |

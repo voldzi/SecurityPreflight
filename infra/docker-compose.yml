@@ -5,12 +5,14 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8781}
       secrets:
         - npmrc
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       WEB_PORT: "8780"
-      NEXT_PUBLIC_API_URL: http://localhost:8781
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8781}
     ports:
       - "8780:8780"
     depends_on:

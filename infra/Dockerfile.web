@@ -3,6 +3,9 @@ FROM node:26-bookworm-slim
 
 WORKDIR /app
 RUN npm install -g pnpm@10.33.0
+ARG NEXT_PUBLIC_API_URL=http://localhost:8781
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NODE_ENV=production
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json .npmrc ./
 COPY apps/web/package.json apps/web/package.json
@@ -14,6 +17,7 @@ COPY packages/scanners/package.json packages/scanners/package.json
 RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=false pnpm install --frozen-lockfile
 
 COPY . .
+RUN pnpm --filter @security-preflight/web build
 
 EXPOSE 8780
-CMD ["pnpm", "--filter", "@security-preflight/web", "dev"]
+CMD ["pnpm", "--filter", "@security-preflight/web", "start"]
