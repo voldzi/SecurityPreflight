@@ -126,13 +126,17 @@ flowchart LR
 
 ## Authentication and Authorization
 
-- MVP is single-user and local-only. It does not provide multi-user identity or
-  remote access.
-- The API is intended for localhost access from the Web UI and CLI. If remote
-  access is introduced later, authentication and authorization must be designed
-  before enabling it.
-- Audit events still record who initiated actions where the local OS user or
-  CLI context is available.
+- Development may run with authentication disabled for localhost-only use.
+- Production defaults to OIDC when `APP_ENV=production`; the API fails closed if
+  OIDC issuer, JWKS URL, client id, or audience is missing.
+- OIDC JWTs are verified server-side with RS256/JWKS and role claims from
+  `realm_access` and `resource_access`.
+- Coarse RBAC separates authenticated read access from operator actions such as
+  queueing scans, exporting reports, central ingest, and AKB questions.
+- `shared-token` mode exists only as a controlled transition path. It should be
+  replaced by STRATOS/Keycloak OIDC for shared healthcare use.
+- Per-project authorization and durable audit event storage remain planned
+  production hardening work.
 
 ## Deployment Model
 

@@ -2,20 +2,32 @@
 
 ## Authentication
 
-MVP is single-user and local-only. The Web UI and CLI talk to the API on the
-developer workstation. No remote user authentication is required while the API
-is bound to localhost only.
+Local development may run with `SECURITY_PREFLIGHT_AUTH_MODE=disabled`.
+Production does not default to anonymous access: when `APP_ENV=production` and
+`SECURITY_PREFLIGHT_AUTH_MODE` is unset, the API uses `oidc` and fails closed
+until OIDC issuer, JWKS URL, client id, and audience are configured.
 
-If remote access, team use, or central synchronization is introduced later,
-authentication must be designed before those modes are enabled.
+Protected API endpoints accept bearer tokens. OIDC mode validates RS256 JWTs
+against JWKS, issuer, audience, expiry, not-before, subject, and authorized
+party. The Web UI supports STRATOS-style OIDC PKCE login through public
+`NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_*` values and sends bearer tokens only to
+SecurityPreflight, not directly to AKB. `shared-token` mode is available only as
+a transition control for restricted deployments and requires
+`SECURITY_PREFLIGHT_API_TOKEN`.
 
 ## Authorization
 
-MVP authorization is process-bound: the local user who starts the stack can use
-the local UI and CLI. There are no multi-user roles in MVP.
+The API enforces coarse RBAC from token roles. Read endpoints require one of
+`SECURITY_PREFLIGHT_REQUIRED_ROLES`. Mutating endpoints, scan queueing, report
+exports, central ingest, and AKB questions require one of
+`SECURITY_PREFLIGHT_OPERATOR_ROLES`. Defaults include
+`security-preflight.viewer`, `security-preflight.operator`,
+`security-preflight.admin`, `stratos_security_admin`, `stratos_superadmin`, and
+`superadmin` as appropriate.
 
-Future team features must introduce explicit roles for project owners,
-reviewers, exception approvers, and administrators before sharing scan data.
+Project-level ownership, exception approver roles, and per-project
+authorization are still planned. Until they exist, healthcare deployments should
+scope access at the STRATOS/Keycloak role level and network boundary.
 
 ## Secret Management
 
@@ -32,11 +44,9 @@ reviewers, exception approvers, and administrators before sharing scan data.
 
 ## TLS
 
-Local MVP traffic is HTTP on localhost. TLS is not required for loopback-only
-development use.
-
-If the API is exposed beyond localhost, TLS and authentication are mandatory
-before use.
+Local development traffic may use HTTP on localhost. Any shared or production
+deployment must terminate TLS before browser access and configure explicit API
+CORS origins through `SECURITY_PREFLIGHT_CORS_ORIGINS`.
 
 ## Input Validation
 
@@ -57,9 +67,9 @@ The Web UI must treat scanner output, file paths, evidence, and report excerpts
 as untrusted data. Render findings as escaped text by default. Do not render raw
 HTML from scanner output.
 
-CSRF protection is not required for loopback-only MVP if the API is not exposed
-to browsers outside the local UI origin. If cookie-based sessions or remote
-access are added later, CSRF protections must be added first.
+The production API uses bearer tokens rather than cookies, so CSRF risk is
+bounded by CORS and token storage. If cookie-based sessions are added later,
+CSRF protections must be added first.
 
 ## Audit Logs
 

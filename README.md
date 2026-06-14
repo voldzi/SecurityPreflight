@@ -17,6 +17,8 @@ CODEX and Claude Code, following the central application standards
 - STRATOS-style report exports as redacted PDF and PPTX payloads.
 - Server-side AKB bridge for cited, scan-run-scoped AI questions without
   storing prompts, answers, chunks, embeddings, or document text locally.
+- Production API boundary with STRATOS OIDC/JWKS bearer validation, coarse RBAC,
+  shared-token transition mode, explicit CORS allowlist, and UI bearer handoff.
 - Guarded scan execution planning with read-only mounts, evidence paths, and
   explicit controlled DAST allowlists.
 - Healthcare reference profile with SBOM, SCA, SAST, IaC, OpenAPI, privacy,

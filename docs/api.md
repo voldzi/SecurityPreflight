@@ -26,13 +26,25 @@ openapi/openapi.yaml
 | --- | --- |
 | Local Docker Desktop | `http://localhost:8781` |
 | Test | Not defined yet |
-| Production | Not applicable for MVP |
+| Production | Environment-specific; use the deployed HTTPS/API origin |
 
 ## Authentication
 
-MVP uses no remote authentication because the API is local-only and intended to
-bind to localhost. Remote access, team use, or central synchronization requires
-authentication and authorization before enablement.
+`GET /health`, `GET /ready`, and `GET /api/v1/auth/status` are public. Other
+`/api/v1/*` endpoints require bearer authentication when
+`SECURITY_PREFLIGHT_AUTH_MODE` is `oidc` or `shared-token`.
+
+If `SECURITY_PREFLIGHT_AUTH_MODE` is unset, development defaults to
+`disabled`; `APP_ENV=production` defaults to `oidc` and fails closed until OIDC
+issuer, JWKS URL, client id, and audience are configured. OIDC tokens are
+validated with RS256/JWKS and checked against configured viewer/operator roles.
+`shared-token` is intended only as a controlled transition mode.
+
+```bash
+curl http://localhost:8781/api/v1/auth/status
+curl -H "Authorization: Bearer $SECURITY_PREFLIGHT_TOKEN" \
+  http://localhost:8781/api/v1/scan-profiles
+```
 
 ## Versioning
 
@@ -48,6 +60,7 @@ The API uses path versioning:
 | --- | --- | --- |
 | GET | `/health` | Health check |
 | GET | `/ready` | Readiness check |
+| GET | `/api/v1/auth/status` | Report API auth mode, OIDC public config, and RBAC roles without secrets |
 | GET | `/api/v1/projects` | List registered local projects |
 | GET | `/api/v1/scan-profiles` | List built-in scan profiles |
 | POST | `/api/v1/scans/plan` | Build a guarded scan execution plan without running scanners |

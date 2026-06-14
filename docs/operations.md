@@ -134,14 +134,19 @@ docker compose -f docker-compose.yml -f infra/docker-compose.production.yml up -
 ```
 
 Set `APP_ENV=production`, `NEXT_PUBLIC_API_URL` to the browser-reachable API
-URL, and `PROJECTS_ROOT_HOST` to the host directory that may be scanned. The
-production override removes PostgreSQL and Redis host port publishing; they
-remain reachable only inside the Compose network.
+URL, `SECURITY_PREFLIGHT_CORS_ORIGINS` to the Web UI origin, and
+`PROJECTS_ROOT_HOST` to the host directory that may be scanned. The production
+override removes PostgreSQL and Redis host port publishing; they remain
+reachable only inside the Compose network.
 
-Before exposing the service beyond a controlled internal network, add an
-external authentication, authorization, and TLS boundary. Do not place GitHub
-Packages tokens, scanner tokens, production secrets, private keys, or
-certificate material in the repository or generated reports.
+Production defaults to `SECURITY_PREFLIGHT_AUTH_MODE=oidc` when the variable is
+unset. The API fails closed until `SECURITY_PREFLIGHT_OIDC_ISSUER`,
+`SECURITY_PREFLIGHT_OIDC_JWKS_URL`, `SECURITY_PREFLIGHT_OIDC_CLIENT_ID`, and
+`SECURITY_PREFLIGHT_OIDC_AUDIENCE` are configured. `shared-token` mode exists
+only for controlled transition deployments and requires
+`SECURITY_PREFLIGHT_API_TOKEN`. Do not place GitHub Packages tokens, scanner
+tokens, production secrets, private keys, bearer tokens, or certificate material
+in the repository or generated reports.
 
 ## Configuration
 
@@ -154,12 +159,25 @@ table and must stay in sync.
 | `APP_PORT` | yes | `8781` | API HTTP port |
 | `WEB_PORT` | yes | `8780` | Web UI HTTP port |
 | `NEXT_PUBLIC_API_URL` | yes | `http://localhost:8781` | Browser-visible API base URL baked into the Web build and supplied at runtime |
+| `NEXT_PUBLIC_SECURITY_PREFLIGHT_PUBLIC_BASE_URL` | no | unset | Browser-visible Web UI base URL used for OIDC redirect URI |
+| `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_ISSUER` | no | unset | Public OIDC issuer used by the browser PKCE login |
+| `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | no | unset | Public OIDC client id for the Web UI |
+| `NEXT_PUBLIC_SECURITY_PREFLIGHT_OIDC_SCOPES` | no | `openid profile email` | Public OIDC scopes requested by the Web UI |
 | `LOG_LEVEL` | no | `info` | Log verbosity |
 | `DATABASE_URL` | yes | unset | PostgreSQL connection string |
 | `REDIS_URL` | yes | unset | Redis connection string |
 | `REPORTS_PATH` | yes | `/reports` | Container path for generated reports and evidence |
 | `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker worker may read |
 | `PROJECTS_ROOT_CONTAINER` | no | `/workspace/projects` | Container mount path for `PROJECTS_ROOT_HOST` |
+| `SECURITY_PREFLIGHT_AUTH_MODE` | no | dev: `disabled`, production: `oidc` | API auth mode: `disabled`, `shared-token`, or `oidc` |
+| `SECURITY_PREFLIGHT_API_TOKEN` | no | unset | Shared-token mode bearer token; never commit |
+| `SECURITY_PREFLIGHT_CORS_ORIGINS` | yes for browser production | localhost origins | Comma-separated allowed browser origins for API CORS |
+| `SECURITY_PREFLIGHT_OIDC_ISSUER` | required for OIDC | unset | OIDC issuer expected in bearer JWTs |
+| `SECURITY_PREFLIGHT_OIDC_JWKS_URL` | required for OIDC | unset | JWKS URL for RS256 bearer token validation |
+| `SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | required for OIDC | unset | OIDC client id / authorized party |
+| `SECURITY_PREFLIGHT_OIDC_AUDIENCE` | required for OIDC | client id | Expected token audience |
+| `SECURITY_PREFLIGHT_REQUIRED_ROLES` | no | STRATOS/SecurityPreflight viewer/operator/admin roles | Comma-separated roles allowed to read API data |
+| `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | STRATOS/SecurityPreflight operator/admin roles | Comma-separated roles allowed to mutate state, queue scans, export reports, and ask AKB |
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |
 | `SCANNER_RUNNER_ENABLED` | no | `true` | Enables worker execution of planned external scanner commands |
 | `SCANNER_RUNNER_MODE` | no | `direct` | `direct` runs scanners inside the worker; `docker` runs them through Docker with the scanner-toolbox image |

@@ -8,11 +8,23 @@ import { Queue } from "bullmq";
 import { defaultScanProfiles, requiredScannerTools, type GateResult, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
 import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
 import { AkbIntegrationError, askAkb, getAkbIntegrationStatus } from "./akb.js";
+import {
+  authenticateSecurityPreflightRequest,
+  getAuthStatus,
+  isPublicRoute,
+  type SecurityPreflightAuthContext
+} from "./auth.js";
 import { buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
 
 export interface CreateServerOptions {
   logger?: boolean;
   scanQueue?: ScanQueue;
+}
+
+declare module "fastify" {
+  interface FastifyRequest {
+    authContext?: SecurityPreflightAuthContext | null;
+  }
 }
 
 export interface ScanQueue {
@@ -169,7 +181,31 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   });
 
   void server.register(cors, {
-    origin: [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/]
+    origin(origin, callback) {
+      callback(null, isAllowedCorsOrigin(origin));
+    },
+    allowedHeaders: ["content-type", "authorization", "x-request-id"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  });
+
+  server.addHook("preHandler", async (request, reply) => {
+    if (!request.url.startsWith("/api/v1/") || isPublicRoute(request)) {
+      return;
+    }
+
+    const auth = await authenticateSecurityPreflightRequest(request);
+
+    if (!auth.ok) {
+      return reply.status(auth.statusCode).send({
+        error: {
+          code: auth.code,
+          message: auth.message,
+          requestId: request.id
+        }
+      });
+    }
+
+    request.authContext = auth.context;
   });
 
   server.setErrorHandler((error, request, reply) => {
@@ -220,6 +256,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       timestamp: new Date().toISOString()
     };
   });
+
+  server.get("/api/v1/auth/status", async () => ({
+    data: getAuthStatus()
+  }));
 
   server.get("/api/v1/projects", async () => ({
     data: [],
@@ -386,7 +426,12 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         maxChunks: parsed.data.maxChunks,
         correlationId: request.id,
         authorization: request.headers.authorization?.toString(),
-        subject: parsed.data.subject,
+        subject: {
+          tenantId: parsed.data.subject?.tenantId,
+          userId: request.authContext?.subject ?? parsed.data.subject?.userId,
+          roles: request.authContext?.roles ?? parsed.data.subject?.roles,
+          classificationClearance: parsed.data.subject?.classificationClearance
+        },
         run
       });
 
@@ -814,6 +859,29 @@ function scanExecutionStatusValue(value: unknown): ScanStatus | null {
 
 function gateResultValue(value: unknown): GateResult | null {
   return value === "pass" || value === "warning" || value === "fail" || value === "error" ? value : null;
+}
+
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+
+  const configured = csv(process.env.SECURITY_PREFLIGHT_CORS_ORIGINS ?? process.env.CORS_ORIGINS);
+  if (configured.includes("*")) return true;
+  if (configured.includes(origin)) return true;
+
+  if (process.env.APP_ENV !== "production" && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+    return true;
+  }
+
+  return false;
+}
+
+function csv(value: string | undefined): string[] {
+  return (
+    value
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean) ?? []
+  );
 }
 
 function buildPlanFromRequest(body: unknown, requestId: string):

@@ -362,6 +362,7 @@ code,
   font-size: 12px;
 }
 
+.security-auth-panel,
 .security-akb-panel {
   display: grid;
   gap: 12px;
@@ -381,10 +382,10 @@ code,
   font-weight: 700;
 }
 
+.security-akb-question input,
 .security-akb-question textarea {
   width: 100%;
   min-width: 0;
-  resize: vertical;
   border: 1px solid var(--stratos-color-border);
   border-radius: var(--stratos-radius-md);
   background: var(--stratos-color-surface);
@@ -394,6 +395,11 @@ code,
   line-height: 1.45;
 }
 
+.security-akb-question textarea {
+  resize: vertical;
+}
+
+.security-akb-question input:focus,
 .security-akb-question textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--stratos-color-primary) 45%, transparent);
   outline-offset: 1px;

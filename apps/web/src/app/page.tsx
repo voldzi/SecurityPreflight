@@ -16,6 +16,8 @@ import {
   Gauge,
   History,
   LayoutDashboard,
+  LogIn,
+  LogOut,
   MessageSquareText,
   Play,
   Presentation,
@@ -56,6 +58,7 @@ import {
   type WorkspaceNavGroup
 } from "@voldzi/stratos-ui";
 import { useEffect, useMemo, useState } from "react";
+import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type OidcClientConfig } from "./oidc";
 
 type WorkspaceView = "dashboard" | "capabilities" | "execution" | "telemetry";
 type CapabilityStatus = "Ready" | "Partial" | "Gap" | "Blocked";
@@ -189,6 +192,23 @@ interface AkbStatus {
   };
 }
 
+interface AuthStatus {
+  mode: "disabled" | "shared-token" | "oidc";
+  required: boolean;
+  configured: boolean;
+  issuer: string | null;
+  audience: string | null;
+  clientId: string | null;
+  requiredRoles: string[];
+  operatorRoles: string[];
+  publicOidc: {
+    configured: boolean;
+    issuer: string | null;
+    clientId: string | null;
+    scopes: string;
+  };
+}
+
 interface AkbAnswer {
   provider: "AKB";
   scanRunId: string;
@@ -241,6 +261,7 @@ interface CapabilityRow {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8781";
 const dockerProjectPath = "/workspace/projects";
+const authTokenStorageKey = "security-preflight.auth.token";
 
 const projectRows: ProjectRow[] = [
   {
@@ -350,9 +371,9 @@ const capabilityRows: CapabilityRow[] = [
   {
     id: "auth",
     area: "Authentication and authorization",
-    status: "Blocked",
-    implemented: "Local-only single-user boundary is documented.",
-    gap: "Any shared or central deployment needs AuthN/AuthZ, TLS, RBAC, and audit identities first.",
+    status: "Partial",
+    implemented: "API supports STRATOS OIDC/JWKS RBAC, shared-token transition mode, protected endpoints, and UI bearer handoff.",
+    gap: "Production still needs Keycloak client/roles, TLS termination, and audit event persistence.",
     priority: "P0"
   }
 ];
@@ -396,11 +417,12 @@ const executionStages = [
   }
 ];
 
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function fetchJson<T>(url: string, init?: RequestInit, authToken?: string | null): Promise<T> {
   const response = await fetch(url, {
     ...init,
     headers: {
       "content-type": "application/json",
+      ...authHeaders(authToken),
       ...init?.headers
     }
   });
@@ -413,11 +435,12 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-async function fetchOptionalJson<T>(url: string, init?: RequestInit): Promise<T | null> {
+async function fetchOptionalJson<T>(url: string, init?: RequestInit, authToken?: string | null): Promise<T | null> {
   const response = await fetch(url, {
     ...init,
     headers: {
       "content-type": "application/json",
+      ...authHeaders(authToken),
       ...init?.headers
     }
   });
@@ -433,6 +456,10 @@ async function fetchOptionalJson<T>(url: string, init?: RequestInit): Promise<T 
   }
 
   return payload;
+}
+
+function authHeaders(authToken?: string | null): Record<string, string> {
+  return authToken ? { authorization: `Bearer ${authToken}` } : {};
 }
 
 function statusTone(status: string): BadgeTone {
@@ -507,6 +534,11 @@ export default function DashboardPage() {
   const [detailMode, setDetailMode] = useState<DetailSurfaceMode>("sidebar");
   const [exportingFormat, setExportingFormat] = useState<"PDF" | "PPTX" | null>(null);
   const [exportMessage, setExportMessage] = useState("PDF/PPTX exports use redacted report evidence only.");
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authTokenInput, setAuthTokenInput] = useState("");
+  const [authMessage, setAuthMessage] = useState("Authentication status has not been checked yet.");
+  const [oidcClient, setOidcClient] = useState<OidcClientConfig | null>(null);
   const [akbStatus, setAkbStatus] = useState<AkbStatus | null>(null);
   const [akbQuestion, setAkbQuestion] = useState("Shrn vysledek posledniho skenu pro zdravotnicky audit a uved citace.");
   const [akbAnswer, setAkbAnswer] = useState<AkbAnswer | null>(null);
@@ -567,6 +599,8 @@ export default function DashboardPage() {
   );
   const criticalGaps = capabilityRows.filter((row) => row.priority === "P0" && row.status !== "Ready").length;
   const scanGate = scanResult.status === "error" || scanResult.blocked ? "Blocked" : scanResult.status === "success" ? "Ready" : "Partial";
+  const authReady = authStatus ? !authStatus.required || Boolean(authToken) : false;
+  const authLabel = authStatus?.required ? (authToken ? "Authenticated" : "Auth required") : "Local mode";
   const commandItems = useMemo<CommandCenterItem[]>(
     () => [
       {
@@ -629,6 +663,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "run",
           label: "Queue",
+          disabled: !authReady,
           onSelect: () => void runScan("queue")
         }
       },
@@ -641,6 +676,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "plan",
           label: "Plan",
+          disabled: !authReady,
           onSelect: () => void runScan("plan")
         }
       },
@@ -654,7 +690,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "export",
           label: "Export",
-          disabled: !latestRun,
+          disabled: !latestRun || !authReady,
           onSelect: () => void exportLatestRun("PDF")
         }
       },
@@ -668,12 +704,12 @@ export default function DashboardPage() {
         primaryAction: {
           id: "export",
           label: "Export",
-          disabled: !latestRun,
+          disabled: !latestRun || !authReady,
           onSelect: () => void exportLatestRun("PPTX")
         }
       }
     ],
-    [akbStatus?.configured, criticalGaps, latestRun, selectedProfileId]
+    [akbStatus?.configured, authReady, criticalGaps, latestRun, selectedProfileId]
   );
 
   const projectColumns = useMemo<Array<DataTableColumn<ProjectRow>>>(
@@ -859,11 +895,43 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
+    const config = oidcConfig();
+    setOidcClient(config);
+
+    const storedToken = window.localStorage.getItem(authTokenStorageKey);
+    if (storedToken) {
+      setAuthToken(storedToken);
+      setAuthTokenInput("");
+    }
+
+    async function initializeAuth() {
+      try {
+        if (config) {
+          const completedToken = await completeOidcLogin(config, new URLSearchParams(window.location.search));
+          if (completedToken) {
+            persistAuthToken(completedToken);
+            setAuthMessage("STRATOS OIDC session established.");
+          }
+        }
+      } catch (error) {
+        setAuthMessage(error instanceof Error ? error.message : "OIDC login failed.");
+      } finally {
+        await refreshAuthStatus();
+      }
+    }
+
+    void initializeAuth();
+  }, []);
+
+  useEffect(() => {
     let active = true;
 
     async function loadProfiles() {
       try {
-        const payload = await fetchJson<{ data: ScanProfile[] }>(`${apiBaseUrl}/api/v1/scan-profiles`);
+        if (!authStatus) return;
+        if (!authReady && authStatus.required) return;
+
+        const payload = await fetchJson<{ data: ScanProfile[] }>(`${apiBaseUrl}/api/v1/scan-profiles`, undefined, authToken);
 
         if (!active) return;
 
@@ -887,15 +955,19 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [selectedProfileId]);
+  }, [authReady, authStatus?.required, authToken, selectedProfileId]);
 
   useEffect(() => {
-    void refreshScanRuns();
-  }, []);
+    if (authReady) {
+      void refreshScanRuns();
+    }
+  }, [authReady, authToken]);
 
   useEffect(() => {
-    void refreshAkbStatus();
-  }, []);
+    if (authReady) {
+      void refreshAkbStatus();
+    }
+  }, [authReady, authToken]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -909,8 +981,62 @@ export default function DashboardPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  async function refreshAuthStatus() {
+    try {
+      const payload = await fetchJson<{ data: AuthStatus }>(`${apiBaseUrl}/api/v1/auth/status`);
+      setAuthStatus(payload.data);
+      setAuthMessage(
+        payload.data.required
+          ? payload.data.configured
+            ? "Authentication is required for API access."
+            : "Authentication is required but not fully configured."
+          : "Local development mode does not require API authentication."
+      );
+    } catch (error) {
+      setAuthStatus(null);
+      setAuthMessage(error instanceof Error ? error.message : "Authentication status is not available.");
+    }
+  }
+
+  function persistAuthToken(token: string) {
+    const trimmed = token.trim();
+    if (!trimmed) return;
+
+    window.localStorage.setItem(authTokenStorageKey, trimmed);
+    setAuthToken(trimmed);
+    setAuthTokenInput("");
+  }
+
+  function clearAuthToken() {
+    window.localStorage.removeItem(authTokenStorageKey);
+    setAuthToken(null);
+    setAuthTokenInput("");
+    setAuthMessage("Authentication token cleared.");
+    setProfiles([]);
+    setScanRuns([]);
+    setSelectedRun(null);
+  }
+
+  async function signInWithOidc() {
+    if (!oidcClient) {
+      setAuthMessage("STRATOS OIDC client is not configured.");
+      return;
+    }
+
+    await startOidcLogin(oidcClient);
+  }
+
+  function signOut() {
+    const logoutUrl = oidcClient ? oidcLogoutUrl(oidcClient) : null;
+    clearAuthToken();
+
+    if (logoutUrl && authStatus?.mode === "oidc") {
+      window.location.assign(logoutUrl);
+    }
+  }
+
   async function loadScanRunDetail(scanRunId: string): Promise<ScanRunDetail | null> {
-    const payload = await fetchOptionalJson<{ data: ScanRunDetail }>(`${apiBaseUrl}/api/v1/scans/runs/${scanRunId}`);
+    const payload = await fetchOptionalJson<{ data: ScanRunDetail }>(`${apiBaseUrl}/api/v1/scans/runs/${scanRunId}`, undefined, authToken);
 
     if (!payload) {
       return null;
@@ -924,7 +1050,7 @@ export default function DashboardPage() {
     setLoadingRuns(true);
 
     try {
-      const payload = await fetchJson<{ data: ScanRunSummary[] }>(`${apiBaseUrl}/api/v1/scans/runs`);
+      const payload = await fetchJson<{ data: ScanRunSummary[] }>(`${apiBaseUrl}/api/v1/scans/runs`, undefined, authToken);
       setScanRuns(payload.data);
 
       const nextScanRunId = preferredScanRunId ?? selectedRun?.id ?? payload.data[0]?.id;
@@ -1004,10 +1130,19 @@ export default function DashboardPage() {
   }
 
   async function refreshDoctor() {
+    if (!authReady) {
+      setScanResult({
+        mode: "plan",
+        status: "error",
+        message: "Authentication is required before checking the toolchain."
+      });
+      return;
+    }
+
     setLoadingDoctor(true);
 
     try {
-      const payload = await fetchJson<ToolchainDoctor>(`${apiBaseUrl}/api/v1/toolchain/doctor`);
+      const payload = await fetchJson<ToolchainDoctor>(`${apiBaseUrl}/api/v1/toolchain/doctor`, undefined, authToken);
       setDoctor(payload);
     } catch (error) {
       setScanResult({
@@ -1022,7 +1157,7 @@ export default function DashboardPage() {
 
   async function refreshAkbStatus() {
     try {
-      const payload = await fetchJson<{ data: AkbStatus }>(`${apiBaseUrl}/api/v1/akb/status`);
+      const payload = await fetchJson<{ data: AkbStatus }>(`${apiBaseUrl}/api/v1/akb/status`, undefined, authToken);
       setAkbStatus(payload.data);
     } catch (error) {
       setAkbStatus(null);
@@ -1031,6 +1166,11 @@ export default function DashboardPage() {
   }
 
   async function exportLatestRun(format: "PDF" | "PPTX") {
+    if (!authReady) {
+      setExportMessage("Authentication is required before exporting reports.");
+      return;
+    }
+
     if (!latestRun) {
       setExportMessage("No scan run evidence is loaded yet.");
       return;
@@ -1047,7 +1187,7 @@ export default function DashboardPage() {
           format,
           locale: "cs"
         })
-      });
+      }, authToken);
 
       downloadBase64File(payload.data.fileName, payload.data.mimeType, payload.data.content);
       setExportMessage(`${format} export generated: ${payload.data.fileName}`);
@@ -1059,6 +1199,11 @@ export default function DashboardPage() {
   }
 
   async function askAkb() {
+    if (!authReady) {
+      setAkbMessage("Authentication is required before asking AKB.");
+      return;
+    }
+
     if (!latestRun) {
       setAkbMessage("No scan run evidence is loaded yet.");
       return;
@@ -1077,7 +1222,7 @@ export default function DashboardPage() {
           answerMode: "security_preflight_brief",
           responseLanguage: "cs"
         })
-      });
+      }, authToken);
 
       setAkbAnswer(payload.data);
       setAkbMessage(payload.data.noAnswer ? "AKB returned an explicit no-answer." : "AKB returned a cited response.");
@@ -1089,6 +1234,15 @@ export default function DashboardPage() {
   }
 
   async function runScan(mode: "plan" | "queue") {
+    if (!authReady) {
+      setScanResult({
+        mode,
+        status: "error",
+        message: "Authentication is required before running scans."
+      });
+      return;
+    }
+
     const scanRunId = `scan_ui_${Date.now().toString(36)}`;
     setScanResult({
       mode,
@@ -1113,7 +1267,7 @@ export default function DashboardPage() {
       const payload = await fetchJson<any>(`${apiBaseUrl}/api/v1/scans/${endpoint}`, {
         method: "POST",
         body: JSON.stringify(requestBody)
-      });
+      }, authToken);
       const plan = mode === "queue" ? payload.data.plan : payload;
 
       setScanResult({
@@ -1328,7 +1482,7 @@ export default function DashboardPage() {
                   Refresh
                 </Button>
                 <IconButton
-                  disabled={!latestRun || exportingFormat !== null}
+                  disabled={!latestRun || exportingFormat !== null || !authReady}
                   label="Export latest report as PDF"
                   size="compact"
                   title="Export redacted PDF report"
@@ -1337,7 +1491,7 @@ export default function DashboardPage() {
                   <FileText size={14} />
                 </IconButton>
                 <IconButton
-                  disabled={!latestRun || exportingFormat !== null}
+                  disabled={!latestRun || exportingFormat !== null || !authReady}
                   label="Export latest report as PPTX"
                   size="compact"
                   title="Export redacted PPTX report"
@@ -1356,7 +1510,7 @@ export default function DashboardPage() {
               actions: latestRun ? (
                 <span className="security-hover-actions">
                   <IconButton
-                    disabled={exportingFormat !== null}
+                    disabled={exportingFormat !== null || !authReady}
                     label={`Export ${file} report as PDF`}
                     size="compact"
                     title="Export scan run as PDF"
@@ -1365,7 +1519,7 @@ export default function DashboardPage() {
                     <Download size={13} />
                   </IconButton>
                   <IconButton
-                    disabled={exportingFormat !== null}
+                    disabled={exportingFormat !== null || !authReady}
                     label={`Export ${file} report as PPTX`}
                     size="compact"
                     title="Export scan run as PPTX"
@@ -1448,13 +1602,90 @@ export default function DashboardPage() {
               id: "auth",
               title: "Authenticated central intake",
               leading: <ShieldCheck size={15} />,
-              badges: <Badge tone="danger">blocked</Badge>,
-              meta: "required before shared deployment"
+              badges: <Badge tone={authStatus?.required ? "good" : "warning"}>{authStatus?.mode ?? "unknown"}</Badge>,
+              meta: authStatus?.configured ? "protected API boundary available" : "authentication configuration incomplete"
             }
           ]}
           ariaLabel="Central telemetry status"
           className="security-list-card"
         />
+        <StructuredList
+          title="Access control"
+          description="STRATOS OIDC and production API boundary"
+          count={<Badge tone={authReady ? "good" : authStatus?.required ? "danger" : "warning"}>{authLabel}</Badge>}
+          toolbar={
+            <span className="security-toolbar-actions">
+              {oidcClient ? (
+                <Button disabled={Boolean(authToken)} onClick={signInWithOidc} size="compact">
+                  <LogIn size={14} />
+                  Sign in
+                </Button>
+              ) : null}
+              {authToken ? (
+                <Button onClick={signOut} size="compact">
+                  <LogOut size={14} />
+                  Sign out
+                </Button>
+              ) : null}
+            </span>
+          }
+          items={[
+            {
+              id: "mode",
+              title: "API authentication mode",
+              leading: <ShieldCheck size={15} />,
+              badges: <Badge tone={authStatus?.configured ? "good" : "danger"}>{authStatus?.mode ?? "unknown"}</Badge>,
+              meta: authStatus?.issuer ?? "shared token or local development"
+            },
+            {
+              id: "roles",
+              title: "RBAC roles",
+              leading: <FileJson size={15} />,
+              badges: <Badge tone="info">{authStatus?.operatorRoles.length ?? 0} operator roles</Badge>,
+              meta: authStatus?.operatorRoles.join(", ") || "not loaded"
+            },
+            {
+              id: "cors",
+              title: "Browser API boundary",
+              leading: <Archive size={15} />,
+              badges: <Badge tone="good">CORS allowlist</Badge>,
+              meta: apiBaseUrl
+            }
+          ]}
+          ariaLabel="Access control status"
+          className="security-list-card"
+        />
+        {authStatus?.required && !authToken ? (
+          <DataGridShell title={<strong>API bearer session</strong>} className="security-grid-shell">
+            <div className="security-auth-panel">
+              <label className="security-akb-question">
+                <span>Bearer token</span>
+                <input
+                  value={authTokenInput}
+                  onChange={(event) => setAuthTokenInput(event.currentTarget.value)}
+                  type="password"
+                  autoComplete="off"
+                />
+              </label>
+              <div className="security-actions">
+                <Button variant="primary" disabled={!authTokenInput.trim()} onClick={() => persistAuthToken(authTokenInput)}>
+                  <ShieldCheck size={14} />
+                  Use token
+                </Button>
+                {oidcClient ? (
+                  <Button onClick={signInWithOidc}>
+                    <LogIn size={14} />
+                    STRATOS OIDC
+                  </Button>
+                ) : null}
+              </div>
+              <div className="security-result" data-tone={authStatus.configured ? "warning" : "danger"} role="status">
+                <strong>{authStatus.configured ? "Protected API" : "Auth configuration incomplete"}</strong>
+                <p>{authMessage}</p>
+              </div>
+            </div>
+          </DataGridShell>
+        ) : null}
         <div className="security-split-grid">
           <StructuredList
             title="AKB integration"
@@ -1515,7 +1746,7 @@ export default function DashboardPage() {
                 />
               </label>
               <div className="security-actions">
-                <Button variant="primary" disabled={!latestRun || akbLoading} onClick={askAkb}>
+                <Button variant="primary" disabled={!latestRun || akbLoading || !authReady} onClick={askAkb}>
                   <Sparkles size={14} />
                   {akbLoading ? "Asking AKB" : "Ask AKB"}
                 </Button>
@@ -1609,7 +1840,7 @@ export default function DashboardPage() {
           status={<RagBadge status={statusRag(scanGate)} label={scanGate} />}
           actions={
             <div className="security-topbar-actions">
-              <Button disabled={loadingDoctor} onClick={refreshDoctor} size="compact">
+              <Button disabled={loadingDoctor || !authReady} onClick={refreshDoctor} size="compact">
                 <Wrench size={14} />
                 {loadingDoctor ? "Checking" : "Doctor"}
               </Button>
@@ -1626,7 +1857,7 @@ export default function DashboardPage() {
               </Button>
             </div>
           }
-          user={{ name: "Security analyst", initials: "SA", status: akbStatus?.configured ? "AKB ready" : "Local mode" }}
+          user={{ name: "Security analyst", initials: "SA", status: authLabel }}
         />
       }
       toolbar={
@@ -1702,11 +1933,11 @@ export default function DashboardPage() {
           </div>
 
           <div className="security-actions">
-            <Button variant="primary" disabled={scanResult.status === "loading"} onClick={() => runScan("queue")}>
+            <Button variant="primary" disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("queue")}>
               <Play size={14} />
               Run scan
             </Button>
-            <Button disabled={scanResult.status === "loading"} onClick={() => runScan("plan")}>
+            <Button disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("plan")}>
               <ClipboardList size={14} />
               Dry run
             </Button>

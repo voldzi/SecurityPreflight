@@ -118,6 +118,26 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -143,6 +163,26 @@
           },
           "400": {
             "description": "Invalid scan profile request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
             "content": {
               "application/json": {
                 "schema": {
@@ -185,6 +225,26 @@
           },
           "400": {
             "description": "Invalid scan plan request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
             "content": {
               "application/json": {
                 "schema": {
@@ -245,6 +305,26 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Requested scan profile was not found",
             "content": {
@@ -296,6 +376,26 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -332,6 +432,26 @@
           },
           "400": {
             "description": "Invalid scan run ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
             "content": {
               "application/json": {
                 "schema": {
@@ -406,6 +526,26 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Scan report evidence was not found",
             "content": {
@@ -447,6 +587,26 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -472,6 +632,26 @@
           },
           "400": {
             "description": "Invalid toolchain requirements request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
             "content": {
               "application/json": {
                 "schema": {
@@ -514,6 +694,26 @@
           },
           "400": {
             "description": "Invalid result envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
             "content": {
               "application/json": {
                 "schema": {
@@ -564,6 +764,26 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Scan run evidence was not found",
             "content": {
@@ -598,6 +818,26 @@
           },
           "400": {
             "description": "Invalid AKB status request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
             "content": {
               "application/json": {
                 "schema": {
@@ -648,6 +888,26 @@
               }
             }
           },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Scan run evidence was not found",
             "content": {
@@ -670,6 +930,38 @@
           },
           "503": {
             "description": "AKB is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/status": {
+      "get": {
+        "summary": "Get API authentication status",
+        "operationId": "getAuthStatus",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Authentication status without secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid authentication status request",
             "content": {
               "application/json": {
                 "schema": {
@@ -2609,9 +2901,118 @@
             ]
           }
         }
+      },
+      "AuthStatusResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuthStatus"
+          }
+        }
+      },
+      "AuthStatus": {
+        "type": "object",
+        "required": [
+          "mode",
+          "required",
+          "configured",
+          "issuer",
+          "audience",
+          "clientId",
+          "requiredRoles",
+          "operatorRoles",
+          "publicOidc"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "shared-token",
+              "oidc"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "audience": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requiredRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "operatorRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "publicOidc": {
+            "$ref": "#/components/schemas/PublicOidcStatus"
+          }
+        }
+      },
+      "PublicOidcStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "issuer",
+          "clientId",
+          "scopes"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": "string"
+          }
+        }
       }
     },
-    "securitySchemes": {}
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT or shared API token"
+      }
+    }
   },
   "tags": [
     {
@@ -2633,6 +3034,15 @@
     {
       "name": "Toolchain",
       "description": "Local scanner and runtime diagnostics."
+    },
+    {
+      "name": "Authentication",
+      "description": "SecurityPreflight API authentication and authorization status"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
     }
   ]
 }

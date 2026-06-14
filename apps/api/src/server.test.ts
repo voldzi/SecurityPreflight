@@ -20,6 +20,88 @@ describe("api server", () => {
     });
   });
 
+  it("keeps auth status public and protects API in shared-token mode", async () => {
+    const previousMode = process.env.SECURITY_PREFLIGHT_AUTH_MODE;
+    const previousToken = process.env.SECURITY_PREFLIGHT_API_TOKEN;
+
+    process.env.SECURITY_PREFLIGHT_AUTH_MODE = "shared-token";
+    process.env.SECURITY_PREFLIGHT_API_TOKEN = "test-api-token";
+
+    try {
+      const server = createServer({ logger: false });
+      const status = await server.inject({ method: "GET", url: "/api/v1/auth/status" });
+      expect(status.statusCode).toBe(200);
+      expect(status.json()).toMatchObject({
+        data: {
+          mode: "shared-token",
+          required: true,
+          configured: true
+        }
+      });
+      expect(JSON.stringify(status.json())).not.toContain("test-api-token");
+
+      const anonymous = await server.inject({ method: "GET", url: "/api/v1/scan-profiles" });
+      expect(anonymous.statusCode).toBe(401);
+      expect(anonymous.json().error.code).toBe("UNAUTHORIZED");
+
+      const authorized = await server.inject({
+        method: "GET",
+        url: "/api/v1/scan-profiles",
+        headers: {
+          authorization: "Bearer test-api-token"
+        }
+      });
+      expect(authorized.statusCode).toBe(200);
+      expect(authorized.json().data.length).toBeGreaterThan(0);
+    } finally {
+      restoreEnv("SECURITY_PREFLIGHT_AUTH_MODE", previousMode);
+      restoreEnv("SECURITY_PREFLIGHT_API_TOKEN", previousToken);
+    }
+  });
+
+  it("defaults production API auth to fail-closed OIDC when auth is not configured", async () => {
+    const previousAppEnv = process.env.APP_ENV;
+    const previousMode = process.env.SECURITY_PREFLIGHT_AUTH_MODE;
+    const previousIssuer = process.env.SECURITY_PREFLIGHT_OIDC_ISSUER;
+    const previousJwks = process.env.SECURITY_PREFLIGHT_OIDC_JWKS_URL;
+    const previousClient = process.env.SECURITY_PREFLIGHT_OIDC_CLIENT_ID;
+
+    process.env.APP_ENV = "production";
+    delete process.env.SECURITY_PREFLIGHT_AUTH_MODE;
+    delete process.env.SECURITY_PREFLIGHT_OIDC_ISSUER;
+    delete process.env.SECURITY_PREFLIGHT_OIDC_JWKS_URL;
+    delete process.env.SECURITY_PREFLIGHT_OIDC_CLIENT_ID;
+
+    try {
+      const server = createServer({ logger: false });
+      const status = await server.inject({ method: "GET", url: "/api/v1/auth/status" });
+      expect(status.statusCode).toBe(200);
+      expect(status.json()).toMatchObject({
+        data: {
+          mode: "oidc",
+          required: true,
+          configured: false
+        }
+      });
+
+      const protectedResponse = await server.inject({
+        method: "GET",
+        url: "/api/v1/scan-profiles",
+        headers: {
+          authorization: "Bearer placeholder"
+        }
+      });
+      expect(protectedResponse.statusCode).toBe(503);
+      expect(protectedResponse.json().error.code).toBe("OIDC_CONFIG_MISSING");
+    } finally {
+      restoreEnv("APP_ENV", previousAppEnv);
+      restoreEnv("SECURITY_PREFLIGHT_AUTH_MODE", previousMode);
+      restoreEnv("SECURITY_PREFLIGHT_OIDC_ISSUER", previousIssuer);
+      restoreEnv("SECURITY_PREFLIGHT_OIDC_JWKS_URL", previousJwks);
+      restoreEnv("SECURITY_PREFLIGHT_OIDC_CLIENT_ID", previousClient);
+    }
+  });
+
   it("serves scan profiles", async () => {
     const server = createServer({ logger: false });
     const response = await server.inject({ method: "GET", url: "/api/v1/scan-profiles" });
