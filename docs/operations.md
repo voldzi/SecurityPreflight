@@ -17,6 +17,18 @@ pnpm install
 bash scripts/validate-skeleton.sh
 ```
 
+The Web UI depends on the restricted GitHub Packages package
+`@voldzi/stratos-ui`. Configure a read-only package token outside Git, for
+example in the user-local `~/.npmrc`:
+
+```ini
+@voldzi:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_READ_TOKEN}
+```
+
+The repository `.npmrc` contains only the registry mapping and must not contain
+tokens.
+
 ### Run
 
 ```bash
@@ -34,6 +46,11 @@ Docker Desktop stack:
 docker compose up -d
 docker compose down
 ```
+
+The Web image uses the local `~/.npmrc` as a Docker BuildKit secret during
+dependency installation so the `@voldzi/stratos-ui` token is not copied into the
+image or committed files. If the token file is stored elsewhere, set `HOME` or
+run the Web build with an equivalent BuildKit `npmrc` secret.
 
 CLI wrapper examples:
 

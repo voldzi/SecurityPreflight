@@ -19,37 +19,36 @@ token supplied outside Git and outside committed Docker or environment files.
 
 ## Decision
 
-SecurityPreflight will align its Web UI with STRATOS shell principles now and
-adopt `@voldzi/stratos-ui` as a package dependency after package registry
-access is configured for local and CI builds.
+SecurityPreflight consumes `@voldzi/stratos-ui` as a direct Web UI dependency
+through GitHub Packages. The Web application imports the shared STRATOS
+stylesheet once from the Next.js root layout and composes the dashboard from
+stable shared primitives.
 
-Current implementation uses STRATOS-compatible design tokens and layout
-patterns:
+Current implementation uses STRATOS components and layout patterns:
 
 - global application shell with left navigation and a compact work surface;
-- restrained status chips, panels, tables, and operational controls;
-- `--stratos-*` token names for color, radius, and shadow primitives;
+- `AppShell`, `AppRail`, `WorkspaceSidebar`, `WorkspaceNav`, `Topbar`,
+  `ViewTabs`, `ViewToolbar`, `DataGridShell`, `DataTable`, `StructuredList`,
+  `MetricCard`, `Badge`, `RagBadge`, `SelectField`, and `Button`;
+- shared `@voldzi/stratos-ui/styles.css` tokens and component classes;
 - actionable primary controls only when they are wired to API behavior.
 
-The future direct package integration must:
+The package integration must:
 
 - consume `@voldzi/stratos-ui` from GitHub Packages or another approved
   registry, not from a local `file:` path;
 - keep package credentials out of Git, shell history, Dockerfiles, and reports;
-- verify peer dependency compatibility before merging, especially React and
-  `lucide-react`;
+- pass package credentials to Docker builds through build secrets such as a
+  user-local `.npmrc`;
+- keep peer dependencies compatible, especially React and `lucide-react`;
 - import the shared package styles once from the Web application root;
 - wrap STRATOS primitives with thin SecurityPreflight domain components rather
   than forking the shared library.
 
 ## Consequences
 
-SecurityPreflight gets a STRATOS-aligned interface immediately without adding
-fragile path-based coupling to the STRATOS monorepo. The remaining work is
-configuration, not product design: package registry access must be added to the
-developer and CI environments before the shared package can become a direct
-runtime dependency.
-
-Until that registry access exists, UI changes should continue using the local
-STRATOS-compatible tokens and should avoid introducing alternate design systems
-or one-off component libraries.
+SecurityPreflight gets a STRATOS-aligned interface without path-based coupling
+to the STRATOS monorepo. Local and CI environments must provide read-only
+GitHub Packages access for `@voldzi/stratos-ui` during Web dependency
+installation. UI changes should prefer shared STRATOS primitives before adding
+new local component classes.

@@ -3,10 +3,15 @@
 import {
   Activity,
   AlertTriangle,
+  Archive,
   CheckCircle2,
   ClipboardList,
+  Database,
+  FileJson,
   FileWarning,
   FolderGit2,
+  Gauge,
+  History,
   LayoutDashboard,
   Play,
   ScrollText,
@@ -15,45 +20,36 @@ import {
   TerminalSquare,
   Wrench
 } from "lucide-react";
+import {
+  AppRail,
+  AppShell,
+  Badge,
+  Button,
+  DataGridShell,
+  DataTable,
+  DetailSurface,
+  IconButton,
+  MetricCard,
+  ProgressBar,
+  RagBadge,
+  SearchBox,
+  SelectField,
+  StructuredList,
+  Topbar,
+  ViewTabs,
+  ViewToolbar,
+  WorkspaceNav,
+  WorkspaceSidebar,
+  type BadgeTone,
+  type DataTableColumn,
+  type DetailSurfaceMode,
+  type RagStatus,
+  type WorkspaceNavGroup
+} from "@voldzi/stratos-ui";
 import { useEffect, useMemo, useState } from "react";
 
-const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
-  { label: "Projects", icon: FolderGit2 },
-  { label: "Scans", icon: Activity },
-  { label: "Findings", icon: FileWarning },
-  { label: "Reports", icon: ScrollText },
-  { label: "Toolchain", icon: Wrench },
-  { label: "Settings", icon: Settings }
-];
-
-const projects = [
-  { name: "SecurityPreflight", path: "/workspace/projects", stack: "Next.js / Fastify", data: "internal", gate: "READY", high: 0, medium: 0 },
-  { name: "Hospital API", path: "~/Projects/hospital-api", stack: "Node.js / OpenAPI", data: "health-data", gate: "FAIL", high: 2, medium: 5 },
-  { name: "Claims Portal", path: "~/Projects/claims-portal", stack: "Next.js / Docker", data: "sensitive", gate: "WARNING", high: 0, medium: 3 }
-];
-
-const scans = [
-  { project: "SecurityPreflight", profile: "documentation-compliance", started: "local", duration: "queue", result: "READY" },
-  { project: "Hospital API", profile: "healthcare-reference", started: "planned", duration: "strict", result: "FAIL" },
-  { project: "Claims Portal", profile: "fast-local", started: "planned", duration: "quick", result: "WARNING" }
-];
-
-const fallbackTools = [
-  { name: "Docker Desktop", status: "available", version: "compose runtime" },
-  { name: "Gitleaks", status: "container", version: "worker/toolbox" },
-  { name: "Semgrep", status: "container", version: "worker/toolbox" },
-  { name: "Trivy", status: "container", version: "worker/toolbox" },
-  { name: "Syft / Grype / OSV", status: "container", version: "worker/toolbox" },
-  { name: "Checkov IaC", status: "container", version: "worker/toolbox" },
-  { name: "Central results API", status: "available", version: "v1 envelope" }
-];
-
-const findings = [
-  { title: "Healthcare profile blocks medium-or-higher findings", meta: "policy / gate", severity: "HIGH" },
-  { title: "External scanner failures are fail-closed", meta: "worker / evidence", severity: "HIGH" },
-  { title: "Central telemetry envelope redacts evidence", meta: "results ingest / OpenAPI", severity: "MEDIUM" }
-];
+type WorkspaceView = "dashboard" | "capabilities" | "execution" | "telemetry";
+type CapabilityStatus = "Ready" | "Partial" | "Gap" | "Blocked";
 
 interface ScanProfile {
   id: string;
@@ -87,15 +83,205 @@ interface ScanActionResult {
   stepCount?: number;
 }
 
+interface ProjectRow {
+  id: string;
+  name: string;
+  path: string;
+  stack: string;
+  data: string;
+  gate: string;
+  findings: string;
+}
+
+interface ScanRow {
+  id: string;
+  project: string;
+  profile: string;
+  mode: string;
+  result: string;
+}
+
+interface CapabilityRow {
+  id: string;
+  area: string;
+  status: CapabilityStatus;
+  implemented: string;
+  gap: string;
+  priority: string;
+}
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8781";
 const dockerProjectPath = "/workspace/projects";
 
-function toneFor(value: string) {
-  if (["PASS", "READY", "ready", "available", "container", "success", "queued"].includes(value)) return "ok";
-  if (["WARNING", "MEDIUM", "idle", "loading"].includes(value)) return "warn";
-  if (["FAIL", "HIGH", "missing", "error", "blocked"].includes(value)) return "fail";
-  return undefined;
-}
+const projectRows: ProjectRow[] = [
+  {
+    id: "security-preflight",
+    name: "SecurityPreflight",
+    path: "/workspace/projects",
+    stack: "Next.js / Fastify / Worker",
+    data: "internal",
+    gate: "READY",
+    findings: "0 high / 0 medium"
+  },
+  {
+    id: "hospital-api",
+    name: "Hospital API",
+    path: "~/Projects/hospital-api",
+    stack: "Node.js / OpenAPI",
+    data: "health-data",
+    gate: "FAIL",
+    findings: "2 high / 5 medium"
+  },
+  {
+    id: "claims-portal",
+    name: "Claims Portal",
+    path: "~/Projects/claims-portal",
+    stack: "Next.js / Docker",
+    data: "sensitive",
+    gate: "WARNING",
+    findings: "0 high / 3 medium"
+  }
+];
+
+const scanRows: ScanRow[] = [
+  {
+    id: "security-preflight-documentation",
+    project: "SecurityPreflight",
+    profile: "documentation-compliance",
+    mode: "queue",
+    result: "READY"
+  },
+  {
+    id: "hospital-healthcare",
+    project: "Hospital API",
+    profile: "healthcare-reference",
+    mode: "strict",
+    result: "FAIL"
+  },
+  {
+    id: "claims-fast",
+    project: "Claims Portal",
+    profile: "fast-local",
+    mode: "quick",
+    result: "WARNING"
+  }
+];
+
+const fallbackTools = [
+  { name: "Docker Desktop", status: "available", version: "compose runtime" },
+  { name: "Gitleaks", status: "container", version: "worker/toolbox" },
+  { name: "Semgrep", status: "container", version: "worker/toolbox" },
+  { name: "Trivy", status: "container", version: "worker/toolbox" },
+  { name: "Syft / Grype / OSV", status: "container", version: "worker/toolbox" },
+  { name: "Checkov IaC", status: "container", version: "worker/toolbox" },
+  { name: "Central results API", status: "available", version: "v1 envelope" }
+];
+
+const capabilityRows: CapabilityRow[] = [
+  {
+    id: "scan-planning",
+    area: "Scan planning and guardrails",
+    status: "Ready",
+    implemented: "Profiles, dry-run planning, blocked active DAST, command evidence paths.",
+    gap: "Add per-project policy overrides and diff-aware profile selection.",
+    priority: "P1"
+  },
+  {
+    id: "worker-execution",
+    area: "Worker execution",
+    status: "Partial",
+    implemented: "Queue endpoint, worker consumer, internal checks, external scanner runner.",
+    gap: "No live progress stream, cancellation, retry queue, or historical run detail screen yet.",
+    priority: "P0"
+  },
+  {
+    id: "healthcare-reference",
+    area: "Healthcare reference checks",
+    status: "Partial",
+    implemented: "Strict profile, fail-closed scanner evidence, central envelope redaction.",
+    gap: "Needs policy catalog, retention matrix, access-control assertions, and audit-log review checks.",
+    priority: "P0"
+  },
+  {
+    id: "findings",
+    area: "Finding management",
+    status: "Gap",
+    implemented: "Normalized finding model and report output exist in packages.",
+    gap: "No UI for triage, exceptions, owners, remediation SLA, or evidence drill-down.",
+    priority: "P0"
+  },
+  {
+    id: "reports",
+    area: "Reports and evidence",
+    status: "Partial",
+    implemented: "Markdown, JSON, execution-result, and central-result envelope files.",
+    gap: "No report browser, download workflow, SARIF/SBOM export view, or evidence retention controls.",
+    priority: "P1"
+  },
+  {
+    id: "telemetry",
+    area: "Central telemetry",
+    status: "Partial",
+    implemented: "OpenAPI ingest endpoint and redacted result envelope contract.",
+    gap: "No configured remote sink, signing, retry buffer, or delivery status timeline.",
+    priority: "P1"
+  },
+  {
+    id: "projects",
+    area: "Project registry",
+    status: "Gap",
+    implemented: "Dashboard shows representative projects and fixed Docker mount path.",
+    gap: "Needs persistent project CRUD, path validation, stack detector results, and per-project settings.",
+    priority: "P0"
+  },
+  {
+    id: "auth",
+    area: "Authentication and authorization",
+    status: "Blocked",
+    implemented: "Local-only single-user boundary is documented.",
+    gap: "Any shared or central deployment needs AuthN/AuthZ, TLS, RBAC, and audit identities first.",
+    priority: "P0"
+  }
+];
+
+const executionStages = [
+  {
+    id: "intake",
+    title: "Project intake",
+    meta: "fixed Docker workspace mount",
+    status: "Partial" as CapabilityStatus
+  },
+  {
+    id: "plan",
+    title: "Plan",
+    meta: "profile checks, guardrails, evidence paths",
+    status: "Ready" as CapabilityStatus
+  },
+  {
+    id: "queue",
+    title: "Queue",
+    meta: "Redis-backed scan request",
+    status: "Ready" as CapabilityStatus
+  },
+  {
+    id: "run",
+    title: "Run",
+    meta: "worker/toolbox execution",
+    status: "Partial" as CapabilityStatus
+  },
+  {
+    id: "triage",
+    title: "Triage",
+    meta: "findings UI and exceptions",
+    status: "Gap" as CapabilityStatus
+  },
+  {
+    id: "export",
+    title: "Export",
+    meta: "reports and central envelope",
+    status: "Partial" as CapabilityStatus
+  }
+];
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -114,11 +300,33 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
+function statusTone(status: string): BadgeTone {
+  if (["Ready", "READY", "PASS", "available", "container", "success", "queued"].includes(status)) return "good";
+  if (["Partial", "WARNING", "MEDIUM", "idle", "loading"].includes(status)) return "warning";
+  if (["Gap", "Blocked", "FAIL", "HIGH", "missing", "error", "blocked"].includes(status)) return "danger";
+  return "neutral";
+}
+
+function statusRag(status: string): RagStatus {
+  if (["Ready", "READY", "PASS", "available", "container", "success", "queued"].includes(status)) return "GREEN";
+  if (["Partial", "WARNING", "MEDIUM", "idle", "loading"].includes(status)) return "AMBER";
+  if (["Gap", "Blocked", "FAIL", "HIGH", "missing", "error", "blocked"].includes(status)) return "RED";
+  return "GRAY";
+}
+
+function statusLabel(status: string) {
+  return status === "success" ? "Ready" : status === "error" ? "Error" : status;
+}
+
 export default function DashboardPage() {
+  const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("documentation-compliance");
   const [doctor, setDoctor] = useState<ToolchainDoctor | null>(null);
   const [loadingDoctor, setLoadingDoctor] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailMode, setDetailMode] = useState<DetailSurfaceMode>("sidebar");
   const [scanResult, setScanResult] = useState<ScanActionResult>({
     mode: "plan",
     status: "idle",
@@ -136,7 +344,192 @@ export default function DashboardPage() {
         version: tool.version ?? tool.message ?? "not reported"
       }))
     : fallbackTools;
-  const gateTone = scanResult.status === "error" || scanResult.blocked ? "fail" : scanResult.status === "success" ? "ok" : "warn";
+  const filteredCapabilityRows = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return capabilityRows;
+
+    return capabilityRows.filter((row) =>
+      `${row.area} ${row.status} ${row.implemented} ${row.gap} ${row.priority}`.toLowerCase().includes(query)
+    );
+  }, [searchQuery]);
+  const maturityScore = Math.round(
+    (capabilityRows.filter((row) => row.status === "Ready").length * 100 +
+      capabilityRows.filter((row) => row.status === "Partial").length * 55) /
+      capabilityRows.length
+  );
+  const criticalGaps = capabilityRows.filter((row) => row.priority === "P0" && row.status !== "Ready").length;
+  const scanGate = scanResult.status === "error" || scanResult.blocked ? "Blocked" : scanResult.status === "success" ? "Ready" : "Partial";
+
+  const projectColumns = useMemo<Array<DataTableColumn<ProjectRow>>>(
+    () => [
+      {
+        id: "project",
+        label: "Project",
+        width: "minmax(220px, 1.3fr)",
+        sortable: true,
+        sortAccessor: (row) => row.name,
+        render: (row) => (
+          <span className="security-cell-stack">
+            <strong>{row.name}</strong>
+            <small>{row.path}</small>
+          </span>
+        )
+      },
+      {
+        id: "stack",
+        label: "Stack",
+        width: "minmax(170px, 1fr)",
+        render: (row) => row.stack
+      },
+      {
+        id: "data",
+        label: "Data",
+        width: 132,
+        render: (row) => <Badge tone={row.data === "health-data" ? "danger" : "neutral"}>{row.data}</Badge>
+      },
+      {
+        id: "gate",
+        label: "Gate",
+        width: 110,
+        render: (row) => <RagBadge status={statusRag(row.gate)} label={row.gate} />
+      },
+      {
+        id: "findings",
+        label: "Open",
+        width: 140,
+        render: (row) => row.findings
+      }
+    ],
+    []
+  );
+
+  const scanColumns = useMemo<Array<DataTableColumn<ScanRow>>>(
+    () => [
+      {
+        id: "project",
+        label: "Project",
+        width: "minmax(170px, 1fr)",
+        sortable: true,
+        sortAccessor: (row) => row.project,
+        render: (row) => row.project
+      },
+      {
+        id: "profile",
+        label: "Profile",
+        width: "minmax(220px, 1.2fr)",
+        render: (row) => <code>{row.profile}</code>
+      },
+      {
+        id: "mode",
+        label: "Mode",
+        width: 90,
+        render: (row) => row.mode
+      },
+      {
+        id: "result",
+        label: "Result",
+        width: 120,
+        render: (row) => <RagBadge status={statusRag(row.result)} label={row.result} />
+      }
+    ],
+    []
+  );
+
+  const capabilityColumns = useMemo<Array<DataTableColumn<CapabilityRow>>>(
+    () => [
+      {
+        id: "area",
+        label: "Capability",
+        width: "minmax(210px, 1fr)",
+        sortable: true,
+        sortAccessor: (row) => row.area,
+        render: (row) => (
+          <span className="security-cell-stack">
+            <strong>{row.area}</strong>
+            <small>{row.priority}</small>
+          </span>
+        )
+      },
+      {
+        id: "status",
+        label: "Status",
+        width: 120,
+        sortable: true,
+        sortAccessor: (row) => row.status,
+        render: (row) => <RagBadge status={statusRag(row.status)} label={row.status} />
+      },
+      {
+        id: "implemented",
+        label: "Implemented",
+        width: "minmax(280px, 1.4fr)",
+        render: (row) => <span className="security-wrap">{row.implemented}</span>
+      },
+      {
+        id: "gap",
+        label: "Gap",
+        width: "minmax(320px, 1.6fr)",
+        render: (row) => <span className="security-wrap">{row.gap}</span>
+      }
+    ],
+    []
+  );
+
+  const navGroups = useMemo<WorkspaceNavGroup[]>(
+    () => [
+      {
+        id: "workspace",
+        label: "Workspace",
+        items: [
+          {
+            id: "dashboard",
+            label: "Dashboard",
+            icon: <LayoutDashboard size={16} />,
+            active: activeView === "dashboard"
+          },
+          {
+            id: "capabilities",
+            label: "Capability audit",
+            icon: <Gauge size={16} />,
+            badge: criticalGaps,
+            active: activeView === "capabilities"
+          },
+          {
+            id: "execution",
+            label: "Execution",
+            icon: <Activity size={16} />,
+            active: activeView === "execution"
+          },
+          {
+            id: "telemetry",
+            label: "Telemetry",
+            icon: <Database size={16} />,
+            active: activeView === "telemetry"
+          }
+        ]
+      },
+      {
+        id: "future",
+        label: "Backlog surfaces",
+        items: [
+          {
+            id: "findings",
+            label: "Findings triage",
+            icon: <FileWarning size={16} />,
+            disabled: true,
+            disabledReason: "Needs persisted findings UI and exception workflow."
+          },
+          {
+            id: "reports",
+            label: "Report browser",
+            icon: <ScrollText size={16} />,
+            disabled: true,
+            disabledReason: "Report files exist; browser and download workflow are not implemented yet."
+          }
+        ]
+      }
+    ],
+    [activeView, criticalGaps]
+  );
 
   useEffect(() => {
     let active = true;
@@ -238,263 +631,414 @@ export default function DashboardPage() {
     }
   }
 
+  function renderDashboard() {
+    return (
+      <div className="security-view-stack">
+        <section className="security-metric-grid" aria-label="SecurityPreflight maturity summary">
+          <MetricCard
+            icon={ShieldCheck}
+            label="Functional maturity"
+            value={`${maturityScore}%`}
+            detail={`${criticalGaps} P0 gaps remain before reference-grade healthcare use.`}
+            tone={criticalGaps ? "warning" : "good"}
+            chartData={[32, 38, 42, 48, maturityScore]}
+          />
+          <MetricCard
+            icon={ClipboardList}
+            label="Scan profiles"
+            value={profiles.length || "-"}
+            detail="Loaded from the local API contract."
+            tone="info"
+            chartData={[4, 5, 7, 8, profiles.length || 9]}
+          />
+          <MetricCard
+            icon={Wrench}
+            label="Toolchain"
+            value={doctor ? doctor.summary.available : "not checked"}
+            detail={doctor ? `${doctor.summary.missing} missing / ${doctor.summary.error} error` : "Run doctor to verify scanner availability."}
+            tone={doctor?.summary.error || doctor?.summary.missing ? "danger" : doctor ? "good" : "neutral"}
+            chartType="bar"
+            chartData={doctor ? [doctor.summary.available, doctor.summary.missing, doctor.summary.error] : undefined}
+          />
+          <MetricCard
+            icon={FileJson}
+            label="Central result envelope"
+            value="v1"
+            detail="OpenAPI ingest and redacted worker output exist."
+            tone="warning"
+            chartData={[1, 1, 1, 1, 1]}
+          />
+        </section>
+
+        <DataGridShell
+          title={<strong>Projects</strong>}
+          toolbar={<Badge tone="warning">registry UI pending</Badge>}
+          className="security-grid-shell"
+        >
+          <DataTable
+            rows={projectRows}
+            columns={projectColumns}
+            getRowId={(row) => row.id}
+            emptyLabel="No projects"
+            aria-label="Registered projects"
+          />
+        </DataGridShell>
+
+        <div className="security-split-grid">
+          <DataGridShell
+            title={<strong>Recent scan runs</strong>}
+            toolbar={<Badge tone="neutral">representative local history</Badge>}
+            className="security-grid-shell"
+          >
+            <DataTable rows={scanRows} columns={scanColumns} getRowId={(row) => row.id} aria-label="Recent scans" />
+          </DataGridShell>
+
+          <StructuredList
+            title="Toolchain doctor"
+            description={doctor ? `Checked ${new Date(doctor.checkedAt).toLocaleTimeString()}` : "Docker scanner stack"}
+            count={<Badge tone={doctor ? statusTone(doctor.summary.error || doctor.summary.missing ? "error" : "available") : "neutral"}>{doctor ? "live" : "fallback"}</Badge>}
+            toolbar={
+              <Button disabled={loadingDoctor} onClick={refreshDoctor} size="compact">
+                <Wrench size={14} />
+                {loadingDoctor ? "Checking" : "Check"}
+              </Button>
+            }
+            items={renderedTools.map((tool) => ({
+              id: tool.name,
+              title: tool.name,
+              leading: <Wrench size={15} />,
+              badges: <Badge tone={statusTone(tool.status)}>{tool.status}</Badge>,
+              meta: <code>{tool.version}</code>
+            }))}
+            ariaLabel="Toolchain doctor"
+            className="security-list-card"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  function renderCapabilities() {
+    return (
+      <div className="security-view-stack">
+        <section className="security-analysis-panel">
+          <div>
+            <h2>Celková funkčnost</h2>
+            <p>
+              Aplikace má funkční lokální scan pipeline, OpenAPI kontrakt, worker evidence a centrální envelope. Produktově je
+              ale stále na úrovni silnějšího MVP: největší mezery jsou persistentní registry projektů, triage findings,
+              report browser, progress běhů a bezpečnostní hranice pro sdílené/centrální nasazení.
+            </p>
+          </div>
+          <div className="security-progress-card">
+            <span>Maturity estimate</span>
+            <strong>{maturityScore}%</strong>
+            <ProgressBar value={maturityScore} tone={criticalGaps ? "warning" : "good"} label="Functional maturity" />
+          </div>
+        </section>
+
+        <DataGridShell
+          title={<strong>Capability audit</strong>}
+          toolbar={<Badge tone={criticalGaps ? "danger" : "good"}>{criticalGaps} P0 gaps</Badge>}
+          className="security-grid-shell"
+        >
+          <DataTable
+            rows={filteredCapabilityRows}
+            columns={capabilityColumns}
+            getRowId={(row) => row.id}
+            emptyLabel="No matching capabilities"
+            aria-label="Capability audit"
+          />
+        </DataGridShell>
+      </div>
+    );
+  }
+
+  function renderExecution() {
+    return (
+      <div className="security-view-stack">
+        <StructuredList
+          title="Execution lifecycle"
+          description="Current end-to-end capability from local project to evidence"
+          count={<Badge tone="warning">triage incomplete</Badge>}
+          items={executionStages.map((stage) => ({
+            id: stage.id,
+            title: stage.title,
+            leading: <RagBadge status={statusRag(stage.status)} label={stage.status} />,
+            meta: stage.meta
+          }))}
+          ariaLabel="Execution lifecycle"
+          className="security-list-card"
+        />
+        <DataGridShell title={<strong>Planned checks in selected profile</strong>} className="security-grid-shell">
+          <StructuredList
+            items={(selectedProfile?.checks ?? []).map((check) => ({
+              id: check,
+              title: check,
+              leading: <CheckCircle2 size={15} />,
+              badges: <Badge tone="info">planned</Badge>
+            }))}
+            emptyLabel="Load a scan profile to see planned checks."
+            ariaLabel="Selected scan profile checks"
+          />
+        </DataGridShell>
+      </div>
+    );
+  }
+
+  function renderTelemetry() {
+    return (
+      <div className="security-view-stack">
+        <section className="security-analysis-panel">
+          <div>
+            <h2>Telemetry and central storage</h2>
+            <p>
+              The API exposes a v1 central ingest contract and the worker writes a redacted result envelope. This is the
+              right direction for sensitive healthcare projects, but production use still needs delivery status, signing,
+              retention policy, and authenticated central intake.
+            </p>
+          </div>
+          <Badge tone="warning">integration partial</Badge>
+        </section>
+        <StructuredList
+          title="Central result envelope"
+          description="Current contract and missing production controls"
+          count={<Badge tone="info">OpenAPI v1</Badge>}
+          items={[
+            {
+              id: "endpoint",
+              title: "POST /api/v1/results/ingest",
+              leading: <Database size={15} />,
+              badges: <Badge tone="good">implemented</Badge>,
+              meta: "contract-first ingest"
+            },
+            {
+              id: "redaction",
+              title: "Redacted worker envelope",
+              leading: <FileJson size={15} />,
+              badges: <Badge tone="good">implemented</Badge>,
+              meta: "no raw source upload"
+            },
+            {
+              id: "delivery",
+              title: "Delivery status and retry queue",
+              leading: <History size={15} />,
+              badges: <Badge tone="warning">missing</Badge>,
+              meta: "needed for central evidence"
+            },
+            {
+              id: "auth",
+              title: "Authenticated central intake",
+              leading: <ShieldCheck size={15} />,
+              badges: <Badge tone="danger">blocked</Badge>,
+              meta: "required before shared deployment"
+            }
+          ]}
+          ariaLabel="Central telemetry status"
+          className="security-list-card"
+        />
+      </div>
+    );
+  }
+
+  const renderedView =
+    activeView === "capabilities"
+      ? renderCapabilities()
+      : activeView === "execution"
+        ? renderExecution()
+        : activeView === "telemetry"
+          ? renderTelemetry()
+          : renderDashboard();
+
   return (
-    <main className="app-shell">
-      <aside className="sidebar" aria-label="Primary navigation">
-        <div className="brand">
-          <div className="brand-mark">
-            <ShieldCheck size={18} strokeWidth={2} />
+    <AppShell
+      className="security-shell"
+      topbarPlacement="main"
+      rail={
+        <AppRail
+          workspaceMark="SP"
+          items={[
+            { id: "security", label: "Security", icon: ShieldCheck },
+            { id: "evidence", label: "Evidence", icon: Archive, disabled: true, disabledReason: "Report browser is not implemented yet." }
+          ]}
+          footerItems={[{ id: "settings", label: "Settings", icon: Settings, disabled: true, disabledReason: "Settings surface is backlog." }]}
+          activeItemId="security"
+          panelOpen
+          onItemSelect={() => undefined}
+        />
+      }
+      sidebar={
+        <WorkspaceSidebar
+          title="SecurityPreflight"
+          subtitle="STRATOS security workspace"
+          footer={
+            <div className="security-sidebar-footer">
+              <Badge tone="good">local only</Badge>
+              <span>API {apiBaseUrl.replace("http://", "")}</span>
+            </div>
+          }
+        >
+          <WorkspaceNav groups={navGroups} onSelect={(itemId) => setActiveView(itemId as WorkspaceView)} />
+        </WorkspaceSidebar>
+      }
+      topbar={
+        <Topbar
+          breadcrumbs={[
+            { id: "stratos", label: "STRATOS" },
+            { id: "security-preflight", label: "SecurityPreflight" },
+            { id: activeView, label: activeView === "capabilities" ? "Capability audit" : activeView }
+          ]}
+          search={
+            <SearchBox
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onClear={() => setSearchQuery("")}
+              placeholder="Search capabilities"
+              variant="toolbar"
+              ariaLabel="Search capabilities"
+            />
+          }
+          actions={[
+            {
+              id: "doctor",
+              label: loadingDoctor ? "Checking" : "Doctor",
+              icon: <Wrench size={15} />,
+              onClick: refreshDoctor,
+              disabled: loadingDoctor
+            },
+            {
+              id: "audit",
+              label: "Audit",
+              icon: <Gauge size={15} />,
+              variant: "primary",
+              onClick: () => {
+                setActiveView("capabilities");
+                setDetailOpen(true);
+              }
+            }
+          ]}
+          trailing={<RagBadge status={statusRag(scanGate)} label={scanGate} />}
+        />
+      }
+      toolbar={
+        <ViewToolbar
+          leading={
+            <ViewTabs
+              tabs={[
+                { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={15} /> },
+                { id: "capabilities", label: "Capability audit", icon: <Gauge size={15} />, badge: <Badge tone="danger">{criticalGaps}</Badge> },
+                { id: "execution", label: "Execution", icon: <Activity size={15} /> },
+                { id: "telemetry", label: "Telemetry", icon: <Database size={15} /> }
+              ]}
+              activeTabId={activeView}
+              onTabChange={(tabId) => setActiveView(tabId as WorkspaceView)}
+            />
+          }
+          trailing={<Badge tone="warning">healthcare reference requires P0 gap closure</Badge>}
+        />
+      }
+    >
+      <div className="security-content">
+        <section className="security-main">{renderedView}</section>
+
+        <aside className="security-run-panel" aria-label="Run scan">
+          <div className="security-run-header">
+            <div>
+              <h2>Run scan</h2>
+              <span>{dockerProjectPath}</span>
+            </div>
+            <RagBadge status={statusRag(scanGate)} label={scanResult.gate ?? statusLabel(scanResult.status)} />
           </div>
-          <span>SecurityPreflight</span>
+
+          <SelectField
+            label="Scan profile"
+            value={selectedProfileId}
+            onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
+            searchPlaceholder="Find profile"
+          >
+            {profiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name}
+              </option>
+            ))}
+          </SelectField>
+
+          <p className="security-run-description">{selectedProfile?.description ?? "Load profiles from the local API to start scanning."}</p>
+
+          <div className="security-facts">
+            <div>
+              <span>Project</span>
+              <strong>SecurityPreflight</strong>
+            </div>
+            <div>
+              <span>Checks</span>
+              <strong>{selectedProfile?.checks.length ?? 0}</strong>
+            </div>
+            <div>
+              <span>Tools</span>
+              <strong>{doctor ? `${doctor.summary.available} available` : "not checked"}</strong>
+            </div>
+          </div>
+
+          <div className="security-actions">
+            <Button variant="primary" disabled={scanResult.status === "loading"} onClick={() => runScan("queue")}>
+              <Play size={14} />
+              Run scan
+            </Button>
+            <Button disabled={scanResult.status === "loading"} onClick={() => runScan("plan")}>
+              <ClipboardList size={14} />
+              Dry run
+            </Button>
+            <IconButton label="Open scan log" disabled title="Scan log UI is not implemented yet.">
+              <TerminalSquare size={14} />
+            </IconButton>
+          </div>
+
+          <div className="security-result" data-tone={statusTone(scanResult.status)} role="status">
+            <strong>{scanResult.status === "loading" ? "Working" : statusLabel(scanResult.status)}</strong>
+            <p>{scanResult.message}</p>
+            {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
+            {scanResult.stepCount != null ? <span>{scanResult.stepCount} planned steps</span> : null}
+          </div>
+
+          <Button className="security-wide-button" onClick={() => setDetailOpen(true)}>
+            <AlertTriangle size={14} />
+            Show maturity blockers
+          </Button>
+        </aside>
+      </div>
+
+      <DetailSurface
+        open={detailOpen}
+        mode={detailMode}
+        title="SecurityPreflight functional audit"
+        labels={{ close: "Close", sidebar: "Sidebar", modal: "Modal", fullscreen: "Fullscreen" }}
+        onClose={() => setDetailOpen(false)}
+        onModeChange={setDetailMode}
+      >
+        <div className="security-detail-stack">
+          <section>
+            <h2>Current assessment</h2>
+            <p>
+              SecurityPreflight is beyond a static scaffold, but still below reference-grade healthcare readiness. The scan
+              execution path works; operational product depth is still incomplete around findings, evidence browsing,
+              project registry, progress tracking, and central delivery guarantees.
+            </p>
+          </section>
+          <StructuredList
+            title="P0 blockers"
+            items={capabilityRows
+              .filter((row) => row.priority === "P0" && row.status !== "Ready")
+              .map((row) => ({
+                id: row.id,
+                title: row.area,
+                leading: <RagBadge status={statusRag(row.status)} label={row.status} />,
+                meta: row.gap
+              }))}
+            ariaLabel="P0 blockers"
+          />
         </div>
-
-        <nav className="nav-group">
-          {navItems.map((item) => (
-            <button key={item.label} className="nav-item" data-active={item.active} type="button">
-              <item.icon size={17} strokeWidth={2} />
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <section className="main">
-        <header className="topbar">
-          <div className="title-block">
-            <p className="kicker">STRATOS Security Workspace</p>
-            <h1>SecurityPreflight</h1>
-            <p>Local evidence gate for sensitive applications, scanner readiness, and central result export.</p>
-          </div>
-          <div className="status-row" aria-label="Runtime status">
-            <span className="chip" data-tone="ok">Local only</span>
-            <span className="chip" data-tone="ok">Docker Desktop</span>
-            <span className="chip" data-tone="warn">DAST disabled</span>
-          </div>
-        </header>
-
-        <div className="content-grid">
-          <div className="stack">
-            <section className="panel surface-lift" aria-labelledby="readiness-heading">
-              <div className="panel-header">
-                <h2 id="readiness-heading">Scan Readiness</h2>
-                <span>{doctor ? `Checked ${new Date(doctor.checkedAt).toLocaleTimeString()}` : "Live API connected"}</span>
-              </div>
-              <div className="summary-grid">
-                <div className="summary-item">
-                  <p className="summary-label">Profiles</p>
-                  <p className="summary-value">{profiles.length || "-"} <small>available</small></p>
-                </div>
-                <div className="summary-item">
-                  <p className="summary-label">Toolchain</p>
-                  <p className="summary-value" style={{ color: doctor?.summary.error || doctor?.summary.missing ? "var(--fail)" : "var(--ok)" }}>
-                    {doctor ? doctor.summary.available : "-"} <small>available</small>
-                  </p>
-                </div>
-                <div className="summary-item">
-                  <p className="summary-label">Last action</p>
-                  <p className="summary-value">{scanResult.gate ?? scanResult.status} <small>{scanResult.mode}</small></p>
-                </div>
-                <div className="summary-item">
-                  <p className="summary-label">Reports</p>
-                  <p className="summary-value">/reports <small>volume</small></p>
-                </div>
-              </div>
-            </section>
-
-            <section className="panel" aria-labelledby="projects-heading">
-              <div className="panel-header">
-                <h2 id="projects-heading">Projects</h2>
-                <button className="button" type="button">
-                  <FolderGit2 size={15} />
-                  Add project
-                </button>
-              </div>
-              <div className="table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Project</th>
-                      <th>Stack</th>
-                      <th>Data</th>
-                      <th>Gate</th>
-                      <th>Open</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projects.map((project) => (
-                      <tr key={project.name}>
-                        <td>
-                          <strong>{project.name}</strong>
-                          <div className="mono muted">{project.path}</div>
-                        </td>
-                        <td>{project.stack}</td>
-                        <td><span className="chip">{project.data}</span></td>
-                        <td><span className="chip" data-tone={toneFor(project.gate)}>{project.gate}</span></td>
-                        <td>{project.high} high / {project.medium} medium</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            <div className="split">
-              <section className="panel" aria-labelledby="scans-heading">
-                <div className="panel-header">
-                  <h2 id="scans-heading">Recent Scans</h2>
-                  <span>Local history</span>
-                </div>
-                <div className="table-wrap">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Project</th>
-                        <th>Profile</th>
-                        <th>Mode</th>
-                        <th>Result</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {scans.map((scan) => (
-                        <tr key={`${scan.project}-${scan.started}`}>
-                          <td>{scan.project}</td>
-                          <td className="mono">{scan.profile}</td>
-                          <td>{scan.duration}</td>
-                          <td><span className="chip" data-tone={toneFor(scan.result)}>{scan.result}</span></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <section className="panel" aria-labelledby="toolchain-heading">
-                <div className="panel-header">
-                  <h2 id="toolchain-heading">Toolchain Doctor</h2>
-                  <button className="button compact" disabled={loadingDoctor} onClick={refreshDoctor} type="button">
-                    <Wrench size={14} />
-                    {loadingDoctor ? "Checking" : "Check"}
-                  </button>
-                </div>
-                <div className="tool-list">
-                  {renderedTools.map((tool) => (
-                    <div className="tool-row" key={tool.name}>
-                      <div>
-                        <strong>{tool.name}</strong>
-                        <div className="mono muted">{tool.version}</div>
-                      </div>
-                      <span className="chip" data-tone={toneFor(tool.status)}>{tool.status}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <section className="panel" aria-labelledby="findings-heading">
-              <div className="panel-header">
-                <h2 id="findings-heading">Blocking Controls</h2>
-                <span>Healthcare reference policy</span>
-              </div>
-              <div className="finding-list">
-                {findings.map((finding) => (
-                  <div className="finding-row" key={finding.title}>
-                    <div>
-                      <p className="finding-title">{finding.title}</p>
-                      <p className="finding-meta">{finding.meta}</p>
-                    </div>
-                    <span className="chip" data-tone={toneFor(finding.severity)}>{finding.severity}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <aside className="panel detail-panel surface-lift" aria-labelledby="selected-scan-heading">
-            <div className="panel-header">
-              <h2 id="selected-scan-heading">Run Scan</h2>
-              <span className="chip" data-tone={gateTone}>{scanResult.gate ?? scanResult.status}</span>
-            </div>
-            <div className="gate-block">
-              <div className="gate-result">
-                <div>
-                  <div className="muted">Selected profile</div>
-                  <strong className="profile-name">{selectedProfile?.name ?? selectedProfileId}</strong>
-                </div>
-                <div className="icon-box">
-                  {scanResult.status === "error" || scanResult.blocked ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
-                </div>
-              </div>
-              <label className="field-label" htmlFor="scan-profile">Profile</label>
-              <select
-                className="select"
-                id="scan-profile"
-                onChange={(event) => setSelectedProfileId(event.target.value)}
-                value={selectedProfileId}
-              >
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name}
-                  </option>
-                ))}
-              </select>
-              <p className="muted profile-description">{selectedProfile?.description}</p>
-            </div>
-            <div className="detail-list">
-              <div className="detail-row">
-                <span>Project path</span>
-                <strong className="mono">{dockerProjectPath}</strong>
-              </div>
-              <div className="detail-row">
-                <span>Project</span>
-                <strong>SecurityPreflight</strong>
-              </div>
-              <div className="detail-row">
-                <span>Checks</span>
-                <strong>{selectedProfile?.checks.length ?? 0}</strong>
-              </div>
-              <div className="detail-row">
-                <span>Tools</span>
-                <strong>{doctor ? `${doctor.summary.available} available` : "not checked"}</strong>
-              </div>
-            </div>
-            <div className="button-row">
-              <button
-                className="button"
-                data-primary="true"
-                disabled={scanResult.status === "loading"}
-                onClick={() => runScan("queue")}
-                type="button"
-              >
-                <Play size={14} />
-                Run scan
-              </button>
-              <button
-                className="button"
-                disabled={scanResult.status === "loading"}
-                onClick={() => runScan("plan")}
-                type="button"
-              >
-                <ClipboardList size={14} />
-                Dry run
-              </button>
-              <button className="button" disabled type="button" aria-label="Open scan log">
-                <TerminalSquare size={14} />
-              </button>
-            </div>
-            <div className="detail-body">
-              <div className="result-box" data-tone={gateTone} role="status">
-                <strong>{scanResult.status === "loading" ? "Working" : scanResult.status}</strong>
-                <p>{scanResult.message}</p>
-                {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
-                {scanResult.stepCount != null ? <span>{scanResult.stepCount} planned steps</span> : null}
-              </div>
-              <p className="muted">
-                Worker reports are written to the Docker reports volume under the scan run id.
-              </p>
-            </div>
-          </aside>
-        </div>
-      </section>
-    </main>
+      </DetailSurface>
+    </AppShell>
   );
 }

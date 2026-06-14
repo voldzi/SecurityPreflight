@@ -5,6 +5,8 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.web
+      secrets:
+        - npmrc
     environment:
       APP_ENV: development
       WEB_PORT: "8780"
@@ -98,3 +100,7 @@ volumes:
   security_preflight_postgres:
   security_preflight_reports:
   security_preflight_cache:
+
+secrets:
+  npmrc:
+    file: ${HOME}/.npmrc

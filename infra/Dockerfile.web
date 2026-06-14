@@ -1,16 +1,17 @@
+# syntax=docker/dockerfile:1.7
 FROM node:26-bookworm-slim
 
 WORKDIR /app
 RUN npm install -g pnpm@10.33.0
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json .npmrc ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/report/package.json packages/report/package.json
 COPY packages/scanners/package.json packages/scanners/package.json
 
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=false pnpm install --frozen-lockfile
 
 COPY . .
 
