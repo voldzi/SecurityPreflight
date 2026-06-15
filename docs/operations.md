@@ -29,6 +29,12 @@ example in the user-local `~/.npmrc`:
 The repository `.npmrc` contains only the registry mapping and must not contain
 tokens.
 
+GitHub Actions configures the same registry through `actions/setup-node` and
+uses `GITHUB_PACKAGES_READ_TOKEN` when present, otherwise the workflow
+`GITHUB_TOKEN` with `packages: read`. If the package is not linked to this
+repository, grant repository access to the package or add a read-only
+`GITHUB_PACKAGES_READ_TOKEN` secret.
+
 ### Run
 
 ```bash

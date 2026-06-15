@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   skeleton:
     runs-on: ubuntu-latest
@@ -21,6 +25,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 26
+          registry-url: https://npm.pkg.github.com
+          scope: "@voldzi"
 
       - name: Enable pnpm
         run: corepack enable
@@ -30,6 +36,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Typecheck
         run: pnpm typecheck
