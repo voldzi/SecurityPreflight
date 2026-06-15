@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFindingFingerprint, defaultScanProfiles, evaluateGate, type Finding } from "./index.js";
+import { createFindingFingerprint, defaultScanProfiles, evaluateGate, redactSecrets, type Finding } from "./index.js";
 
 const baseFinding: Finding = {
   id: "finding-1",
@@ -45,5 +45,24 @@ describe("createFindingFingerprint", () => {
     const second = createFindingFingerprint({ tool: "Semgrep", type: "sast", filePath: "src/app.ts", line: 10, title: "sql   injection" });
 
     expect(first).toBe(second);
+  });
+});
+
+describe("redactSecrets", () => {
+  it("preserves JSON escaping when redacting serialized nested evidence", () => {
+    const payload = {
+      evidence: JSON.stringify({
+        RuleID: "generic-api-key",
+        Fingerprint: "/srv/app:file:generic-api-key:secret-value"
+      }),
+      request: "Authorization: Bearer very-secret-token"
+    };
+
+    const redacted = redactSecrets(JSON.stringify(payload, null, 2));
+    const parsed = JSON.parse(redacted) as typeof payload;
+
+    expect(parsed.request).toBe("Authorization: Bearer ********");
+    expect(parsed.evidence).toContain("generic-api-key:********");
+    expect(() => JSON.parse(parsed.evidence)).not.toThrow();
   });
 });

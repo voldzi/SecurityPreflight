@@ -580,11 +580,11 @@ export function createFindingFingerprint(input: {
 }
 
 const redactionPatterns: Array<[RegExp, string]> = [
-  [/(Authorization:\s*Bearer\s+)[^\s"']+/gi, "$1********"],
-  [/(api[_-]?key\s*[:=]\s*)[^\s"']+/gi, "$1********"],
-  [/(password\s*[:=]\s*)[^\s"']+/gi, "$1********"],
-  [/(cookie\s*[:=]\s*)[^\n\r]+/gi, "$1********"],
-  [/(token\s*[:=]\s*)[^\s"']+/gi, "$1********"]
+  [/(Authorization:\s*Bearer\s+)[^\s"'\\]+/gi, "$1********"],
+  [/(api[_-]?key\s*[:=]\s*)[^\s"'\\]+/gi, "$1********"],
+  [/(password\s*[:=]\s*)[^\s"'\\]+/gi, "$1********"],
+  [/(cookie\s*[:=]\s*)[^\n\r\\]+/gi, "$1********"],
+  [/(token\s*[:=]\s*)[^\s"'\\]+/gi, "$1********"]
 ];
 
 export function redactSecrets(value: string): string {
