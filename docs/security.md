@@ -23,6 +23,13 @@ public PKCE client `security-preflight-web`, provisioned by
 `infra/keycloak/ensure-security-preflight-client.sh`, with production redirect
 URI `https://stratos.zeleznalady.cz/sp/*`.
 
+When production OIDC is configured, the Web UI starts the STRATOS PKCE login
+automatically if no bearer token is present. This avoids presenting a disabled
+dashboard where scan profiles and scan actions cannot load. If the API rejects
+a stored token with `401`, the Web UI clears it and starts a fresh STRATOS
+login. A `403` remains visible as an authorization/RBAC problem and is not
+retried automatically.
+
 ## Authorization
 
 The API enforces coarse RBAC from token roles. Read endpoints require one of
@@ -58,6 +65,23 @@ for scan execution and report export, and `security-preflight.admin` or
 Local development traffic may use HTTP on localhost. Any shared or production
 deployment must terminate TLS before browser access and configure explicit API
 CORS origins through `SECURITY_PREFLIGHT_CORS_ORIGINS`.
+
+## Browser Security Headers
+
+The Web UI, API, and production nginx include send a production security header
+baseline:
+
+- `Strict-Transport-Security`
+- `Content-Security-Policy` with `frame-ancestors 'none'`
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- restrictive `Permissions-Policy`
+- `Cross-Origin-Opener-Policy: same-origin`
+
+The Web UI CSP permits STRATOS Keycloak and the public STRATOS origin for OIDC
+and API calls. The API CSP is stricter because API responses do not need browser
+script, image, or style execution.
 
 ## Input Validation
 

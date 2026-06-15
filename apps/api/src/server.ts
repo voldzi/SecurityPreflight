@@ -32,6 +32,7 @@ import {
   updateProject
 } from "./projects.js";
 import { buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
+import { applySecurityHeaders } from "./security-headers.js";
 
 export interface CreateServerOptions {
   logger?: boolean;
@@ -227,6 +228,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   const server = Fastify({
     logger: options.logger ?? true,
     genReqId: (request) => request.headers["x-request-id"]?.toString() ?? `req_${randomUUID()}`
+  });
+
+  server.addHook("onRequest", async (_request, reply) => {
+    applySecurityHeaders(reply);
   });
 
   void server.register(cors, {

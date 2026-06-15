@@ -6,7 +6,6 @@ import {
   Archive,
   Bot,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ClipboardList,
@@ -26,7 +25,6 @@ import {
   Play,
   Presentation,
   RefreshCw,
-  Search,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -51,8 +49,6 @@ import {
   SearchBox,
   SelectField,
   StructuredList,
-  ViewTabs,
-  ViewToolbar,
   WorkspaceSidebar,
   buildStratosTopbarApps,
   type BadgeTone,
@@ -62,7 +58,7 @@ import {
   type RagStatus,
   type WorkspaceNavGroup
 } from "@voldzi/stratos-ui";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   defaultLocale,
   localeStorageKey,
@@ -81,8 +77,25 @@ import {
 import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type OidcClientConfig } from "./oidc";
 
 type WorkspaceView = "dashboard" | "capabilities" | "execution" | "telemetry";
+type RailPanel = "security" | "evidence";
 type ScanTargetMode = "project" | "web";
 type FindingTriageStatus = "open" | "accepted" | "false-positive" | "fixed" | "suppressed";
+
+const defaultViewByRailPanel: Record<RailPanel, WorkspaceView> = {
+  security: "dashboard",
+  evidence: "execution"
+};
+
+const railPanelByWorkspaceView: Record<WorkspaceView, RailPanel> = {
+  dashboard: "security",
+  capabilities: "security",
+  execution: "evidence",
+  telemetry: "evidence"
+};
+
+function isWorkspaceView(itemId: string): itemId is WorkspaceView {
+  return itemId === "dashboard" || itemId === "capabilities" || itemId === "execution" || itemId === "telemetry";
+}
 
 interface ScanProfile {
   id: string;
@@ -318,6 +331,8 @@ interface RegisteredProject {
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8781";
 const dockerProjectPath = "/workspace/projects";
 const authTokenStorageKey = "security-preflight.auth.token";
+const oidcAutoLoginStartedKey = "security-preflight.oidc.autoLoginStarted";
+const oidcSkipAutoLoginKey = "security-preflight.oidc.skipAutoLogin";
 const stratosAppUrls = {
   "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL || "https://stratos.zeleznalady.cz/",
   projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL || "https://stratos.zeleznalady.cz/project",
@@ -339,6 +354,17 @@ const stratosTopbarApps = [
   }))
 ];
 
+class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly code: string | null
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit, authToken?: string | null): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -348,10 +374,10 @@ async function fetchJson<T>(url: string, init?: RequestInit, authToken?: string 
       ...init?.headers
     }
   });
-  const payload = (await response.json()) as T & { error?: { message?: string } };
+  const payload = (await response.json()) as T & { error?: { code?: string; message?: string } };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? `Request failed with status ${response.status}`);
+    throw new ApiRequestError(payload.error?.message ?? `Request failed with status ${response.status}`, response.status, payload.error?.code ?? null);
   }
 
   return payload;
@@ -371,10 +397,10 @@ async function fetchOptionalJson<T>(url: string, init?: RequestInit, authToken?:
     return null;
   }
 
-  const payload = (await response.json()) as T & { error?: { message?: string } };
+  const payload = (await response.json()) as T & { error?: { code?: string; message?: string } };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? `Request failed with status ${response.status}`);
+    throw new ApiRequestError(payload.error?.message ?? `Request failed with status ${response.status}`, response.status, payload.error?.code ?? null);
   }
 
   return payload;
@@ -382,6 +408,10 @@ async function fetchOptionalJson<T>(url: string, init?: RequestInit, authToken?:
 
 function authHeaders(authToken?: string | null): Record<string, string> {
   return authToken ? { authorization: `Bearer ${authToken}` } : {};
+}
+
+function isAuthenticationFailure(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.statusCode === 401;
 }
 
 function hostFromUrl(value: string): string | null {
@@ -481,6 +511,8 @@ function downloadBase64File(fileName: string, mimeType: string, content: string)
 export default function DashboardPage() {
   const [locale, setLocale] = useState<AppLocale>(defaultLocale);
   const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
+  const [activeRailPanel, setActiveRailPanel] = useState<RailPanel>("security");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("documentation-compliance");
   const [doctor, setDoctor] = useState<ToolchainDoctor | null>(null);
@@ -488,10 +520,6 @@ export default function DashboardPage() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [scanTargetMode, setScanTargetMode] = useState<ScanTargetMode>("project");
   const [webTargetUrl, setWebTargetUrl] = useState("");
-  const [openSidebarGroups, setOpenSidebarGroups] = useState<Record<string, boolean>>({
-    workspace: true,
-    future: false
-  });
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [registeringProject, setRegisteringProject] = useState(false);
   const [projectMessage, setProjectMessage] = useState<string>(uiText[defaultLocale].projects.pathHelp);
@@ -623,6 +651,29 @@ export default function DashboardPage() {
   const scanGate = scanResult.status === "error" || scanResult.blocked ? "Blocked" : scanResult.status === "success" ? "Ready" : "Partial";
   const authReady = authStatus ? !authStatus.required || Boolean(authToken) : false;
   const authLabel = authStatus?.required ? (authToken ? copy.auth.authenticated : copy.auth.required) : copy.auth.localMode;
+
+  const selectWorkspaceView = useCallback((view: WorkspaceView) => {
+    setActiveView(view);
+    setActiveRailPanel(railPanelByWorkspaceView[view]);
+    setSidebarOpen(true);
+  }, []);
+
+  const handleRailItemSelect = useCallback(
+    (itemId: string) => {
+      const nextPanel: RailPanel = itemId === "evidence" ? "evidence" : "security";
+
+      if (nextPanel === activeRailPanel) {
+        setSidebarOpen((current) => !current);
+        return;
+      }
+
+      setActiveRailPanel(nextPanel);
+      setActiveView(defaultViewByRailPanel[nextPanel]);
+      setSidebarOpen(true);
+    },
+    [activeRailPanel]
+  );
+
   const commandItems = useMemo<CommandCenterItem[]>(
     () => [
       {
@@ -634,7 +685,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "open",
           label: copy.command.open,
-          onSelect: () => setActiveView("dashboard")
+          onSelect: () => selectWorkspaceView("dashboard")
         }
       },
       {
@@ -647,7 +698,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "open",
           label: copy.command.open,
-          onSelect: () => setActiveView("capabilities")
+          onSelect: () => selectWorkspaceView("capabilities")
         }
       },
       {
@@ -659,7 +710,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "open",
           label: copy.command.open,
-          onSelect: () => setActiveView("execution")
+          onSelect: () => selectWorkspaceView("execution")
         }
       },
       {
@@ -672,7 +723,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "open",
           label: copy.command.open,
-          onSelect: () => setActiveView("telemetry")
+          onSelect: () => selectWorkspaceView("telemetry")
         }
       },
       {
@@ -731,7 +782,7 @@ export default function DashboardPage() {
         }
       }
     ],
-    [akbStatus?.configured, authReady, copy.command, copy.views, criticalGaps, effectiveProfileId, latestRun]
+    [akbStatus?.configured, authReady, copy.command, copy.views, criticalGaps, effectiveProfileId, latestRun, selectWorkspaceView]
   );
 
   const projectColumns = useMemo<Array<DataTableColumn<ProjectRow>>>(
@@ -863,8 +914,8 @@ export default function DashboardPage() {
   const navGroups = useMemo<WorkspaceNavGroup[]>(
     () => [
       {
-        id: "workspace",
-        label: copy.views.workspace,
+        id: "security",
+        label: copy.views.security,
         items: [
           {
             id: "dashboard",
@@ -878,7 +929,13 @@ export default function DashboardPage() {
             icon: <Gauge size={16} />,
             badge: criticalGaps,
             active: activeView === "capabilities"
-          },
+          }
+        ]
+      },
+      {
+        id: "evidence",
+        label: copy.views.evidence,
+        items: [
           {
             id: "execution",
             label: copy.views.executionShort,
@@ -890,25 +947,13 @@ export default function DashboardPage() {
             label: copy.views.telemetryShort,
             icon: <Database size={16} />,
             active: activeView === "telemetry"
-          }
-        ]
-      },
-      {
-        id: "future",
-        label: copy.views.backlog,
-        items: [
+          },
           {
             id: "findings",
             label: copy.views.findings,
             icon: <FileWarning size={16} />,
             disabled: true,
             disabledReason: copy.disabledReasons.findings
-          },
-          {
-            id: "execution",
-            label: copy.views.reportsExports,
-            icon: <ScrollText size={16} />,
-            active: activeView === "execution"
           }
         ]
       }
@@ -988,6 +1033,8 @@ export default function DashboardPage() {
         if (config) {
           const completedToken = await completeOidcLogin(config, new URLSearchParams(window.location.search));
           if (completedToken) {
+            window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
+            window.sessionStorage.removeItem(oidcSkipAutoLoginKey);
             persistAuthToken(completedToken);
             setAuthMessage(copy.auth.oidcEstablished);
           }
@@ -1001,6 +1048,26 @@ export default function DashboardPage() {
 
     void initializeAuth();
   }, []);
+
+  useEffect(() => {
+    if (!authStatus || authToken || !oidcClient) return;
+    if (authStatus.mode !== "oidc" || !authStatus.required || !authStatus.configured) return;
+    if (new URLSearchParams(window.location.search).has("code")) return;
+    if (window.sessionStorage.getItem(oidcSkipAutoLoginKey) === "true") return;
+
+    const marker = `${oidcClient.issuer}|${oidcClient.clientId}|${oidcClient.redirectUri}`;
+    if (window.sessionStorage.getItem(oidcAutoLoginStartedKey) === marker) {
+      setAuthMessage(copy.auth.apiRequired);
+      return;
+    }
+
+    window.sessionStorage.setItem(oidcAutoLoginStartedKey, marker);
+    setAuthMessage(copy.auth.oidcStarting);
+    void startOidcLogin(oidcClient).catch((error) => {
+      window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
+      setAuthMessage(error instanceof Error ? error.message : copy.auth.oidcFailed);
+    });
+  }, [authStatus, authToken, oidcClient, copy.auth]);
 
   useEffect(() => {
     let active = true;
@@ -1020,6 +1087,7 @@ export default function DashboardPage() {
         }
       } catch (error) {
         if (!active) return;
+        if (handleApiAuthFailure(error)) return;
 
         setScanResult({
           mode: "plan",
@@ -1152,6 +1220,8 @@ export default function DashboardPage() {
     if (!trimmed) return;
 
     window.localStorage.setItem(authTokenStorageKey, trimmed);
+    window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
+    window.sessionStorage.removeItem(oidcSkipAutoLoginKey);
     setAuthToken(trimmed);
     setAuthTokenInput("");
   }
@@ -1167,17 +1237,29 @@ export default function DashboardPage() {
     setScanProgress(null);
   }
 
+  function handleApiAuthFailure(error: unknown) {
+    if (!isAuthenticationFailure(error)) return false;
+
+    clearAuthToken();
+    setAuthMessage(copy.auth.sessionExpired);
+    return true;
+  }
+
   async function signInWithOidc() {
     if (!oidcClient) {
       setAuthMessage(copy.auth.oidcNotConfigured);
       return;
     }
 
+    window.sessionStorage.removeItem(oidcSkipAutoLoginKey);
+    window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
     await startOidcLogin(oidcClient);
   }
 
   function signOut() {
     const logoutUrl = oidcClient ? oidcLogoutUrl(oidcClient) : null;
+    window.sessionStorage.setItem(oidcSkipAutoLoginKey, "true");
+    window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
     clearAuthToken();
 
     if (logoutUrl && authStatus?.mode === "oidc") {
@@ -1553,24 +1635,10 @@ export default function DashboardPage() {
     }
   }
 
-  function toggleSidebarGroup(groupId: string) {
-    setOpenSidebarGroups((current) => ({
-      ...current,
-      [groupId]: !current[groupId]
-    }));
-  }
-
-  function setAllSidebarGroups(open: boolean) {
-    setOpenSidebarGroups(
-      navGroups.reduce<Record<string, boolean>>((accumulator, group) => {
-        accumulator[group.id] = open;
-        return accumulator;
-      }, {})
-    );
-  }
-
   function selectSidebarItem(itemId: string) {
-    setActiveView(itemId as WorkspaceView);
+    if (isWorkspaceView(itemId)) {
+      selectWorkspaceView(itemId);
+    }
   }
 
   function renderSidebarMiniActions(itemId: string, disabled?: boolean) {
@@ -1613,7 +1681,7 @@ export default function DashboardPage() {
             aria-label={copy.sidebar.openDetail}
             onClick={(event) => {
               event.stopPropagation();
-              setActiveView("capabilities");
+              selectWorkspaceView("capabilities");
               setDetailOpen(true);
             }}
           >
@@ -1629,7 +1697,7 @@ export default function DashboardPage() {
             disabled={!authReady}
             onClick={(event) => {
               event.stopPropagation();
-              setActiveView("execution");
+              selectWorkspaceView("execution");
               void runScan("plan");
             }}
           >
@@ -1641,62 +1709,38 @@ export default function DashboardPage() {
   }
 
   function renderSidebarNav() {
+    const activeNavGroup = navGroups.find((group) => group.id === activeRailPanel) ?? navGroups[0]!;
+
     return (
       <nav className="security-sidebar-nav" aria-label={copy.sidebar.workspaceMenu}>
-        {navGroups.map((group) => {
-          const expanded = openSidebarGroups[group.id] ?? true;
-
-          return (
-            <section className="security-sidebar-nav-group" key={group.id}>
-              <div className="security-sidebar-group-head">
+        <section className="security-sidebar-panel-content" key={activeNavGroup.id} aria-label={activeNavGroup.label}>
+          <div className="security-sidebar-panel-heading">
+            <span>{activeNavGroup.label}</span>
+            {activeNavGroup.id === "security" && criticalGaps ? <Badge tone="danger">{criticalGaps}</Badge> : null}
+          </div>
+          <div className="security-sidebar-nav-items">
+            {activeNavGroup.items.map((item) => (
+              <div
+                key={`${activeNavGroup.id}-${item.id}`}
+                className={`security-sidebar-nav-row${item.active ? " is-active" : ""}${item.disabled ? " is-disabled" : ""}`}
+              >
                 <button
                   type="button"
-                  className="security-sidebar-group-trigger"
-                  aria-expanded={expanded}
-                  onClick={() => toggleSidebarGroup(group.id)}
+                  className="security-sidebar-nav-item"
+                  disabled={item.disabled}
+                  title={item.disabled ? item.disabledReason : item.label}
+                  aria-current={item.active ? "page" : undefined}
+                  onClick={() => selectSidebarItem(item.id)}
                 >
-                  {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-                  <span>{group.label}</span>
+                  <span className="security-sidebar-nav-icon">{item.icon}</span>
+                  <span className="security-sidebar-nav-label">{item.label}</span>
+                  {item.badge ? <Badge tone="danger">{item.badge}</Badge> : null}
                 </button>
-                <span className="security-sidebar-group-actions" aria-label={copy.sidebar.groupActions}>
-                  <button
-                    type="button"
-                    className="security-sidebar-mini-button"
-                    title={copy.sidebar.openCommand}
-                    aria-label={copy.sidebar.openCommand}
-                    onClick={() => setCommandOpen(true)}
-                  >
-                    <Search size={13} aria-hidden="true" />
-                  </button>
-                </span>
+                {renderSidebarMiniActions(item.id, item.disabled)}
               </div>
-              {expanded ? (
-                <div className="security-sidebar-nav-items">
-                  {group.items.map((item) => (
-                    <div
-                      key={`${group.id}-${item.id}`}
-                      className={`security-sidebar-nav-row${item.active ? " is-active" : ""}${item.disabled ? " is-disabled" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        className="security-sidebar-nav-item"
-                        disabled={item.disabled}
-                        title={item.disabled ? item.disabledReason : item.label}
-                        aria-current={item.active ? "page" : undefined}
-                        onClick={() => selectSidebarItem(item.id)}
-                      >
-                        <span className="security-sidebar-nav-icon">{item.icon}</span>
-                        <span className="security-sidebar-nav-label">{item.label}</span>
-                        {item.badge ? <Badge tone="danger">{item.badge}</Badge> : null}
-                      </button>
-                      {renderSidebarMiniActions(item.id, item.disabled)}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </section>
-          );
-        })}
+            ))}
+          </div>
+        </section>
       </nav>
     );
   }
@@ -1919,7 +1963,19 @@ export default function DashboardPage() {
 
         <DataGridShell
           title={<strong>{copy.capabilities.auditTitle}</strong>}
-          toolbar={<Badge tone={criticalGaps ? "danger" : "good"}>{copy.capabilities.p0Gaps(criticalGaps)}</Badge>}
+          toolbar={
+            <span className="security-toolbar-actions">
+              <SearchBox
+                value={searchQuery}
+                onChange={setSearchQuery}
+                onClear={() => setSearchQuery("")}
+                placeholder={copy.toolbar.filterCapabilities}
+                variant="toolbar"
+                ariaLabel={copy.toolbar.filterCapabilities}
+              />
+              <Badge tone={criticalGaps ? "danger" : "good"}>{copy.capabilities.p0Gaps(criticalGaps)}</Badge>
+            </span>
+          }
           className="security-grid-shell"
         >
           <DataTable
@@ -2147,7 +2203,7 @@ export default function DashboardPage() {
           <Button
             disabled={!run}
             onClick={() => {
-              setActiveView("execution");
+              selectWorkspaceView("execution");
               setScanLogOpen(false);
             }}
             size="compact"
@@ -2494,6 +2550,8 @@ export default function DashboardPage() {
   return (
     <AppShell
       className="security-shell"
+      sidebarOpen={sidebarOpen}
+      onSidebarChange={setSidebarOpen}
       topbarPlacement="global"
       rail={
         <AppRail
@@ -2503,9 +2561,9 @@ export default function DashboardPage() {
             { id: "evidence", label: copy.views.evidence, icon: Archive }
           ]}
           footerItems={[{ id: "settings", label: copy.topbar.settings, icon: Settings, disabled: true, disabledReason: copy.disabledReasons.settings }]}
-          activeItemId={activeView === "execution" ? "evidence" : "security"}
-          panelOpen
-          onItemSelect={(itemId) => setActiveView(itemId === "evidence" ? "execution" : "dashboard")}
+          activeItemId={activeRailPanel}
+          panelOpen={sidebarOpen}
+          onItemSelect={handleRailItemSelect}
         />
       }
       sidebar={
@@ -2530,18 +2588,9 @@ export default function DashboardPage() {
               <button
                 type="button"
                 className="security-sidebar-icon-button"
-                title={copy.sidebar.openCommand}
-                aria-label={copy.sidebar.openCommand}
-                onClick={() => setCommandOpen(true)}
-              >
-                <Search size={16} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="security-sidebar-icon-button"
                 title={copy.sidebar.collapseSubmenus}
                 aria-label={copy.sidebar.collapseSubmenus}
-                onClick={() => setAllSidebarGroups(false)}
+                onClick={() => setSidebarOpen(false)}
               >
                 <ChevronsLeft size={16} aria-hidden="true" />
               </button>
@@ -2564,13 +2613,6 @@ export default function DashboardPage() {
                     ? copy.views.executionShort
                     : copy.views.telemetryShort}
             </span>
-          }
-          center={
-            <button type="button" className="security-command-trigger" onClick={() => setCommandOpen(true)}>
-              <Search size={15} />
-              <span>{copy.topbar.commandCenter}</span>
-              <kbd>Ctrl K</kbd>
-            </button>
           }
           status={<RagBadge status={statusRag(scanGate)} label={statusDisplayLabel(scanGate, locale)} />}
           actions={
@@ -2599,49 +2641,9 @@ export default function DashboardPage() {
                 <Wrench size={14} />
                 {loadingDoctor ? copy.topbar.checking : copy.topbar.doctor}
               </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setActiveView("capabilities");
-                  setDetailOpen(true);
-                }}
-                size="compact"
-              >
-                <Gauge size={14} />
-                {copy.topbar.audit}
-              </Button>
             </div>
           }
           user={{ name: copy.topbar.userName, initials: "SA", status: authLabel }}
-        />
-      }
-      toolbar={
-        <ViewToolbar
-          leading={
-            <ViewTabs
-              tabs={[
-                { id: "dashboard", label: copy.views.dashboard, icon: <LayoutDashboard size={15} /> },
-                { id: "capabilities", label: copy.views.capabilities, icon: <Gauge size={15} />, badge: <Badge tone="danger">{criticalGaps}</Badge> },
-                { id: "execution", label: copy.views.executionShort, icon: <Activity size={15} /> },
-                { id: "telemetry", label: copy.views.telemetryShort, icon: <Database size={15} /> }
-              ]}
-              activeTabId={activeView}
-              onTabChange={(tabId) => setActiveView(tabId as WorkspaceView)}
-            />
-          }
-          trailing={
-            <span className="security-view-toolbar-trailing">
-              <SearchBox
-                value={searchQuery}
-                onChange={setSearchQuery}
-                onClear={() => setSearchQuery("")}
-                placeholder={copy.toolbar.filterCapabilities}
-                variant="toolbar"
-                ariaLabel={copy.toolbar.filterCapabilities}
-              />
-              <Badge tone="warning">{copy.toolbar.healthcareWarning}</Badge>
-            </span>
-          }
         />
       }
     >

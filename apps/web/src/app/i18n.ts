@@ -424,7 +424,7 @@ export const uiText = {
     dashboard: {
       maturityAria: "Souhrn zralosti SecurityPreflight",
       functionalMaturity: "Funkční zralost",
-      maturityDetail: (criticalGaps: number) => `${criticalGaps} P0 mezer zbývá před referenčním zdravotnickým použitím.`,
+      maturityDetail: (criticalGaps: number) => `${criticalGaps} kritických mezer zbývá před referenčním zdravotnickým použitím.`,
       scanProfiles: "Scan profily",
       scanProfilesDetail: "Načteno z lokálního API kontraktu.",
       toolchain: "Toolchain",
@@ -482,7 +482,7 @@ export const uiText = {
       maturityEstimate: "Odhad zralosti",
       maturityProgress: "Funkční zralost",
       auditTitle: "Audit schopností",
-      p0Gaps: (criticalGaps: number) => `${criticalGaps} P0 mezer`,
+      p0Gaps: (criticalGaps: number) => `${criticalGaps} kritických mezer`,
       noMatching: "Žádné odpovídající schopnosti",
       aria: "Audit schopností"
     },
@@ -584,12 +584,14 @@ export const uiText = {
       localMode: "Lokální režim",
       initial: "Stav autentizace zatím nebyl ověřen.",
       oidcEstablished: "STRATOS OIDC session byla navázána.",
+      oidcStarting: "Přesměrovávám na STRATOS přihlášení.",
       oidcFailed: "OIDC přihlášení selhalo.",
       apiRequired: "Pro přístup k API je vyžadována autentizace.",
       apiRequiredIncomplete: "Autentizace je vyžadována, ale není plně nakonfigurována.",
       localNoAuth: "Lokální vývojový režim nevyžaduje autentizaci API.",
       statusUnavailable: "Stav autentizace není dostupný.",
       tokenCleared: "Autentizační token byl vymazán.",
+      sessionExpired: "Autentizační session vypršela nebo byla odmítnuta. Probíhá nové přihlášení.",
       oidcNotConfigured: "STRATOS OIDC klient není nakonfigurován."
     },
     messages: {
@@ -701,7 +703,7 @@ export const uiText = {
       fullscreen: "Fullscreen",
       currentAssessment: "Aktuální hodnocení",
       body: "SecurityPreflight už není statický scaffold: scan execution, log běhu, prohlížení evidence, PDF/PPTX exporty a AKB bridge jsou zapojené. Referenční zdravotnická připravenost ještě vyžaduje triage nálezů, serverový live progress stream, autentizované sdílené nasazení a garance centrálního doručení.",
-      p0Blockers: "P0 blokery"
+      p0Blockers: "Kritické blokery"
     },
     command: {
       title: "SecurityPreflight příkazové centrum",
@@ -712,7 +714,7 @@ export const uiText = {
       actions: "Akce",
       preview: "STRATOS příkazová plocha pro navigaci, spuštění skenů a exporty reportů.",
       dashboardSubtitle: "Přehled SecurityPreflight",
-      p0Gaps: (criticalGaps: number) => `${criticalGaps} P0 mezer`,
+      p0Gaps: (criticalGaps: number) => `${criticalGaps} kritických mezer`,
       noEvidenceLoaded: "Žádná evidence skenu není načtena",
       akbConfigured: "AKB nastaveno",
       akbNotConfigured: "AKB nenastaveno",
@@ -727,7 +729,7 @@ export const uiText = {
     },
     toolbar: {
       filterCapabilities: "Filtrovat schopnosti",
-      healthcareWarning: "zdravotnická reference vyžaduje uzavření P0 mezer"
+      healthcareWarning: "zdravotnické referenční použití vyžaduje uzavření kritických mezer"
     },
     sidebar: {
       subtitle: "STRATOS bezpečnostní workspace",
@@ -888,7 +890,7 @@ export const uiText = {
     dashboard: {
       maturityAria: "SecurityPreflight maturity summary",
       functionalMaturity: "Functional maturity",
-      maturityDetail: (criticalGaps: number) => `${criticalGaps} P0 gaps remain before reference-grade healthcare use.`,
+      maturityDetail: (criticalGaps: number) => `${criticalGaps} critical gaps remain before reference-grade healthcare use.`,
       scanProfiles: "Scan profiles",
       scanProfilesDetail: "Loaded from the local API contract.",
       toolchain: "Toolchain",
@@ -946,7 +948,7 @@ export const uiText = {
       maturityEstimate: "Maturity estimate",
       maturityProgress: "Functional maturity",
       auditTitle: "Capability audit",
-      p0Gaps: (criticalGaps: number) => `${criticalGaps} P0 gaps`,
+      p0Gaps: (criticalGaps: number) => `${criticalGaps} critical gaps`,
       noMatching: "No matching capabilities",
       aria: "Capability audit"
     },
@@ -1048,12 +1050,14 @@ export const uiText = {
       localMode: "Local mode",
       initial: "Authentication status has not been checked yet.",
       oidcEstablished: "STRATOS OIDC session established.",
+      oidcStarting: "Redirecting to STRATOS sign-in.",
       oidcFailed: "OIDC login failed.",
       apiRequired: "Authentication is required for API access.",
       apiRequiredIncomplete: "Authentication is required but not fully configured.",
       localNoAuth: "Local development mode does not require API authentication.",
       statusUnavailable: "Authentication status is not available.",
       tokenCleared: "Authentication token cleared.",
+      sessionExpired: "Authentication session expired or was rejected. Starting a new sign-in.",
       oidcNotConfigured: "STRATOS OIDC client is not configured."
     },
     messages: {
@@ -1165,7 +1169,7 @@ export const uiText = {
       fullscreen: "Fullscreen",
       currentAssessment: "Current assessment",
       body: "SecurityPreflight is beyond a static scaffold: scan execution, run log, evidence browsing, PDF/PPTX/SARIF exports, central delivery manifests and the AKB bridge are wired. Reference-grade healthcare operations still need findings triage, server-side live progress streaming, retention controls and production sink configuration.",
-      p0Blockers: "P0 blockers"
+      p0Blockers: "Critical blockers"
     },
     command: {
       title: "SecurityPreflight Command Center",
@@ -1176,7 +1180,7 @@ export const uiText = {
       actions: "Actions",
       preview: "STRATOS command surface for navigation, scan execution and report exports.",
       dashboardSubtitle: "SecurityPreflight overview",
-      p0Gaps: (criticalGaps: number) => `${criticalGaps} P0 gaps`,
+      p0Gaps: (criticalGaps: number) => `${criticalGaps} critical gaps`,
       noEvidenceLoaded: "No scan evidence loaded",
       akbConfigured: "AKB configured",
       akbNotConfigured: "AKB not configured",
@@ -1191,7 +1195,7 @@ export const uiText = {
     },
     toolbar: {
       filterCapabilities: "Filter capabilities",
-      healthcareWarning: "healthcare reference requires P0 gap closure"
+      healthcareWarning: "healthcare reference use requires critical gap closure"
     },
     sidebar: {
       subtitle: "STRATOS security workspace",

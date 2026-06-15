@@ -304,6 +304,10 @@ The include keeps the Next.js Web UI prefix intact for `/sp/`, while API calls
 under `/sp/api/` are mapped to the Fastify API `/api/` paths.
 The Web UI is built with trailing-slash routing so `/sp/` is a terminal route
 and does not redirect back to `/sp`.
+The include also applies the SecurityPreflight production security header
+baseline on `/sp`, `/sp/`, health/readiness, and `/sp/api/` responses. Keep it
+in sync with `apps/web/next.config.mjs` and `apps/api/src/security-headers.ts`
+when changing CSP, HSTS, frame, referrer, or permissions policies.
 
 ## Configuration
 

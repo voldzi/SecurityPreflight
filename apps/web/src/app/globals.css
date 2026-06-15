@@ -31,11 +31,37 @@ code,
 
 .security-shell {
   --stratos-shell-sidebar-width: 306px;
+  transition: grid-template-columns 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.security-shell.stratos-app-shell[data-has-rail="true"][data-has-sidebar="true"][data-sidebar-open="false"] {
+  grid-template-columns: var(--stratos-shell-rail-width) 0 minmax(0, 1fr);
 }
 
 .security-shell .stratos-app-shell-main {
   min-width: 0;
   overflow-x: hidden;
+}
+
+.security-shell .stratos-app-shell-sidebar {
+  transform: translateX(0);
+  visibility: visible;
+  transition:
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
+}
+
+.security-shell[data-sidebar-open="false"] .stratos-app-shell-sidebar {
+  pointer-events: none;
+  transform: translateX(-18px);
+  visibility: hidden;
+  transition:
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 180ms;
 }
 
 .security-content {
@@ -454,6 +480,38 @@ code,
   gap: 10px;
   min-width: 0;
   padding: 10px;
+}
+
+.security-sidebar-panel-content {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  animation: security-sidebar-panel-in 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes security-sidebar-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.security-sidebar-panel-heading {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .security-sidebar-nav-group {

@@ -20,6 +20,19 @@ describe("api server", () => {
     });
   });
 
+  it("adds production security headers to API responses", async () => {
+    const server = createServer({ logger: false });
+    const response = await server.inject({ method: "GET", url: "/api/v1/auth/status" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["strict-transport-security"]).toBe("max-age=31536000; includeSubDomains");
+    expect(response.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-frame-options"]).toBe("DENY");
+    expect(response.headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(response.headers["permissions-policy"]).toContain("camera=()");
+  });
+
   it("keeps auth status public and protects API in shared-token mode", async () => {
     const previousMode = process.env.SECURITY_PREFLIGHT_AUTH_MODE;
     const previousToken = process.env.SECURITY_PREFLIGHT_API_TOKEN;
