@@ -640,6 +640,16 @@ export default function DashboardPage() {
     [copy.execution, locale, scanRuns]
   );
   const latestRun = selectedRun ?? scanRuns[0] ?? null;
+  const reportArtifactTotal = 5;
+  const reportArtifactCount = latestRun
+    ? [
+        latestRun.evidence.hasMarkdownReport,
+        latestRun.evidence.hasJsonReport,
+        latestRun.evidence.hasSarifReport,
+        latestRun.evidence.hasCentralEnvelope,
+        latestRun.evidence.hasCentralTelemetryDelivery || latestRun.evidence.hasDefectDojoDelivery
+      ].filter(Boolean).length
+    : 0;
   const filteredCapabilityRows = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return capabilityRows;
@@ -1823,6 +1833,97 @@ export default function DashboardPage() {
     );
   }
 
+  function renderReportCenter() {
+    const evidence = latestRun?.evidence ?? null;
+    const reportItems = [
+      {
+        id: "markdown-report",
+        title: copy.execution.markdownReport,
+        fileName: "report.md",
+        available: Boolean(evidence?.hasMarkdownReport),
+        leading: <ScrollText size={15} />
+      },
+      {
+        id: "json-report",
+        title: copy.execution.jsonReport,
+        fileName: "report.json",
+        available: Boolean(evidence?.hasJsonReport),
+        leading: <FileJson size={15} />
+      },
+      {
+        id: "sarif-report",
+        title: copy.execution.sarifReport,
+        fileName: "results.sarif",
+        available: Boolean(evidence?.hasSarifReport),
+        leading: <FileWarning size={15} />
+      },
+      {
+        id: "central-envelope",
+        title: copy.execution.centralEnvelope,
+        fileName: "central-result-envelope.json",
+        available: Boolean(evidence?.hasCentralEnvelope),
+        leading: <Archive size={15} />
+      },
+      {
+        id: "delivery-manifest",
+        title: copy.execution.deliveryManifest,
+        fileName: "delivery-manifest.json",
+        available: Boolean(evidence?.hasCentralTelemetryDelivery || evidence?.hasDefectDojoDelivery),
+        leading: <Database size={15} />
+      }
+    ];
+
+    return (
+      <StructuredList
+        title={copy.execution.reportCenter}
+        description={exportingFormat ? copy.execution.exporting(exportingFormat) : latestRun ? exportMessage : copy.execution.reportRunMissing}
+        count={
+          <Badge tone={latestRun ? (reportArtifactCount >= 3 ? "good" : "warning") : "neutral"}>
+            {latestRun ? `${reportArtifactCount}/${reportArtifactTotal}` : copy.execution.notLoaded}
+          </Badge>
+        }
+        toolbar={
+          <span className="security-toolbar-actions">
+            <IconButton
+              disabled={!latestRun || exportingFormat !== null || !authReady}
+              label={copy.execution.exportPdfLabel}
+              size="compact"
+              title={copy.execution.exportPdfTitle}
+              onClick={() => exportLatestRun("PDF")}
+            >
+              <FileText size={14} />
+            </IconButton>
+            <IconButton
+              disabled={!latestRun || exportingFormat !== null || !authReady}
+              label={copy.execution.exportPptxLabel}
+              size="compact"
+              title={copy.execution.exportPptxTitle}
+              onClick={() => exportLatestRun("PPTX")}
+            >
+              <Presentation size={14} />
+            </IconButton>
+          </span>
+        }
+        items={reportItems.map((item) => ({
+          id: item.id,
+          title: item.title,
+          leading: item.leading,
+          badges: (
+            <Badge tone={item.available ? "good" : "warning"}>
+              {item.available ? copy.execution.reportReady : copy.execution.reportMissing}
+            </Badge>
+          ),
+          meta:
+            item.available && evidence
+              ? copy.execution.reportEvidenceMeta(evidence.root, item.fileName)
+              : copy.execution.reportEvidenceMissingMeta
+        }))}
+        ariaLabel={copy.execution.reportCenterAria}
+        className="security-list-card"
+      />
+    );
+  }
+
   function renderDashboard() {
     return (
       <div className="security-view-stack">
@@ -1863,10 +1964,10 @@ export default function DashboardPage() {
           <MetricCard
             icon={FileJson}
             label={copy.dashboard.reports}
-            value="PDF/PPTX"
-            detail={copy.dashboard.reportsDetail}
-            tone="good"
-            chartData={[1, 1, 1, 1, 1]}
+            value={latestRun ? `${reportArtifactCount}/${reportArtifactTotal}` : "PDF/PPTX"}
+            detail={latestRun ? copy.dashboard.reportsEvidenceDetail(reportArtifactCount, reportArtifactTotal) : copy.dashboard.reportsDetail}
+            tone={latestRun ? (reportArtifactCount >= 3 ? "good" : "warning") : "info"}
+            chartData={latestRun ? [1, 2, 3, 4, reportArtifactCount] : [1, 1, 1, 1, 1]}
           />
         </section>
 
@@ -1990,6 +2091,8 @@ export default function DashboardPage() {
               aria-label={copy.dashboard.recentScansAria}
             />
           </DataGridShell>
+
+          {renderReportCenter()}
 
           <StructuredList
             title={copy.dashboard.toolchainDoctor}
@@ -2192,10 +2295,7 @@ export default function DashboardPage() {
             className="security-list-card"
           />
         </div>
-        <div className="security-result" data-tone={exportingFormat ? "warning" : "good"} role="status">
-          <strong>{exportingFormat ? copy.execution.exporting(exportingFormat) : copy.execution.reportExports}</strong>
-          <p>{exportMessage}</p>
-        </div>
+        {renderReportCenter()}
       </div>
     );
   }
@@ -2641,8 +2741,10 @@ export default function DashboardPage() {
     return (
       <GlobalTopbar
         apps={stratosTopbarApps}
+        className="security-global-topbar"
         labels={{ applications: copy.topbar.applications, userMenu: copy.topbar.userMenu, settings: copy.topbar.settings, logout: copy.topbar.logout }}
         context={<span>{workspaceContextLabel}</span>}
+        center={<span className="security-topbar-spacer" aria-hidden="true" />}
         status={accessDenied ? <Badge tone="danger">{copy.auth.accessDenied}</Badge> : <RagBadge status={statusRag(scanGate)} label={statusDisplayLabel(scanGate, locale)} />}
         actions={
           <div className="security-topbar-actions">

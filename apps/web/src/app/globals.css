@@ -347,6 +347,33 @@ code,
   gap: 8px;
 }
 
+.security-topbar-spacer {
+  display: block;
+  min-width: 0;
+}
+
+.security-global-topbar .stratos-global-topbar-context > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 901px) {
+  .security-global-topbar .stratos-global-topbar-left {
+    grid-column: 1;
+  }
+
+  .security-global-topbar .stratos-global-topbar-center {
+    grid-column: 2;
+  }
+
+  .security-global-topbar .stratos-global-topbar-right {
+    grid-column: 3;
+    justify-self: end;
+  }
+}
+
 .security-topbar-actions,
 .security-toolbar-actions,
 .security-hover-actions,
