@@ -269,6 +269,8 @@ SecurityPreflight follows the STRATOS Keycloak pattern:
 - public Web URL: `https://stratos.zeleznalady.cz/sp`
 - realm roles: `security-preflight.viewer`, `security-preflight.operator`,
   `security-preflight.admin`, `stratos_security_admin`, `stratos_superadmin`
+- valid Web redirect URIs: `https://stratos.zeleznalady.cz/sp/` and
+  `https://stratos.zeleznalady.cz/sp/*`
 
 Provision or update the Keycloak client from the production host after the code
 is present. The wrapper prompts only for the Keycloak admin password and uses

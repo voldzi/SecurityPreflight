@@ -1055,13 +1055,7 @@ export default function DashboardPage() {
     if (new URLSearchParams(window.location.search).has("code")) return;
     if (window.sessionStorage.getItem(oidcSkipAutoLoginKey) === "true") return;
 
-    const marker = `${oidcClient.issuer}|${oidcClient.clientId}|${oidcClient.redirectUri}`;
-    if (window.sessionStorage.getItem(oidcAutoLoginStartedKey) === marker) {
-      setAuthMessage(copy.auth.apiRequired);
-      return;
-    }
-
-    window.sessionStorage.setItem(oidcAutoLoginStartedKey, marker);
+    window.sessionStorage.setItem(oidcAutoLoginStartedKey, `${oidcClient.issuer}|${oidcClient.clientId}|${oidcClient.redirectUri}`);
     setAuthMessage(copy.auth.oidcStarting);
     void startOidcLogin(oidcClient).catch((error) => {
       window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
@@ -2641,6 +2635,12 @@ export default function DashboardPage() {
                 <Wrench size={14} />
                 {loadingDoctor ? copy.topbar.checking : copy.topbar.doctor}
               </Button>
+              {authStatus?.required && !authToken ? (
+                <Button disabled={!oidcClient} onClick={signInWithOidc} size="compact">
+                  <LogIn size={14} />
+                  {copy.telemetry.signIn}
+                </Button>
+              ) : null}
             </div>
           }
           user={{ name: copy.topbar.userName, initials: "SA", status: authLabel }}

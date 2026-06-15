@@ -21,7 +21,8 @@ The STRATOS production identity source is Keycloak realm `stratos` at
 `https://login.zeleznalady.cz/realms/stratos`. The application client is the
 public PKCE client `security-preflight-web`, provisioned by
 `infra/keycloak/ensure-security-preflight-client.sh`, with production redirect
-URI `https://stratos.zeleznalady.cz/sp/*`.
+URIs `https://stratos.zeleznalady.cz/sp/` and
+`https://stratos.zeleznalady.cz/sp/*`.
 
 When production OIDC is configured, the Web UI starts the STRATOS PKCE login
 automatically if no bearer token is present. This avoids presenting a disabled
