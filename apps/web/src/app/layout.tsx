@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "@voldzi/stratos-ui/styles.css";
+import "@voldzi/stratos-ui/tokens.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

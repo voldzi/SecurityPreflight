@@ -314,7 +314,7 @@ export const uiText = {
     },
     disabledReasons: {
       findings: "Vyžaduje perzistentní UI nálezů a workflow výjimek.",
-      settings: "Nastavení je v backlogu."
+      settings: "Otevřít společné nastavení STRATOS."
     },
     statusLabels: {
       Ready: "Připraveno",
@@ -476,6 +476,27 @@ export const uiText = {
         sensitive: "citlivá",
         "health-data": "zdravotní data"
       }
+    },
+    settings: {
+      applicationGroup: "SecurityPreflight",
+      scanDefaults: "Výchozí skenování",
+      scanDefaultsDescription: "Výchozí profil a workspace pro nové kontroly.",
+      defaultProfile: "Výchozí scan profil",
+      defaultProfileHelp: "Profil použitý při otevření pracovní plochy a pro nové dry-run plány.",
+      profileFallback: "Profily se načtou po ověření API.",
+      workspaceRoot: "Kořen projektů",
+      workspaceRootHelp: "Read-only Docker workspace mount používaný pro výběr lokálních adresářů.",
+      securityGuardrails: "Bezpečnostní guardraily",
+      securityGuardrailsDescription: "Výchozí ochrany pro citlivé a zdravotnické aplikace.",
+      activeDastGuardrails: "Aktivní DAST jen s guardraily",
+      activeDastGuardrailsHelp: "Webové kontroly ponechávají bezpečné šablony a explicitně blokují destruktivní provoz.",
+      centralTelemetry: "Centrální telemetrie výsledků",
+      centralTelemetryHelp: "Reporty a redigované obálky se připravují pro centrální ingest bez raw source dat.",
+      requireHealthDataProfile: "Zdravotní data vyžadují přísný profil",
+      requireHealthDataProfileHelp: "Pro projekty s klasifikací zdravotních dat zůstává referenční healthcare profil doporučeným výchozím režimem.",
+      themeAuto: "Automaticky",
+      themeLight: "Světlý",
+      themeDark: "Tmavý"
     },
     capabilities: {
       title: "Celková funkčnost",
@@ -800,7 +821,7 @@ export const uiText = {
     },
     disabledReasons: {
       findings: "Needs persisted findings UI and exception workflow.",
-      settings: "Settings surface is backlog."
+      settings: "Open shared STRATOS settings."
     },
     statusLabels: {
       Ready: "Ready",
@@ -962,6 +983,27 @@ export const uiText = {
         sensitive: "sensitive",
         "health-data": "health data"
       }
+    },
+    settings: {
+      applicationGroup: "SecurityPreflight",
+      scanDefaults: "Scan defaults",
+      scanDefaultsDescription: "Default profile and workspace for new checks.",
+      defaultProfile: "Default scan profile",
+      defaultProfileHelp: "Profile used when opening the workspace and for new dry-run plans.",
+      profileFallback: "Profiles load after API authorization.",
+      workspaceRoot: "Projects root",
+      workspaceRootHelp: "Read-only Docker workspace mount used for selecting local directories.",
+      securityGuardrails: "Security guardrails",
+      securityGuardrailsDescription: "Default protections for sensitive and healthcare applications.",
+      activeDastGuardrails: "Active DAST only with guardrails",
+      activeDastGuardrailsHelp: "Web checks keep safe templates and explicitly block destructive traffic.",
+      centralTelemetry: "Central result telemetry",
+      centralTelemetryHelp: "Reports and redacted envelopes are prepared for central ingest without raw source data.",
+      requireHealthDataProfile: "Health data requires strict profile",
+      requireHealthDataProfileHelp: "For health-data projects, the reference healthcare profile remains the recommended default mode.",
+      themeAuto: "Auto",
+      themeLight: "Light",
+      themeDark: "Dark"
     },
     capabilities: {
       title: "Overall functionality",

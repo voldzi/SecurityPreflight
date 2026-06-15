@@ -48,6 +48,11 @@ import {
   RagBadge,
   SearchBox,
   SelectField,
+  SettingsChoiceGroup,
+  SettingsField,
+  SettingsTextInput,
+  SettingsToggle,
+  StratosSettingsSurface,
   StructuredList,
   WorkspaceSidebar,
   buildStratosTopbarApps,
@@ -56,6 +61,12 @@ import {
   type DataTableColumn,
   type DetailSurfaceMode,
   type RagStatus,
+  type SettingsContentSection,
+  type SettingsNavItem,
+  type SettingsSurfaceMode,
+  type StratosSettingsCoreValue,
+  type StratosSettingsCoreValueKey,
+  type StratosSettingsCoreValues,
   type WorkspaceNavGroup
 } from "@voldzi/stratos-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -80,6 +91,33 @@ type WorkspaceView = "dashboard" | "capabilities" | "execution" | "telemetry";
 type RailPanel = "security" | "evidence";
 type ScanTargetMode = "project" | "web";
 type FindingTriageStatus = "open" | "accepted" | "false-positive" | "fixed" | "suppressed";
+type SecuritySettingsTheme = "auto" | "light" | "dark";
+
+interface SecuritySettingsDraft {
+  displayName: string;
+  email: string;
+  role: string;
+  language: AppLocale;
+  timezone: string;
+  theme: SecuritySettingsTheme;
+  accent: string;
+  highContrast: boolean;
+  notifyTimezone: boolean;
+  weekStart: "monday" | "sunday";
+  timeFormat: "24h" | "12h";
+  dateFormat: "dd.mm.yyyy" | "mm/dd/yyyy" | "yyyy-mm-dd";
+  compactMode: boolean;
+  commandHints: boolean;
+  flyoutToasts: boolean;
+  markdown: boolean;
+  keyboardShortcuts: boolean;
+  defaultProfileId: string;
+  activeDastGuardrails: boolean;
+  centralTelemetry: boolean;
+  requireHealthDataProfile: boolean;
+  twoFactor: boolean;
+  password: string;
+}
 
 const defaultViewByRailPanel: Record<RailPanel, WorkspaceView> = {
   security: "dashboard",
@@ -512,11 +550,68 @@ function downloadBase64File(fileName: string, mimeType: string, content: string)
   window.URL.revokeObjectURL(url);
 }
 
+function createInitialSettingsDraft(locale: AppLocale): SecuritySettingsDraft {
+  return {
+    displayName: uiText[locale].topbar.userName,
+    email: "",
+    role: uiText[locale].auth.localMode,
+    language: locale,
+    timezone: "Europe/Prague",
+    theme: "auto",
+    accent: "teal",
+    highContrast: false,
+    notifyTimezone: true,
+    weekStart: "monday",
+    timeFormat: "24h",
+    dateFormat: "dd.mm.yyyy",
+    compactMode: false,
+    commandHints: true,
+    flyoutToasts: true,
+    markdown: true,
+    keyboardShortcuts: true,
+    defaultProfileId: "documentation-compliance",
+    activeDastGuardrails: true,
+    centralTelemetry: true,
+    requireHealthDataProfile: true,
+    twoFactor: false,
+    password: ""
+  };
+}
+
+function settingsCoreValuesFromDraft(draft: SecuritySettingsDraft): StratosSettingsCoreValues {
+  return {
+    displayName: draft.displayName,
+    email: draft.email,
+    role: draft.role,
+    language: draft.language,
+    timezone: draft.timezone,
+    theme: draft.theme,
+    accent: draft.accent,
+    highContrast: draft.highContrast,
+    notifyTimezone: draft.notifyTimezone,
+    weekStart: draft.weekStart,
+    timeFormat: draft.timeFormat,
+    dateFormat: draft.dateFormat,
+    compactMode: draft.compactMode,
+    commandHints: draft.commandHints,
+    flyoutToasts: draft.flyoutToasts,
+    markdown: draft.markdown,
+    keyboardShortcuts: draft.keyboardShortcuts,
+    twoFactor: draft.twoFactor,
+    password: draft.password
+  };
+}
+
 export default function DashboardPage() {
   const [locale, setLocale] = useState<AppLocale>(defaultLocale);
   const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
   const [activeRailPanel, setActiveRailPanel] = useState<RailPanel>("security");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsMode, setSettingsMode] = useState<SettingsSurfaceMode>("modal");
+  const [settingsActiveItemId, setSettingsActiveItemId] = useState("profile");
+  const [savedSettingsDraft, setSavedSettingsDraft] = useState<SecuritySettingsDraft>(() => createInitialSettingsDraft(defaultLocale));
+  const [settingsDraft, setSettingsDraft] = useState<SecuritySettingsDraft>(() => createInitialSettingsDraft(defaultLocale));
   const [profiles, setProfiles] = useState<ScanProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("documentation-compliance");
   const [doctor, setDoctor] = useState<ToolchainDoctor | null>(null);
@@ -673,6 +768,141 @@ export default function DashboardPage() {
         ? copy.auth.authenticated
         : copy.auth.required
       : copy.auth.localMode;
+  const settingsDirty = JSON.stringify(savedSettingsDraft) !== JSON.stringify(settingsDraft);
+  const settingsValues = useMemo(() => settingsCoreValuesFromDraft(settingsDraft), [settingsDraft]);
+  const settingsProfileOptions = useMemo(
+    () =>
+      profiles.length
+        ? profiles.map((profile) => ({
+            id: profile.id,
+            label: profileName(locale, profile.id, profile.name),
+            description: profileDescription(locale, profile.id, profile.description)
+          }))
+        : [
+            {
+              id: settingsDraft.defaultProfileId,
+              label: profileName(locale, settingsDraft.defaultProfileId, settingsDraft.defaultProfileId),
+              description: copy.settings.profileFallback
+            }
+          ],
+    [copy.settings.profileFallback, locale, profiles, settingsDraft.defaultProfileId]
+  );
+  const settingsThemeOptions = useMemo(
+    () => [
+      { id: "auto", label: copy.settings.themeAuto, preview: <span className="stratos-settings-preview-tile is-auto" /> },
+      { id: "light", label: copy.settings.themeLight, preview: <span className="stratos-settings-preview-tile" /> },
+      { id: "dark", label: copy.settings.themeDark, preview: <span className="stratos-settings-preview-tile is-dark" /> }
+    ],
+    [copy.settings.themeAuto, copy.settings.themeDark, copy.settings.themeLight]
+  );
+  const settingsAccentOptions = useMemo(
+    () => [
+      { id: "slate", label: "Slate", color: "#5f6673" },
+      { id: "teal", label: "Teal", color: "#12a39a" },
+      { id: "blue", label: "Blue", color: "#1d9bf0" },
+      { id: "green", label: "Green", color: "#3fbf83" },
+      { id: "rose", label: "Rose", color: "#ec4f8c" },
+      { id: "orange", label: "Orange", color: "#e56b13" }
+    ],
+    []
+  );
+  const settingsAppNavItems = useMemo<SettingsNavItem[]>(
+    () => [
+      {
+        id: "scan-defaults",
+        label: copy.settings.scanDefaults,
+        description: copy.settings.scanDefaultsDescription,
+        group: copy.settings.applicationGroup,
+        icon: <Gauge size={16} aria-hidden="true" />,
+        keywords: ["scan", "profile", "default", "kontrola", "profil"]
+      },
+      {
+        id: "security-guardrails",
+        label: copy.settings.securityGuardrails,
+        description: copy.settings.securityGuardrailsDescription,
+        group: copy.settings.applicationGroup,
+        icon: <ShieldCheck size={16} aria-hidden="true" />,
+        keywords: ["security", "guardrail", "telemetry", "dast", "healthcare", "zdravotni"]
+      }
+    ],
+    [copy.settings]
+  );
+  const settingsAppSections = useMemo<SettingsContentSection[]>(
+    () => [
+      {
+        id: "scan-defaults-main",
+        navItemId: "scan-defaults",
+        title: copy.settings.scanDefaults,
+        description: copy.settings.scanDefaultsDescription,
+        keywords: ["profile", "scan", "default", "web"],
+        children: (
+          <>
+            <SettingsField label={copy.settings.defaultProfile} description={copy.settings.defaultProfileHelp}>
+              <SettingsChoiceGroup
+                value={settingsDraft.defaultProfileId}
+                columns={1}
+                options={settingsProfileOptions}
+                onChange={(defaultProfileId) => {
+                  setSettingsDraft((current) => ({ ...current, defaultProfileId }));
+                  if (profiles.some((profile) => profile.id === defaultProfileId)) {
+                    setSelectedProfileId(defaultProfileId);
+                  }
+                }}
+              />
+            </SettingsField>
+            <SettingsField label={copy.settings.workspaceRoot} description={copy.settings.workspaceRootHelp}>
+              <SettingsTextInput icon={<FolderGit2 size={15} aria-hidden="true" />} value={dockerProjectPath} readOnly onChange={() => undefined} />
+            </SettingsField>
+          </>
+        )
+      },
+      {
+        id: "security-guardrails-main",
+        navItemId: "security-guardrails",
+        title: copy.settings.securityGuardrails,
+        description: copy.settings.securityGuardrailsDescription,
+        keywords: ["guardrail", "telemetry", "dast", "healthcare"],
+        children: (
+          <>
+            <SettingsToggle
+              label={copy.settings.activeDastGuardrails}
+              description={copy.settings.activeDastGuardrailsHelp}
+              checked={settingsDraft.activeDastGuardrails}
+              onChange={(activeDastGuardrails) => setSettingsDraft((current) => ({ ...current, activeDastGuardrails }))}
+            />
+            <SettingsToggle
+              label={copy.settings.centralTelemetry}
+              description={copy.settings.centralTelemetryHelp}
+              checked={settingsDraft.centralTelemetry}
+              onChange={(centralTelemetry) => setSettingsDraft((current) => ({ ...current, centralTelemetry }))}
+            />
+            <SettingsToggle
+              label={copy.settings.requireHealthDataProfile}
+              description={copy.settings.requireHealthDataProfileHelp}
+              checked={settingsDraft.requireHealthDataProfile}
+              onChange={(requireHealthDataProfile) => setSettingsDraft((current) => ({ ...current, requireHealthDataProfile }))}
+            />
+          </>
+        )
+      }
+    ],
+    [copy.settings, profiles, settingsDraft.activeDastGuardrails, settingsDraft.centralTelemetry, settingsDraft.defaultProfileId, settingsDraft.requireHealthDataProfile, settingsProfileOptions]
+  );
+
+  useEffect(() => {
+    const localizedDefaultNames: string[] = [uiText.cs.topbar.userName, uiText.en.topbar.userName];
+    const syncLocalizedIdentity = (current: SecuritySettingsDraft): SecuritySettingsDraft => {
+      const nextDisplayName = localizedDefaultNames.includes(current.displayName) ? copy.topbar.userName : current.displayName;
+      if (current.displayName === nextDisplayName && current.role === authLabel && current.language === locale) {
+        return current;
+      }
+
+      return { ...current, displayName: nextDisplayName, role: authLabel, language: locale };
+    };
+
+    setSettingsDraft(syncLocalizedIdentity);
+    setSavedSettingsDraft(syncLocalizedIdentity);
+  }, [authLabel, copy.topbar.userName, locale]);
 
   const selectWorkspaceView = useCallback((view: WorkspaceView) => {
     setActiveView(view);
@@ -682,6 +912,11 @@ export default function DashboardPage() {
 
   const handleRailItemSelect = useCallback(
     (itemId: string) => {
+      if (itemId === "settings") {
+        setSettingsOpen(true);
+        return;
+      }
+
       const nextPanel: RailPanel = itemId === "evidence" ? "evidence" : "security";
 
       if (nextPanel === activeRailPanel) {
@@ -1038,6 +1273,57 @@ export default function DashboardPage() {
   function changeLocale(nextLocale: AppLocale) {
     window.localStorage.setItem(localeStorageKey, nextLocale);
     setLocale(nextLocale);
+  }
+
+  function handleSettingsCoreValueChange(key: StratosSettingsCoreValueKey, value: StratosSettingsCoreValue) {
+    if (key === "language" && (value === "cs" || value === "en")) {
+      changeLocale(value);
+    }
+
+    setSettingsDraft((current) => {
+      switch (key) {
+        case "displayName":
+          return { ...current, displayName: String(value) };
+        case "email":
+          return { ...current, email: String(value) };
+        case "role":
+          return { ...current, role: String(value) };
+        case "password":
+          return { ...current, password: String(value) };
+        case "twoFactor":
+          return { ...current, twoFactor: Boolean(value) };
+        case "theme":
+          return { ...current, theme: String(value) as SecuritySettingsTheme };
+        case "accent":
+          return { ...current, accent: String(value) };
+        case "highContrast":
+          return { ...current, highContrast: Boolean(value) };
+        case "language":
+          return value === "cs" || value === "en" ? { ...current, language: value } : current;
+        case "timezone":
+          return { ...current, timezone: String(value) };
+        case "notifyTimezone":
+          return { ...current, notifyTimezone: Boolean(value) };
+        case "weekStart":
+          return { ...current, weekStart: String(value) as SecuritySettingsDraft["weekStart"] };
+        case "timeFormat":
+          return { ...current, timeFormat: String(value) as SecuritySettingsDraft["timeFormat"] };
+        case "dateFormat":
+          return { ...current, dateFormat: String(value) as SecuritySettingsDraft["dateFormat"] };
+        case "compactMode":
+          return { ...current, compactMode: Boolean(value) };
+        case "commandHints":
+          return { ...current, commandHints: Boolean(value) };
+        case "flyoutToasts":
+          return { ...current, flyoutToasts: Boolean(value) };
+        case "markdown":
+          return { ...current, markdown: Boolean(value) };
+        case "keyboardShortcuts":
+          return { ...current, keyboardShortcuts: Boolean(value) };
+        default:
+          return current;
+      }
+    });
   }
 
   useEffect(() => {
@@ -2737,6 +3023,31 @@ export default function DashboardPage() {
               : copy.views.telemetryShort
       }`;
 
+  function renderSettingsSurface() {
+    return (
+      <StratosSettingsSurface
+        variant="modal"
+        open={settingsOpen}
+        locale={locale}
+        values={settingsValues}
+        userInitials="SA"
+        appNavItems={settingsAppNavItems}
+        appSections={settingsAppSections}
+        themeOptions={settingsThemeOptions}
+        accentOptions={settingsAccentOptions}
+        mode={settingsMode}
+        activeItemId={settingsActiveItemId}
+        dirty={settingsDirty}
+        onActiveItemChange={setSettingsActiveItemId}
+        onValueChange={handleSettingsCoreValueChange}
+        onClose={() => setSettingsOpen(false)}
+        onModeChange={setSettingsMode}
+        onLogout={signOut}
+        onSave={() => setSavedSettingsDraft(settingsDraft)}
+      />
+    );
+  }
+
   function renderGlobalTopbar() {
     return (
       <GlobalTopbar
@@ -2746,6 +3057,8 @@ export default function DashboardPage() {
         context={<span>{workspaceContextLabel}</span>}
         center={<span className="security-topbar-spacer" aria-hidden="true" />}
         status={accessDenied ? <Badge tone="danger">{copy.auth.accessDenied}</Badge> : <RagBadge status={statusRag(scanGate)} label={statusDisplayLabel(scanGate, locale)} />}
+        onSettings={() => setSettingsOpen(true)}
+        onLogout={signOut}
         actions={
           <div className="security-topbar-actions">
             <div className="security-language-switch" aria-label={copy.language}>
@@ -2832,6 +3145,7 @@ export default function DashboardPage() {
             </div>
           </section>
         </main>
+        {renderSettingsSurface()}
       </AppShell>
     );
   }
@@ -2849,7 +3163,7 @@ export default function DashboardPage() {
             { id: "security", label: copy.views.security, icon: ShieldCheck },
             { id: "evidence", label: copy.views.evidence, icon: Archive }
           ]}
-          footerItems={[{ id: "settings", label: copy.topbar.settings, icon: Settings, disabled: true, disabledReason: copy.disabledReasons.settings }]}
+          footerItems={[{ id: "settings", label: copy.topbar.settings, icon: Settings }]}
           activeItemId={activeRailPanel}
           panelOpen={sidebarOpen}
           onItemSelect={handleRailItemSelect}
@@ -3072,6 +3386,7 @@ export default function DashboardPage() {
         onQueryChange={setCommandQuery}
         onClose={() => setCommandOpen(false)}
       />
+      {renderSettingsSurface()}
     </AppShell>
   );
 }

@@ -72,6 +72,24 @@ code,
     visibility 0s linear 180ms;
 }
 
+@media (max-width: 960px) {
+  .security-shell .stratos-settings-surface {
+    grid-template-rows: 54px minmax(180px, 44vh) minmax(0, 1fr);
+  }
+
+  .security-shell .stratos-settings-sidebar {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .security-shell .stratos-settings-main {
+    grid-column: 1;
+    grid-row: 3;
+  }
+}
+
 .security-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;

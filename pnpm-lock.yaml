@@ -77,8 +77,8 @@ importers:
   apps/web:
     dependencies:
       '@voldzi/stratos-ui':
-        specifier: 0.3.3
-        version: 0.3.3(lucide-react@1.18.0(react@19.2.7))(pdfjs-dist@6.0.227)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: 0.3.4
+        version: 0.3.4(lucide-react@1.18.0(react@19.2.7))(pdfjs-dist@6.0.227)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       lucide-react:
         specifier: ^1.18.0
         version: 1.18.0(react@19.2.7)
@@ -1289,8 +1289,8 @@ packages:
   '@vitest/utils@3.2.6':
     resolution: {integrity: sha512-lI23nIs4bnT3T8NIoh+vFaz5s2/DdP0Jgt2jxwgWljvwn82cLJtyi/If+fjFyoLMGIOz0U/fKvWE0d4jsNQEfg==}
 
-  '@voldzi/stratos-ui@0.3.3':
-    resolution: {integrity: sha512-0VG/jLBKkDP6rGySX7ATpv4ZTH5GKI7l2FI5D61aVUKwaCzQM50FHe7JXuPSvgL04tXIXx7oeurwcWiupb1icw==, tarball: https://npm.pkg.github.com/download/@voldzi/stratos-ui/0.3.3/21371ef17221b832de9cc05160f86b30e168c108}
+  '@voldzi/stratos-ui@0.3.4':
+    resolution: {integrity: sha512-g+IM3ORVH6d89ll6hWalOwdHnOxzA4+X5mlfJzJpDSca0SpArHHGnqbYI7gwASC87hzSxb6GZHUkDYcI4jR6iQ==, tarball: https://npm.pkg.github.com/download/@voldzi/stratos-ui/0.3.4/1add036c8b151dc91c930ac423537c18dd41f712}
     peerDependencies:
       lucide-react: ^1.17.0
       pdfjs-dist: ^6.0.227
@@ -3729,7 +3729,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  '@voldzi/stratos-ui@0.3.3(lucide-react@1.18.0(react@19.2.7))(pdfjs-dist@6.0.227)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@voldzi/stratos-ui@0.3.4(lucide-react@1.18.0(react@19.2.7))(pdfjs-dist@6.0.227)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       lucide-react: 1.18.0(react@19.2.7)
       pdfjs-dist: 6.0.227
