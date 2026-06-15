@@ -29,7 +29,10 @@ automatically if no bearer token is present. This avoids presenting a disabled
 dashboard where scan profiles and scan actions cannot load. If the API rejects
 a stored token with `401`, the Web UI clears it and starts a fresh STRATOS
 login. A `403` remains visible as an authorization/RBAC problem and is not
-retried automatically.
+retried automatically. In that state the Web UI renders only the STRATOS
+topbar and a no-access visual; it clears loaded workspace state and does not
+show projects, scan history, findings, telemetry, AKB answers, or scanner
+evidence to the user without the required role.
 
 ## Authorization
 

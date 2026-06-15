@@ -58,7 +58,7 @@ import {
   type RagStatus,
   type WorkspaceNavGroup
 } from "@voldzi/stratos-ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   defaultLocale,
   localeStorageKey,
@@ -414,6 +414,10 @@ function isAuthenticationFailure(error: unknown): boolean {
   return error instanceof ApiRequestError && error.statusCode === 401;
 }
 
+function isAuthorizationFailure(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.statusCode === 403;
+}
+
 function hostFromUrl(value: string): string | null {
   try {
     return new URL(value).hostname.toLowerCase();
@@ -555,6 +559,8 @@ export default function DashboardPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authTokenInput, setAuthTokenInput] = useState("");
   const [authMessage, setAuthMessage] = useState<string>(uiText[defaultLocale].auth.initial);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const accessDeniedRef = useRef(false);
   const [oidcClient, setOidcClient] = useState<OidcClientConfig | null>(null);
   const [akbStatus, setAkbStatus] = useState<AkbStatus | null>(null);
   const [akbQuestion, setAkbQuestion] = useState<string>(uiText[defaultLocale].telemetry.auditPromptText);
@@ -649,8 +655,14 @@ export default function DashboardPage() {
   );
   const criticalGaps = capabilityRows.filter((row) => row.priority === "P0" && row.status !== "Ready").length;
   const scanGate = scanResult.status === "error" || scanResult.blocked ? "Blocked" : scanResult.status === "success" ? "Ready" : "Partial";
-  const authReady = authStatus ? !authStatus.required || Boolean(authToken) : false;
-  const authLabel = authStatus?.required ? (authToken ? copy.auth.authenticated : copy.auth.required) : copy.auth.localMode;
+  const authReady = authStatus ? !accessDenied && (!authStatus.required || Boolean(authToken)) : false;
+  const authLabel = accessDenied
+    ? copy.auth.accessDenied
+    : authStatus?.required
+      ? authToken
+        ? copy.auth.authenticated
+        : copy.auth.required
+      : copy.auth.localMode;
 
   const selectWorkspaceView = useCallback((view: WorkspaceView) => {
     setActiveView(view);
@@ -1050,7 +1062,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!authStatus || authToken || !oidcClient) return;
+    if (!authStatus || authToken || !oidcClient || accessDenied) return;
     if (authStatus.mode !== "oidc" || !authStatus.required || !authStatus.configured) return;
     if (new URLSearchParams(window.location.search).has("code")) return;
     if (window.sessionStorage.getItem(oidcSkipAutoLoginKey) === "true") return;
@@ -1061,7 +1073,7 @@ export default function DashboardPage() {
       window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
       setAuthMessage(error instanceof Error ? error.message : copy.auth.oidcFailed);
     });
-  }, [authStatus, authToken, oidcClient, copy.auth]);
+  }, [accessDenied, authStatus, authToken, oidcClient, copy.auth]);
 
   useEffect(() => {
     let active = true;
@@ -1069,11 +1081,12 @@ export default function DashboardPage() {
     async function loadProfiles() {
       try {
         if (!authStatus) return;
+        if (accessDenied) return;
         if (!authReady && authStatus.required) return;
 
         const payload = await fetchJson<{ data: ScanProfile[] }>(`${apiBaseUrl}/api/v1/scan-profiles`, undefined, authToken);
 
-        if (!active) return;
+        if (!active || accessDeniedRef.current) return;
 
         setProfiles(payload.data);
         if (!payload.data.some((profile) => profile.id === selectedProfileId)) {
@@ -1081,7 +1094,7 @@ export default function DashboardPage() {
         }
       } catch (error) {
         if (!active) return;
-        if (handleApiAuthFailure(error)) return;
+        if (handleApiAccessFailure(error)) return;
 
         setScanResult({
           mode: "plan",
@@ -1096,7 +1109,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [authReady, authStatus?.required, authToken, selectedProfileId]);
+  }, [accessDenied, authReady, authStatus?.required, authToken, selectedProfileId]);
 
   useEffect(() => {
     if (authReady) {
@@ -1138,6 +1151,7 @@ export default function DashboardPage() {
 
     try {
       const payload = await fetchJson<{ data: RegisteredProject[] }>(`${apiBaseUrl}/api/v1/projects`, undefined, authToken);
+      if (accessDeniedRef.current) return;
       setProjects(payload.data);
 
       if (payload.data.length && !payload.data.some((project) => project.id === selectedProjectId)) {
@@ -1148,6 +1162,7 @@ export default function DashboardPage() {
         setSelectedProjectId("");
       }
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setProjectMessage(error instanceof Error ? error.message : copy.projects.loadFailed);
     } finally {
       setLoadingProjects(false);
@@ -1182,10 +1197,12 @@ export default function DashboardPage() {
         })
       }, authToken);
 
+      if (accessDeniedRef.current) return;
       setProjects((current) => [...current.filter((project) => project.id !== payload.data.id), payload.data]);
       setSelectedProjectId(payload.data.id);
       setProjectMessage(copy.projects.projectRegistered(payload.data.name));
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setProjectMessage(error instanceof Error ? error.message : copy.projects.registrationFailed);
     } finally {
       setRegisteringProject(false);
@@ -1209,6 +1226,11 @@ export default function DashboardPage() {
     }
   }
 
+  function setAccessDeniedMode(nextAccessDenied: boolean) {
+    accessDeniedRef.current = nextAccessDenied;
+    setAccessDenied(nextAccessDenied);
+  }
+
   function persistAuthToken(token: string) {
     const trimmed = token.trim();
     if (!trimmed) return;
@@ -1216,19 +1238,39 @@ export default function DashboardPage() {
     window.localStorage.setItem(authTokenStorageKey, trimmed);
     window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
     window.sessionStorage.removeItem(oidcSkipAutoLoginKey);
+    setAccessDeniedMode(false);
     setAuthToken(trimmed);
     setAuthTokenInput("");
   }
 
-  function clearAuthToken() {
-    window.localStorage.removeItem(authTokenStorageKey);
-    setAuthToken(null);
-    setAuthTokenInput("");
-    setAuthMessage(copy.auth.tokenCleared);
+  function clearWorkspaceData() {
     setProfiles([]);
+    setProjects([]);
     setScanRuns([]);
     setSelectedRun(null);
     setScanProgress(null);
+    setDoctor(null);
+    setAkbStatus(null);
+    setAkbAnswer(null);
+    setDetailOpen(false);
+    setScanLogOpen(false);
+    setCommandOpen(false);
+    setLoadingProjects(false);
+    setLoadingRuns(false);
+    setLoadingDoctor(false);
+    setRegisteringProject(false);
+    setExportingFormat(null);
+    setTriagingFindingId(null);
+    setAkbLoading(false);
+  }
+
+  function clearAuthToken() {
+    window.localStorage.removeItem(authTokenStorageKey);
+    setAccessDeniedMode(false);
+    setAuthToken(null);
+    setAuthTokenInput("");
+    setAuthMessage(copy.auth.tokenCleared);
+    clearWorkspaceData();
   }
 
   function handleApiAuthFailure(error: unknown) {
@@ -1239,12 +1281,36 @@ export default function DashboardPage() {
     return true;
   }
 
+  function activateAccessDenied(error: unknown) {
+    clearWorkspaceData();
+    setAccessDeniedMode(true);
+    setAuthMessage(error instanceof ApiRequestError ? error.message : copy.auth.accessDeniedBody);
+    setProjectMessage(copy.auth.accessDeniedBody);
+    setExportMessage(copy.auth.accessDeniedBody);
+    setAkbMessage(copy.auth.accessDeniedBody);
+    setScanResult({ mode: "plan", status: "error", message: copy.auth.accessDeniedBody });
+  }
+
+  function handleApiAuthorizationFailure(error: unknown) {
+    if (!isAuthorizationFailure(error)) return false;
+
+    activateAccessDenied(error);
+    return true;
+  }
+
+  function handleApiAccessFailure(error: unknown) {
+    if (handleApiAuthFailure(error)) return true;
+    if (handleApiAuthorizationFailure(error)) return true;
+    return false;
+  }
+
   async function signInWithOidc() {
     if (!oidcClient) {
       setAuthMessage(copy.auth.oidcNotConfigured);
       return;
     }
 
+    setAccessDeniedMode(false);
     window.sessionStorage.removeItem(oidcSkipAutoLoginKey);
     window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
     await startOidcLogin(oidcClient);
@@ -1268,6 +1334,7 @@ export default function DashboardPage() {
       return null;
     }
 
+    if (accessDeniedRef.current) return null;
     setScanProgress(payload.data);
     return payload.data;
   }
@@ -1279,10 +1346,12 @@ export default function DashboardPage() {
       return null;
     }
 
+    if (accessDeniedRef.current) return null;
     setSelectedRun(payload.data);
     try {
       await loadScanRunProgress(scanRunId);
-    } catch {
+    } catch (error) {
+      if (isAuthenticationFailure(error) || isAuthorizationFailure(error)) throw error;
       // Detail evidence remains usable even when progress persistence is temporarily unavailable.
     }
     return payload.data;
@@ -1293,6 +1362,7 @@ export default function DashboardPage() {
 
     try {
       const payload = await fetchJson<{ data: ScanRunSummary[] }>(`${apiBaseUrl}/api/v1/scans/runs`, undefined, authToken);
+      if (accessDeniedRef.current) return;
       setScanRuns(payload.data);
 
       const nextScanRunId = preferredScanRunId ?? selectedRun?.id ?? payload.data[0]?.id;
@@ -1303,6 +1373,7 @@ export default function DashboardPage() {
         setSelectedRun(null);
       }
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setScanResult({
         mode: "plan",
         status: "error",
@@ -1324,6 +1395,7 @@ export default function DashboardPage() {
         progress = await loadScanRunProgress(scanRunId);
         detail = await loadScanRunDetail(scanRunId);
       } catch (error) {
+        if (handleApiAccessFailure(error)) return;
         setScanResult((current) =>
           current.scanRunId === scanRunId
             ? {
@@ -1391,8 +1463,10 @@ export default function DashboardPage() {
 
     try {
       const payload = await fetchJson<ToolchainDoctor>(`${apiBaseUrl}/api/v1/toolchain/doctor`, undefined, authToken);
+      if (accessDeniedRef.current) return;
       setDoctor(payload);
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setScanResult({
         mode: "plan",
         status: "error",
@@ -1406,8 +1480,10 @@ export default function DashboardPage() {
   async function refreshAkbStatus() {
     try {
       const payload = await fetchJson<{ data: AkbStatus }>(`${apiBaseUrl}/api/v1/akb/status`, undefined, authToken);
+      if (accessDeniedRef.current) return;
       setAkbStatus(payload.data);
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setAkbStatus(null);
       setAkbMessage(error instanceof Error ? error.message : copy.messages.akbStatusUnavailable);
     }
@@ -1437,9 +1513,11 @@ export default function DashboardPage() {
         })
       }, authToken);
 
+      if (accessDeniedRef.current) return;
       downloadBase64File(payload.data.fileName, payload.data.mimeType, payload.data.content);
       setExportMessage(copy.messages.exportGenerated(format, payload.data.fileName));
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setExportMessage(error instanceof Error ? error.message : copy.messages.exportFailed(format));
     } finally {
       setExportingFormat(null);
@@ -1472,9 +1550,11 @@ export default function DashboardPage() {
         })
       }, authToken);
 
+      if (accessDeniedRef.current) return;
       setAkbAnswer(payload.data);
       setAkbMessage(payload.data.noAnswer ? copy.messages.akbNoAnswer : copy.messages.akbCited);
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setAkbMessage(error instanceof Error ? error.message : copy.messages.akbFailed);
     } finally {
       setAkbLoading(false);
@@ -1513,12 +1593,14 @@ export default function DashboardPage() {
         },
         authToken
       );
+      if (accessDeniedRef.current) return;
       await loadScanRunDetail(selectedRun.id);
       setScanResult((current) => ({
         ...current,
         message: copy.messages.triageUpdated(copy.scanLog.triageLabel(status))
       }));
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setScanResult((current) => ({
         ...current,
         status: "error",
@@ -1588,6 +1670,7 @@ export default function DashboardPage() {
       }, authToken);
       const plan = mode === "queue" ? payload.data.plan : payload;
 
+      if (accessDeniedRef.current) return;
       setScanResult({
         mode,
         status: "success",
@@ -1607,6 +1690,7 @@ export default function DashboardPage() {
         void pollScanRun(scanRunId);
       }
     } catch (error) {
+      if (handleApiAccessFailure(error)) return;
       setScanResult({
         mode,
         status: "error",
@@ -2541,6 +2625,115 @@ export default function DashboardPage() {
           ? renderTelemetry()
           : renderDashboard();
 
+  const workspaceContextLabel = accessDenied
+    ? copy.auth.accessDeniedTopbar
+    : `SecurityPreflight / ${
+        activeView === "dashboard"
+          ? copy.views.dashboard
+          : activeView === "capabilities"
+            ? copy.views.capabilities
+            : activeView === "execution"
+              ? copy.views.executionShort
+              : copy.views.telemetryShort
+      }`;
+
+  function renderGlobalTopbar() {
+    return (
+      <GlobalTopbar
+        apps={stratosTopbarApps}
+        labels={{ applications: copy.topbar.applications, userMenu: copy.topbar.userMenu, settings: copy.topbar.settings, logout: copy.topbar.logout }}
+        context={<span>{workspaceContextLabel}</span>}
+        status={accessDenied ? <Badge tone="danger">{copy.auth.accessDenied}</Badge> : <RagBadge status={statusRag(scanGate)} label={statusDisplayLabel(scanGate, locale)} />}
+        actions={
+          <div className="security-topbar-actions">
+            <div className="security-language-switch" aria-label={copy.language}>
+              <button
+                type="button"
+                className={locale === "cs" ? "is-active" : undefined}
+                onClick={() => changeLocale("cs")}
+                aria-pressed={locale === "cs"}
+                title={copy.languageCzech}
+              >
+                CS
+              </button>
+              <button
+                type="button"
+                className={locale === "en" ? "is-active" : undefined}
+                onClick={() => changeLocale("en")}
+                aria-pressed={locale === "en"}
+                title={copy.languageEnglish}
+              >
+                EN
+              </button>
+            </div>
+            {accessDenied ? (
+              authToken ? (
+                <Button onClick={signOut} size="compact">
+                  <LogOut size={14} />
+                  {copy.topbar.logout}
+                </Button>
+              ) : authStatus?.required ? (
+                <Button disabled={!oidcClient} onClick={signInWithOidc} size="compact">
+                  <LogIn size={14} />
+                  {copy.telemetry.signIn}
+                </Button>
+              ) : null
+            ) : (
+              <>
+                <Button disabled={loadingDoctor || !authReady} onClick={refreshDoctor} size="compact">
+                  <Wrench size={14} />
+                  {loadingDoctor ? copy.topbar.checking : copy.topbar.doctor}
+                </Button>
+                {authStatus?.required && !authToken ? (
+                  <Button disabled={!oidcClient} onClick={signInWithOidc} size="compact">
+                    <LogIn size={14} />
+                    {copy.telemetry.signIn}
+                  </Button>
+                ) : null}
+              </>
+            )}
+          </div>
+        }
+        user={{ name: copy.topbar.userName, initials: "SA", status: authLabel }}
+      />
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <AppShell
+        className="security-shell security-shell-access-denied"
+        sidebarOpen={false}
+        onSidebarChange={setSidebarOpen}
+        topbarPlacement="global"
+        topbar={renderGlobalTopbar()}
+      >
+        <main className="security-access-denied" aria-label={copy.auth.accessDeniedAria}>
+          <section className="security-access-denied-scene">
+            <div className="security-access-visual" aria-hidden="true">
+              <div className="security-access-grid" />
+              <div className="security-access-shield">
+                <ShieldCheck size={54} aria-hidden="true" />
+                <span>SP</span>
+              </div>
+              <div className="security-access-lockline">
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+            <div className="security-access-copy">
+              <Badge tone="danger">{copy.auth.accessDenied}</Badge>
+              <h1>{copy.auth.accessDeniedTitle}</h1>
+              <p>{copy.auth.accessDeniedBody}</p>
+              <p>{copy.auth.accessDeniedHint}</p>
+            </div>
+          </section>
+        </main>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
       className="security-shell"
@@ -2593,59 +2786,7 @@ export default function DashboardPage() {
           {renderSidebarNav()}
         </WorkspaceSidebar>
       }
-      topbar={
-        <GlobalTopbar
-          apps={stratosTopbarApps}
-          labels={{ applications: copy.topbar.applications, userMenu: copy.topbar.userMenu, settings: copy.topbar.settings, logout: copy.topbar.logout }}
-          context={
-            <span>
-              SecurityPreflight / {activeView === "dashboard"
-                ? copy.views.dashboard
-                : activeView === "capabilities"
-                  ? copy.views.capabilities
-                  : activeView === "execution"
-                    ? copy.views.executionShort
-                    : copy.views.telemetryShort}
-            </span>
-          }
-          status={<RagBadge status={statusRag(scanGate)} label={statusDisplayLabel(scanGate, locale)} />}
-          actions={
-            <div className="security-topbar-actions">
-              <div className="security-language-switch" aria-label={copy.language}>
-                <button
-                  type="button"
-                  className={locale === "cs" ? "is-active" : undefined}
-                  onClick={() => changeLocale("cs")}
-                  aria-pressed={locale === "cs"}
-                  title={copy.languageCzech}
-                >
-                  CS
-                </button>
-                <button
-                  type="button"
-                  className={locale === "en" ? "is-active" : undefined}
-                  onClick={() => changeLocale("en")}
-                  aria-pressed={locale === "en"}
-                  title={copy.languageEnglish}
-                >
-                  EN
-                </button>
-              </div>
-              <Button disabled={loadingDoctor || !authReady} onClick={refreshDoctor} size="compact">
-                <Wrench size={14} />
-                {loadingDoctor ? copy.topbar.checking : copy.topbar.doctor}
-              </Button>
-              {authStatus?.required && !authToken ? (
-                <Button disabled={!oidcClient} onClick={signInWithOidc} size="compact">
-                  <LogIn size={14} />
-                  {copy.telemetry.signIn}
-                </Button>
-              ) : null}
-            </div>
-          }
-          user={{ name: copy.topbar.userName, initials: "SA", status: authLabel }}
-        />
-      }
+      topbar={renderGlobalTopbar()}
     >
       <div className="security-content">
         <section className="security-main">{renderedView}</section>
