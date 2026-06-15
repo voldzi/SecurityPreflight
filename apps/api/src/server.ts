@@ -31,7 +31,7 @@ import {
   ProjectRegistryError,
   updateProject
 } from "./projects.js";
-import { buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
+import { buildCodexRemediationExport, buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
 import { applySecurityHeaders } from "./security-headers.js";
 
 export interface CreateServerOptions {
@@ -146,6 +146,10 @@ const reportExportRequestSchema = z.object({
   format: z.enum(["PDF", "PPTX", "pdf", "pptx"]).default("PDF"),
   locale: z.enum(["cs", "en"]).default("cs"),
   template: z.string().min(1).max(120).optional()
+});
+const codexRemediationExportRequestSchema = z.object({
+  scanRunId: scanRunIdSchema,
+  locale: z.enum(["cs", "en"]).default("cs")
 });
 const akbAskRequestSchema = z.object({
   scanRunId: scanRunIdSchema,
@@ -671,6 +675,40 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
     return {
       data: exported
+    };
+  });
+
+  server.post("/api/v1/reports/codex-remediation", async (request, reply) => {
+    const parsed = codexRemediationExportRequestSchema.safeParse(request.body);
+
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Invalid Codex remediation export request.",
+          details: [parsed.error.flatten()],
+          requestId: request.id
+        }
+      });
+    }
+
+    const run = await getScanRunDetail(parsed.data.scanRunId);
+
+    if (!run) {
+      return reply.status(404).send({
+        error: {
+          code: "SCAN_RUN_NOT_FOUND",
+          message: "Scan run evidence was not found.",
+          requestId: request.id
+        }
+      });
+    }
+
+    return {
+      data: buildCodexRemediationExport({
+        run,
+        locale: parsed.data.locale
+      })
     };
   });
 

@@ -610,6 +610,39 @@ describe("api server", () => {
     });
   });
 
+  it("exports a redacted Codex remediation package from scan evidence", async () => {
+    await withReportFixture("scan_codex_test", async () => {
+      const server = createServer({ logger: false });
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/v1/reports/codex-remediation",
+        payload: {
+          scanRunId: "scan_codex_test",
+          locale: "cs"
+        }
+      });
+      const data = response.json().data;
+      const markdown = Buffer.from(data.content, "base64").toString("utf8");
+
+      expect(response.statusCode).toBe(200);
+      expect(data.reportType).toBe("SECURITY_PREFLIGHT_CODEX_REMEDIATION");
+      expect(data.format).toBe("MARKDOWN");
+      expect(data.fileName).toContain(".codex-remediation.md");
+      expect(data.mimeType).toBe("text/markdown; charset=utf-8");
+      expect(data.contentHash).toHaveLength(64);
+      expect(data.parametersJson).toMatchObject({
+        scanRunId: "scan_codex_test",
+        projectId: "project_test",
+        profileId: "documentation-compliance",
+        locale: "cs"
+      });
+      expect(markdown).toContain("SecurityPreflight balík pro Codex");
+      expect(markdown).toContain("Prompt pro Codex");
+      expect(markdown).toContain("pnpm validate");
+      expect(markdown).not.toContain("secret-token");
+    });
+  });
+
   it("reports AKB integration status without exposing secrets", async () => {
     const previousRagBaseUrl = process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
     const previousServiceToken = process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN;

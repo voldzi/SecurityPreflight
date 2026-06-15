@@ -87,7 +87,7 @@ import {
 } from "./i18n";
 import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type OidcClientConfig } from "./oidc";
 
-type WorkspaceView = "dashboard" | "capabilities" | "execution" | "telemetry";
+type WorkspaceView = "new-scan" | "dashboard" | "capabilities" | "execution" | "telemetry";
 type RailPanel = "security" | "evidence";
 type ScanTargetMode = "project" | "web";
 type FindingTriageStatus = "open" | "accepted" | "false-positive" | "fixed" | "suppressed";
@@ -120,11 +120,12 @@ interface SecuritySettingsDraft {
 }
 
 const defaultViewByRailPanel: Record<RailPanel, WorkspaceView> = {
-  security: "dashboard",
+  security: "new-scan",
   evidence: "execution"
 };
 
 const railPanelByWorkspaceView: Record<WorkspaceView, RailPanel> = {
+  "new-scan": "security",
   dashboard: "security",
   capabilities: "security",
   execution: "evidence",
@@ -132,7 +133,7 @@ const railPanelByWorkspaceView: Record<WorkspaceView, RailPanel> = {
 };
 
 function isWorkspaceView(itemId: string): itemId is WorkspaceView {
-  return itemId === "dashboard" || itemId === "capabilities" || itemId === "execution" || itemId === "telemetry";
+  return itemId === "new-scan" || itemId === "dashboard" || itemId === "capabilities" || itemId === "execution" || itemId === "telemetry";
 }
 
 interface ScanProfile {
@@ -272,6 +273,17 @@ interface ScanRunProgress {
 interface ReportExportPayload {
   reportType: "SECURITY_PREFLIGHT_SCAN";
   format: "PDF" | "PPTX";
+  fileName: string;
+  mimeType: string;
+  encoding: "base64";
+  content: string;
+  contentHash: string;
+  generatedAt: string;
+}
+
+interface CodexRemediationExportPayload {
+  reportType: "SECURITY_PREFLIGHT_CODEX_REMEDIATION";
+  format: "MARKDOWN";
   fileName: string;
   mimeType: string;
   encoding: "base64";
@@ -604,7 +616,7 @@ function settingsCoreValuesFromDraft(draft: SecuritySettingsDraft): StratosSetti
 
 export default function DashboardPage() {
   const [locale, setLocale] = useState<AppLocale>(defaultLocale);
-  const [activeView, setActiveView] = useState<WorkspaceView>("dashboard");
+  const [activeView, setActiveView] = useState<WorkspaceView>("new-scan");
   const [activeRailPanel, setActiveRailPanel] = useState<RailPanel>("security");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -648,8 +660,10 @@ export default function DashboardPage() {
   const [scanLogOpen, setScanLogOpen] = useState(false);
   const [scanLogMode, setScanLogMode] = useState<DetailSurfaceMode>("sidebar");
   const [exportingFormat, setExportingFormat] = useState<"PDF" | "PPTX" | null>(null);
+  const [exportingCodex, setExportingCodex] = useState(false);
   const [triagingFindingId, setTriagingFindingId] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string>(uiText[defaultLocale].messages.exportInitial);
+  const [codexMessage, setCodexMessage] = useState<string>(uiText[defaultLocale].messages.codexInitial);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [authTokenInput, setAuthTokenInput] = useState("");
@@ -934,6 +948,19 @@ export default function DashboardPage() {
   const commandItems = useMemo<CommandCenterItem[]>(
     () => [
       {
+        id: "view-new-scan",
+        type: "action",
+        title: copy.views.newScan,
+        subtitle: scanTargetMode === "web" ? webTargetUrl.trim() || copy.runPanel.webTargetPlaceholder : activeScanProject.path,
+        icon: <Play size={18} />,
+        tone: "green",
+        primaryAction: {
+          id: "open",
+          label: copy.command.open,
+          onSelect: () => selectWorkspaceView("new-scan")
+        }
+      },
+      {
         id: "view-dashboard",
         type: "dashboard",
         title: copy.views.dashboard,
@@ -1037,9 +1064,36 @@ export default function DashboardPage() {
           disabled: !latestRun || !authReady,
           onSelect: () => void exportLatestRun("PPTX")
         }
+      },
+      {
+        id: "action-export-codex",
+        type: "report",
+        title: copy.command.exportCodex,
+        subtitle: latestRun?.id ?? copy.command.noLatestRun,
+        icon: <Sparkles size={18} />,
+        tone: latestRun ? "blue" : "amber",
+        primaryAction: {
+          id: "export",
+          label: copy.command.export,
+          disabled: !latestRun || !authReady,
+          onSelect: () => void exportCodexRemediation()
+        }
       }
     ],
-    [akbStatus?.configured, authReady, copy.command, copy.views, criticalGaps, effectiveProfileId, latestRun, selectWorkspaceView]
+    [
+      activeScanProject.path,
+      akbStatus?.configured,
+      authReady,
+      copy.command,
+      copy.runPanel.webTargetPlaceholder,
+      copy.views,
+      criticalGaps,
+      effectiveProfileId,
+      latestRun,
+      scanTargetMode,
+      selectWorkspaceView,
+      webTargetUrl
+    ]
   );
 
   const projectColumns = useMemo<Array<DataTableColumn<ProjectRow>>>(
@@ -1175,6 +1229,12 @@ export default function DashboardPage() {
         label: copy.views.security,
         items: [
           {
+            id: "new-scan",
+            label: copy.views.newScan,
+            icon: <Play size={16} />,
+            active: activeView === "new-scan"
+          },
+          {
             id: "dashboard",
             label: copy.views.dashboard,
             icon: <LayoutDashboard size={16} />,
@@ -1229,6 +1289,7 @@ export default function DashboardPage() {
     document.documentElement.lang = locale;
 
     const exportDefaults: string[] = [uiText.cs.messages.exportInitial, uiText.en.messages.exportInitial];
+    const codexDefaults: string[] = [uiText.cs.messages.codexInitial, uiText.en.messages.codexInitial];
     const authDefaults: string[] = [uiText.cs.auth.initial, uiText.en.auth.initial];
     const akbDefaults: string[] = [uiText.cs.messages.akbInitial, uiText.en.messages.akbInitial];
     const scanDefaults: string[] = [uiText.cs.messages.scanReady, uiText.en.messages.scanReady];
@@ -1236,6 +1297,7 @@ export default function DashboardPage() {
     const projectDefaults: string[] = [uiText.cs.projects.pathHelp, uiText.en.projects.pathHelp];
 
     setExportMessage((current) => (exportDefaults.includes(current) ? copy.messages.exportInitial : current));
+    setCodexMessage((current) => (codexDefaults.includes(current) ? copy.messages.codexInitial : current));
     setAuthMessage((current) => (authDefaults.includes(current) ? copy.auth.initial : current));
     setAkbMessage((current) => (akbDefaults.includes(current) ? copy.messages.akbInitial : current));
     setAkbQuestion((current) => (auditPrompts.includes(current) ? copy.telemetry.auditPromptText : current));
@@ -1820,6 +1882,44 @@ export default function DashboardPage() {
     }
   }
 
+  async function exportCodexRemediation() {
+    if (!authReady) {
+      setCodexMessage(copy.messages.authRequiredExport);
+      return;
+    }
+
+    if (!latestRun) {
+      setCodexMessage(copy.messages.noScanEvidence);
+      return;
+    }
+
+    setExportingCodex(true);
+    setCodexMessage(copy.messages.generatingCodex);
+
+    try {
+      const payload = await fetchJson<{ data: CodexRemediationExportPayload }>(
+        `${apiBaseUrl}/api/v1/reports/codex-remediation`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            scanRunId: latestRun.id,
+            locale
+          })
+        },
+        authToken
+      );
+
+      if (accessDeniedRef.current) return;
+      downloadBase64File(payload.data.fileName, payload.data.mimeType, payload.data.content);
+      setCodexMessage(copy.messages.codexGenerated(payload.data.fileName));
+    } catch (error) {
+      if (handleApiAccessFailure(error)) return;
+      setCodexMessage(error instanceof Error ? error.message : copy.messages.codexFailed);
+    } finally {
+      setExportingCodex(false);
+    }
+  }
+
   async function askAkb() {
     if (!authReady) {
       setAkbMessage(copy.messages.authRequiredAkb);
@@ -2032,6 +2132,22 @@ export default function DashboardPage() {
         >
           <ChevronRight size={13} aria-hidden="true" />
         </button>
+        {itemId === "new-scan" ? (
+          <button
+            type="button"
+            className="security-sidebar-mini-button"
+            title={copy.sidebar.runScanItem}
+            aria-label={copy.sidebar.runScanItem}
+            disabled={!authReady}
+            onClick={(event) => {
+              event.stopPropagation();
+              selectWorkspaceView("new-scan");
+              void runScan("queue");
+            }}
+          >
+            <Play size={13} aria-hidden="true" />
+          </button>
+        ) : null}
         {itemId === "dashboard" ? (
           <button
             type="button"
@@ -2188,6 +2304,15 @@ export default function DashboardPage() {
             >
               <Presentation size={14} />
             </IconButton>
+            <IconButton
+              disabled={!latestRun || exportingCodex || !authReady}
+              label={copy.execution.exportCodexLabel}
+              size="compact"
+              title={copy.execution.exportCodexTitle}
+              onClick={exportCodexRemediation}
+            >
+              <Sparkles size={14} />
+            </IconButton>
           </span>
         }
         items={reportItems.map((item) => ({
@@ -2207,6 +2332,330 @@ export default function DashboardPage() {
         ariaLabel={copy.execution.reportCenterAria}
         className="security-list-card"
       />
+    );
+  }
+
+  function renderNewScan() {
+    const trimmedWebTarget = webTargetUrl.trim();
+    const targetValue = scanTargetMode === "web" ? trimmedWebTarget || copy.runPanel.webTargetPlaceholder : activeScanProject.path;
+    const targetReady = scanTargetMode === "project" ? Boolean(activeScanProject.path) : Boolean(hostFromUrl(trimmedWebTarget));
+    const planReady = scanResult.status === "success" && scanResult.mode === "plan" && !scanResult.blocked;
+    const queuedOrRunning = Boolean(scanResult.scanRunId && (scanResult.mode === "queue" || scanResult.status === "loading"));
+    const codexReady = Boolean(latestRun);
+    const latestEvidenceCount = latestRun?.evidence.files.length ?? 0;
+    const stepItems = [
+      {
+        id: "target",
+        title: copy.newScan.stepTarget,
+        leading: scanTargetMode === "web" ? <Globe2 size={15} /> : <FolderGit2 size={15} />,
+        badges: <Badge tone={targetReady ? "good" : "warning"}>{targetReady ? translateStatus(locale, "ready") : translateStatus(locale, "missing")}</Badge>,
+        meta: targetValue
+      },
+      {
+        id: "profile",
+        title: copy.newScan.stepProfile,
+        leading: <ClipboardList size={15} />,
+        badges: <Badge tone="info">{copy.newScan.profileChecks(selectedProfile?.checks.length ?? 0)}</Badge>,
+        meta: selectedProfile ? profileName(locale, selectedProfile.id, selectedProfile.name) : copy.execution.loadProfile
+      },
+      {
+        id: "plan",
+        title: copy.newScan.stepPlan,
+        leading: <ShieldCheck size={15} />,
+        badges: <Badge tone={planReady ? "good" : scanResult.blocked ? "danger" : "neutral"}>{scanResult.gate ? actionGateDisplayLabel(scanResult.gate, locale) : translateStatus(locale, "idle")}</Badge>,
+        meta: scanResult.stepCount != null ? copy.runPanel.plannedSteps(scanResult.stepCount) : copy.newScan.planPending
+      },
+      {
+        id: "codex",
+        title: copy.newScan.stepCodex,
+        leading: <Sparkles size={15} />,
+        badges: <Badge tone={codexReady ? "good" : "neutral"}>{codexReady ? translateStatus(locale, "ready") : translateStatus(locale, "empty")}</Badge>,
+        meta: latestRun ? `${latestRun.id} · ${copy.execution.findingsCount(latestRun.findingCount)}` : copy.newScan.codexPending
+      }
+    ];
+
+    return (
+      <div className="security-view-stack">
+        <section className="security-new-scan-hero" aria-label={copy.newScan.title}>
+          <div>
+            <span>{copy.views.security}</span>
+            <h2>{copy.newScan.title}</h2>
+            <p>{copy.newScan.subtitle}</p>
+          </div>
+          <div className="security-new-scan-hero-actions">
+            <Button disabled={loadingProjects || !authReady} onClick={refreshProjects} size="compact">
+              <RefreshCw size={14} />
+              {loadingProjects ? copy.dashboard.loadingProjects : copy.projects.refresh}
+            </Button>
+            <Button disabled={loadingRuns} onClick={() => refreshScanRuns(latestRun?.id)} size="compact">
+              <History size={14} />
+              {copy.execution.refresh}
+            </Button>
+          </div>
+        </section>
+
+        <StructuredList
+          title={copy.newScan.workflow}
+          description={copy.newScan.workflowDescription}
+          count={<Badge tone={queuedOrRunning ? "warning" : codexReady ? "good" : "neutral"}>{scanResult.scanRunId ?? copy.newScan.noRun}</Badge>}
+          items={stepItems}
+          ariaLabel={copy.newScan.workflow}
+          className="security-list-card security-step-list"
+        />
+
+        <div className="security-new-scan-layout">
+          <DataGridShell
+            title={<strong>{copy.newScan.target}</strong>}
+            toolbar={<Badge tone={targetReady ? "good" : "warning"}>{scanTargetMode === "web" ? copy.runPanel.webTarget : copy.runPanel.directoryTarget}</Badge>}
+            className="security-grid-shell"
+          >
+            <div className="security-scan-control-panel">
+              <div className="security-target-mode" role="group" aria-label={copy.runPanel.targetType}>
+                <button
+                  type="button"
+                  className={scanTargetMode === "project" ? "is-active" : undefined}
+                  aria-pressed={scanTargetMode === "project"}
+                  onClick={() => {
+                    setScanTargetMode("project");
+                    setSelectedProfileId("documentation-compliance");
+                  }}
+                >
+                  <FolderGit2 size={14} aria-hidden="true" />
+                  {copy.runPanel.directoryTarget}
+                </button>
+                <button
+                  type="button"
+                  className={scanTargetMode === "web" ? "is-active" : undefined}
+                  aria-pressed={scanTargetMode === "web"}
+                  onClick={() => {
+                    setScanTargetMode("web");
+                    setSelectedProfileId("web-perimeter-safe");
+                  }}
+                >
+                  <Globe2 size={14} aria-hidden="true" />
+                  {copy.runPanel.webTarget}
+                </button>
+              </div>
+
+              {scanTargetMode === "project" ? (
+                <SelectField
+                  label={copy.projects.selectProject}
+                  value={selectedProject?.id ?? ""}
+                  onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
+                  searchPlaceholder={copy.projects.selectProject}
+                >
+                  {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </SelectField>
+              ) : (
+                <label className="security-akb-question">
+                  <span>{copy.runPanel.webTargetUrl}</span>
+                  <input
+                    value={webTargetUrl}
+                    onChange={(event) => setWebTargetUrl(event.currentTarget.value)}
+                    placeholder={copy.runPanel.webTargetPlaceholder}
+                    inputMode="url"
+                    autoComplete="url"
+                  />
+                </label>
+              )}
+
+              <div className="security-facts">
+                <div>
+                  <span>{copy.newScan.selectedTarget}</span>
+                  <strong>{targetValue}</strong>
+                </div>
+                <div>
+                  <span>{copy.projects.dataClassification}</span>
+                  <strong>{copy.projects.classifications[activeScanProject.dataClassification]}</strong>
+                </div>
+                <div>
+                  <span>{copy.runPanel.tools}</span>
+                  <strong>{healthcareDoctor ? copy.runPanel.healthcareReady(healthcareDoctor.available) : copy.runPanel.notChecked}</strong>
+                </div>
+              </div>
+              <p className="security-run-description">{scanTargetMode === "web" ? copy.runPanel.webTargetHelp : copy.runPanel.directoryTargetHelp}</p>
+            </div>
+          </DataGridShell>
+
+          <DataGridShell
+            title={<strong>{copy.newScan.scanControl}</strong>}
+            toolbar={<Badge tone={selectedProfile?.allowActiveDast ? "warning" : "info"}>{profileName(locale, effectiveProfileId, effectiveProfileId)}</Badge>}
+            className="security-grid-shell"
+          >
+            <div className="security-scan-control-panel">
+              <SelectField
+                label={copy.runPanel.scanProfile}
+                value={effectiveProfileId}
+                onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
+                searchPlaceholder={copy.runPanel.findProfile}
+              >
+                {profileOptions.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profileName(locale, profile.id, profile.name)}
+                  </option>
+                ))}
+              </SelectField>
+              <p className="security-run-description">{selectedProfileDescription}</p>
+              <div className="security-actions">
+                <Button variant="primary" disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("queue")}>
+                  <Play size={14} />
+                  {copy.runPanel.runScan}
+                </Button>
+                <Button disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("plan")}>
+                  <ClipboardList size={14} />
+                  {copy.runPanel.dryRun}
+                </Button>
+                <Button disabled={!scanResult.scanRunId && !latestRun} onClick={openScanLog}>
+                  <TerminalSquare size={14} />
+                  {copy.runPanel.openScanLog}
+                </Button>
+              </div>
+              <div className="security-result" data-tone={statusTone(scanResult.status)} role="status">
+                <strong>{scanResult.status === "loading" ? copy.runPanel.working : statusDisplayLabel(scanResult.status, locale)}</strong>
+                <p>{scanResult.message}</p>
+                {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
+                {scanResult.stepCount != null ? <span>{copy.runPanel.plannedSteps(scanResult.stepCount)}</span> : null}
+              </div>
+            </div>
+          </DataGridShell>
+        </div>
+
+        <DataGridShell
+          title={<strong>{copy.newScan.projectRegistry}</strong>}
+          toolbar={
+            <Button disabled={loadingProjects || !authReady} onClick={refreshProjects} size="compact">
+              <History size={14} />
+              {copy.projects.refresh}
+            </Button>
+          }
+          className="security-grid-shell"
+        >
+          <div className="security-project-form security-project-form-compact">
+            <label className="security-akb-question" htmlFor="new-project-name">
+              <span>{copy.projects.name}</span>
+              <input
+                id="new-project-name"
+                aria-label={copy.projects.name}
+                value={projectForm.name}
+                onChange={(event) => setProjectForm((current) => ({ ...current, name: event.currentTarget.value }))}
+                autoComplete="off"
+              />
+            </label>
+            <label className="security-akb-question security-project-path" htmlFor="new-project-path">
+              <span>{copy.projects.path}</span>
+              <input
+                id="new-project-path"
+                aria-label={copy.projects.path}
+                value={projectForm.path}
+                onChange={(event) => setProjectForm((current) => ({ ...current, path: event.currentTarget.value }))}
+                autoComplete="off"
+              />
+            </label>
+            <label className="security-akb-question" htmlFor="new-project-data-classification">
+              <span>{copy.projects.dataClassification}</span>
+              <select
+                id="new-project-data-classification"
+                aria-label={copy.projects.dataClassification}
+                value={projectForm.dataClassification}
+                onChange={(event) => {
+                  const value = event.currentTarget.value as RegisteredProject["dataClassification"];
+                  setProjectForm((current) => ({ ...current, dataClassification: value }));
+                }}
+              >
+                {(["internal", "sensitive", "health-data", "confidential", "public"] as const).map((classification) => (
+                  <option key={classification} value={classification}>
+                    {copy.projects.classifications[classification]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="security-project-form-actions">
+              <Button variant="primary" disabled={registeringProject || !authReady} onClick={registerProject}>
+                <FolderGit2 size={14} />
+                {registeringProject ? copy.projects.registering : copy.projects.register}
+              </Button>
+              <span>{projectMessage}</span>
+            </div>
+          </div>
+        </DataGridShell>
+
+        <div className="security-split-grid">
+          <StructuredList
+            title={copy.newScan.latestOutcome}
+            description={latestRun ? `${latestRun.id} · ${formatDuration(latestRun.durationMs, locale)}` : copy.execution.runScanForEvidence}
+            count={
+              <Badge tone={latestRun ? statusTone(latestRun.gateResult) : "neutral"}>
+                {latestRun ? gateDisplayLabel(latestRun.gateResult, locale) : translateStatus(locale, "empty")}
+              </Badge>
+            }
+            toolbar={
+              <span className="security-toolbar-actions">
+                <Button disabled={loadingRuns} onClick={() => refreshScanRuns(latestRun?.id)} size="compact">
+                  <RefreshCw size={14} />
+                  {copy.execution.refresh}
+                </Button>
+                <Button disabled={!latestRun} onClick={() => selectWorkspaceView("execution")} size="compact">
+                  <Archive size={14} />
+                  {copy.scanLog.openExecution}
+                </Button>
+              </span>
+            }
+            items={[
+              {
+                id: "findings",
+                title: copy.scanLog.persistedFindings,
+                leading: <FileWarning size={15} />,
+                badges: <Badge tone={latestRun?.findingCount ? "danger" : "good"}>{copy.execution.findingsCount(latestRun?.findingCount ?? 0)}</Badge>,
+                meta: latestRun ? profileName(locale, latestRun.profile.id, latestRun.profile.name) : copy.execution.selectScanForDetail
+              },
+              {
+                id: "evidence",
+                title: copy.newScan.evidence,
+                leading: <Archive size={15} />,
+                badges: <Badge tone={latestEvidenceCount ? "good" : "neutral"}>{String(latestEvidenceCount)}</Badge>,
+                meta: latestRun?.evidence.root ?? "/reports"
+              }
+            ]}
+            ariaLabel={copy.newScan.latestOutcome}
+            className="security-list-card"
+          />
+
+          <StructuredList
+            title={copy.newScan.codexPackage}
+            description={exportingCodex ? copy.messages.generatingCodex : codexMessage}
+            count={<Badge tone={codexReady ? "good" : "neutral"}>{latestRun?.id ?? copy.newScan.noRun}</Badge>}
+            toolbar={
+              <Button variant="primary" disabled={!latestRun || exportingCodex || !authReady} onClick={exportCodexRemediation} size="compact">
+                <Sparkles size={14} />
+                {copy.newScan.exportCodex}
+              </Button>
+            }
+            items={[
+              {
+                id: "codex-markdown",
+                title: copy.newScan.redactedMarkdown,
+                leading: <ScrollText size={15} />,
+                badges: <Badge tone={codexReady ? "good" : "neutral"}>{codexReady ? translateStatus(locale, "ready") : translateStatus(locale, "empty")}</Badge>,
+                meta: copy.newScan.codexMeta
+              },
+              {
+                id: "akb",
+                title: copy.telemetry.akbIntegration,
+                leading: <Bot size={15} />,
+                badges: <Badge tone={akbStatus?.configured ? "good" : "warning"}>{akbStatus?.configured ? translateStatus(locale, "configured") : translateStatus(locale, "not configured")}</Badge>,
+                meta: copy.telemetry.storageMeta
+              }
+            ]}
+            ariaLabel={copy.newScan.codexPackage}
+            className="security-list-card"
+          />
+        </div>
+      </div>
     );
   }
 
@@ -2518,6 +2967,15 @@ export default function DashboardPage() {
                 >
                   <Presentation size={14} />
                 </IconButton>
+                <IconButton
+                  disabled={!latestRun || exportingCodex || !authReady}
+                  label={copy.execution.exportCodexLabel}
+                  size="compact"
+                  title={copy.execution.exportCodexTitle}
+                  onClick={exportCodexRemediation}
+                >
+                  <Sparkles size={14} />
+                </IconButton>
               </span>
             }
             items={(latestRun?.evidence.files ?? []).map((file) => ({
@@ -2680,6 +3138,9 @@ export default function DashboardPage() {
           </IconButton>
           <IconButton disabled={!run || exportingFormat !== null || !authReady} label={copy.scanLog.exportPptx} title={copy.scanLog.exportPptx} onClick={() => exportLatestRun("PPTX")} size="compact">
             <Presentation size={14} />
+          </IconButton>
+          <IconButton disabled={!run || exportingCodex || !authReady} label={copy.scanLog.exportCodex} title={copy.scanLog.exportCodex} onClick={exportCodexRemediation} size="compact">
+            <Sparkles size={14} />
           </IconButton>
         </div>
 
@@ -3003,7 +3464,9 @@ export default function DashboardPage() {
   }
 
   const renderedView =
-    activeView === "capabilities"
+    activeView === "new-scan"
+      ? renderNewScan()
+      : activeView === "capabilities"
       ? renderCapabilities()
       : activeView === "execution"
         ? renderExecution()
@@ -3014,7 +3477,9 @@ export default function DashboardPage() {
   const workspaceContextLabel = accessDenied
     ? copy.auth.accessDeniedTopbar
     : `SecurityPreflight / ${
-        activeView === "dashboard"
+        activeView === "new-scan"
+          ? copy.views.newScan
+          : activeView === "dashboard"
           ? copy.views.dashboard
           : activeView === "capabilities"
             ? copy.views.capabilities
@@ -3316,6 +3781,9 @@ export default function DashboardPage() {
             </Button>
             <IconButton label={copy.runPanel.openScanLog} title={copy.runPanel.scanLogPending} onClick={openScanLog}>
               <TerminalSquare size={14} />
+            </IconButton>
+            <IconButton disabled={!latestRun || exportingCodex || !authReady} label={copy.execution.exportCodexLabel} title={copy.execution.exportCodexTitle} onClick={exportCodexRemediation}>
+              <Sparkles size={14} />
             </IconButton>
           </div>
 

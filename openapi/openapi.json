@@ -1041,6 +1041,78 @@
         }
       }
     },
+    "/api/v1/reports/codex-remediation": {
+      "post": {
+        "summary": "Export a scan run Codex remediation package as redacted Markdown",
+        "operationId": "exportCodexRemediationPackage",
+        "tags": [
+          "Reports"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodexRemediationExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Base64 encoded Codex remediation Markdown payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexRemediationExportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Codex remediation export request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/akb/status": {
       "get": {
         "summary": "Check AKB integration configuration and boundaries",
@@ -3825,6 +3897,135 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Project"
+          }
+        }
+      },
+      "CodexRemediationExportRequest": {
+        "type": "object",
+        "required": [
+          "scanRunId"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "cs",
+              "en"
+            ],
+            "default": "cs"
+          }
+        }
+      },
+      "CodexRemediationExportResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CodexRemediationExport"
+          }
+        }
+      },
+      "CodexRemediationExport": {
+        "type": "object",
+        "required": [
+          "reportType",
+          "format",
+          "fileName",
+          "mimeType",
+          "encoding",
+          "content",
+          "contentHash",
+          "generatedAt",
+          "parametersJson"
+        ],
+        "properties": {
+          "reportType": {
+            "type": "string",
+            "enum": [
+              "SECURITY_PREFLIGHT_CODEX_REMEDIATION"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "MARKDOWN"
+            ]
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "text/markdown; charset=utf-8"
+            ]
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "base64"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "parametersJson": {
+            "type": "object",
+            "required": [
+              "scanRunId",
+              "projectId",
+              "profileId",
+              "gateResult",
+              "findingCount",
+              "evidenceFiles",
+              "locale"
+            ],
+            "properties": {
+              "scanRunId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "gateResult": {
+                "type": "string"
+              },
+              "findingCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "evidenceFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "locale": {
+                "type": "string",
+                "enum": [
+                  "cs",
+                  "en"
+                ]
+              }
+            }
           }
         }
       }

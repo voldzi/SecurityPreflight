@@ -30,6 +30,7 @@ const PptxGen = require("pptxgenjs") as new () => {
 };
 
 export type ScanRunExportFormat = "PDF" | "PPTX";
+export type CodexRemediationLocale = "cs" | "en";
 
 export interface ScanRunExportSummary {
   id: string;
@@ -109,6 +110,32 @@ export interface ScanRunReportExport {
   };
 }
 
+export interface BuildCodexRemediationExportInput {
+  run: ScanRunExportDetail;
+  locale?: CodexRemediationLocale;
+  generatedAt?: Date;
+}
+
+export interface CodexRemediationExport {
+  reportType: "SECURITY_PREFLIGHT_CODEX_REMEDIATION";
+  format: "MARKDOWN";
+  fileName: string;
+  mimeType: "text/markdown; charset=utf-8";
+  encoding: "base64";
+  content: string;
+  contentHash: string;
+  generatedAt: string;
+  parametersJson: {
+    scanRunId: string;
+    projectId: string;
+    profileId: string;
+    gateResult: string;
+    findingCount: number;
+    evidenceFiles: string[];
+    locale: CodexRemediationLocale;
+  };
+}
+
 export async function buildScanRunReportExport(input: BuildScanRunReportExportInput): Promise<ScanRunReportExport> {
   const generatedAt = input.generatedAt ?? new Date();
   const content = input.format === "PPTX" ? await buildPptx(input) : await buildPdf(input);
@@ -139,6 +166,341 @@ export async function buildScanRunReportExport(input: BuildScanRunReportExportIn
     }
   };
 }
+
+export function buildCodexRemediationExport(input: BuildCodexRemediationExportInput): CodexRemediationExport {
+  const generatedAt = input.generatedAt ?? new Date();
+  const locale = input.locale ?? "cs";
+  const dateKey = generatedAt.toISOString().slice(0, 10);
+  const slug = slugify(`${input.run.project.name}-${input.run.id}-codex`);
+  const markdown = buildCodexRemediationMarkdown(input.run, locale, generatedAt);
+  const content = Buffer.from(redactSecrets(markdown), "utf8");
+  const contentHash = createHash("sha256").update(content).digest("hex");
+
+  return {
+    reportType: "SECURITY_PREFLIGHT_CODEX_REMEDIATION",
+    format: "MARKDOWN",
+    fileName: `security-preflight-${slug}-${dateKey}.codex-remediation.md`,
+    mimeType: "text/markdown; charset=utf-8",
+    encoding: "base64",
+    content: content.toString("base64"),
+    contentHash,
+    generatedAt: generatedAt.toISOString(),
+    parametersJson: {
+      scanRunId: input.run.id,
+      projectId: input.run.project.id,
+      profileId: input.run.profile.id,
+      gateResult: input.run.gateResult,
+      findingCount: input.run.findingCount,
+      evidenceFiles: input.run.evidence.files,
+      locale
+    }
+  };
+}
+
+function buildCodexRemediationMarkdown(run: ScanRunExportDetail, locale: CodexRemediationLocale, generatedAt: Date): string {
+  const labels = remediationLabels[locale];
+  const findings = [...run.findings].sort((left, right) => severityRank(right.severity) - severityRank(left.severity));
+  const blockingReasons = run.gate.blockingReasons.length
+    ? run.gate.blockingReasons.map((reason) => `- ${redactSecrets(reason)}`).join("\n")
+    : `- ${labels.none}`;
+  const findingBlocks = findings.length
+    ? findings.map((finding, index) => buildFindingBlock(finding, index + 1, labels)).join("\n\n")
+    : labels.noFindings;
+  const stepSummary = run.steps.length
+    ? run.steps
+        .slice(0, 40)
+        .map((step) =>
+          [
+            `- ${step.checkId}: ${step.status}`,
+            step.findingCount ? `findings=${step.findingCount}` : null,
+            step.evidenceFile ? `evidence=${step.evidenceFile}` : null,
+            step.message ? `message=${redactSecrets(step.message)}` : null
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        )
+        .join("\n")
+    : `- ${labels.none}`;
+  const evidenceFiles = run.evidence.files.length ? run.evidence.files.map((file) => `- ${file}`).join("\n") : `- ${labels.none}`;
+
+  return `# ${labels.title}
+
+${labels.generated}: ${generatedAt.toISOString()}
+
+## ${labels.objective}
+
+${labels.objectiveBody}
+
+## ${labels.context}
+
+| ${labels.field} | ${labels.value} |
+|---|---|
+| ${labels.project} | ${redactSecrets(run.project.name)} |
+| ${labels.projectId} | \`${redactSecrets(run.project.id)}\` |
+| ${labels.dataClassification} | \`${redactSecrets(run.project.dataClassification)}\` |
+| ${labels.scanRun} | \`${redactSecrets(run.id)}\` |
+| ${labels.profile} | \`${redactSecrets(run.profile.name)}\` |
+| ${labels.status} | \`${redactSecrets(run.status)}\` |
+| ${labels.gate} | \`${redactSecrets(run.gateResult.toUpperCase())}\` |
+| ${labels.findingCount} | ${run.findingCount} |
+
+## ${labels.codexPrompt}
+
+\`\`\`text
+${labels.promptIntro}
+
+${labels.promptScope}
+- Project: ${redactSecrets(run.project.name)}
+- Scan run: ${redactSecrets(run.id)}
+- Profile: ${redactSecrets(run.profile.name)}
+- Gate: ${redactSecrets(run.gateResult.toUpperCase())}
+
+${labels.promptRules}
+- ${labels.rulePrioritize}
+- ${labels.ruleMinimal}
+- ${labels.ruleNoSecrets}
+- ${labels.ruleContracts}
+- ${labels.ruleTests}
+- ${labels.ruleReport}
+
+${labels.promptTask}
+\`\`\`
+
+## ${labels.priorityFindings}
+
+${findingBlocks}
+
+## ${labels.blockers}
+
+${blockingReasons}
+
+## ${labels.validation}
+
+\`\`\`bash
+pnpm validate
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm lint:openapi
+\`\`\`
+
+## ${labels.evidence}
+
+${evidenceFiles}
+
+## ${labels.steps}
+
+${stepSummary}
+
+## ${labels.safety}
+
+- ${labels.safetyNoExploit}
+- ${labels.safetyRedacted}
+- ${labels.safetyReview}
+`;
+}
+
+function buildFindingBlock(finding: ScanRunExportDetail["findings"][number], index: number, labels: RemediationLabels): string {
+  const location = finding.filePath
+    ? `${finding.filePath}${finding.line ? `:${finding.line}` : ""}`
+    : finding.endpoint ?? labels.notAvailable;
+
+  return `### ${index}. ${redactSecrets(finding.title)}
+
+| ${labels.field} | ${labels.value} |
+|---|---|
+| ${labels.severity} | \`${redactSecrets(finding.severity.toUpperCase())}\` |
+| ${labels.tool} | \`${redactSecrets(finding.tool)}\` |
+| ${labels.location} | \`${redactSecrets(location)}\` |
+| ${labels.findingId} | \`${redactSecrets(finding.id)}\` |
+
+${labels.recommendation}: ${redactSecrets(finding.recommendation)}
+
+${labels.codexInstruction}: ${redactSecrets(buildFindingInstruction(finding, labels))}
+`;
+}
+
+function buildFindingInstruction(finding: ScanRunExportDetail["findings"][number], labels: RemediationLabels): string {
+  if (finding.filePath) {
+    return labels.fixFile(finding.filePath, finding.line);
+  }
+
+  if (finding.endpoint) {
+    return labels.fixEndpoint(finding.endpoint);
+  }
+
+  return labels.fixGeneral;
+}
+
+function severityRank(severity: string): number {
+  switch (severity.toLowerCase()) {
+    case "critical":
+      return 5;
+    case "high":
+      return 4;
+    case "medium":
+      return 3;
+    case "low":
+      return 2;
+    case "info":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+type RemediationLabels = {
+  title: string;
+  generated: string;
+  objective: string;
+  objectiveBody: string;
+  context: string;
+  field: string;
+  value: string;
+  project: string;
+  projectId: string;
+  dataClassification: string;
+  scanRun: string;
+  profile: string;
+  status: string;
+  gate: string;
+  findingCount: string;
+  codexPrompt: string;
+  promptIntro: string;
+  promptScope: string;
+  promptRules: string;
+  rulePrioritize: string;
+  ruleMinimal: string;
+  ruleNoSecrets: string;
+  ruleContracts: string;
+  ruleTests: string;
+  ruleReport: string;
+  promptTask: string;
+  priorityFindings: string;
+  noFindings: string;
+  blockers: string;
+  validation: string;
+  evidence: string;
+  steps: string;
+  safety: string;
+  safetyNoExploit: string;
+  safetyRedacted: string;
+  safetyReview: string;
+  severity: string;
+  tool: string;
+  location: string;
+  findingId: string;
+  recommendation: string;
+  codexInstruction: string;
+  notAvailable: string;
+  none: string;
+  fixFile: (filePath: string, line: number | null) => string;
+  fixEndpoint: (endpoint: string) => string;
+  fixGeneral: string;
+};
+
+const remediationLabels: Record<CodexRemediationLocale, RemediationLabels> = {
+  cs: {
+    title: "SecurityPreflight balík pro Codex",
+    generated: "Vygenerováno",
+    objective: "Cíl",
+    objectiveBody:
+      "Tento redigovaný balík převádí výsledky bezpečnostního skenu na konkrétní zadání pro Codex. Neobsahuje raw scanner stdout ani zdrojový kód.",
+    context: "Kontext skenu",
+    field: "Pole",
+    value: "Hodnota",
+    project: "Projekt",
+    projectId: "Project ID",
+    dataClassification: "Klasifikace dat",
+    scanRun: "Scan run",
+    profile: "Profil",
+    status: "Stav",
+    gate: "Gate",
+    findingCount: "Počet nálezů",
+    codexPrompt: "Prompt pro Codex",
+    promptIntro: "Oprav bezpečnostní nálezy ze SecurityPreflight v přiloženém repozitáři.",
+    promptScope: "Kontext:",
+    promptRules: "Pravidla:",
+    rulePrioritize: "Začni nálezy Critical a High, pak Medium.",
+    ruleMinimal: "Dělej minimální, obhajitelné změny a neprováděj nesouvisející refaktoring.",
+    ruleNoSecrets: "Nevkládej do kódu, dokumentace ani testů žádná tajemství ani produkční hodnoty.",
+    ruleContracts: "Pokud měníš API, aktualizuj openapi/openapi.json a docs/api.md.",
+    ruleTests: "Po opravě spusť validační příkazy uvedené níže.",
+    ruleReport: "V závěru uveď, které nálezy byly opraveny, jak byly ověřeny a co zůstává rizikem.",
+    promptTask: "Použij níže uvedené prioritní nálezy jako závazný backlog oprav.",
+    priorityFindings: "Prioritní nálezy",
+    noFindings: "Žádné nálezy v redigovaném reportu.",
+    blockers: "Blokery a gate důvody",
+    validation: "Validační příkazy",
+    evidence: "Evidence soubory",
+    steps: "Kroky skenu",
+    safety: "Bezpečnostní omezení",
+    safetyNoExploit: "Nepřidávej exploit, brute-force, DoS ani autentizační bypass testy.",
+    safetyRedacted: "Pracuj jen s redigovanými nálezy a nepřenášej raw evidence mimo schválené úložiště.",
+    safetyReview: "U zdravotnických a citlivých aplikací ponech finální posouzení člověku.",
+    severity: "Závažnost",
+    tool: "Nástroj",
+    location: "Umístění",
+    findingId: "Finding ID",
+    recommendation: "Doporučení",
+    codexInstruction: "Instrukce pro opravu",
+    notAvailable: "není k dispozici",
+    none: "žádné",
+    fixFile: (filePath, line) => `Otevři \`${filePath}${line ? `:${line}` : ""}\`, oprav příčinu nálezu a přidej nebo uprav regresní test, pokud je to možné.`,
+    fixEndpoint: (endpoint) => `Prověř endpoint \`${endpoint}\`, oprav konfiguraci nebo serverovou logiku a ověř bezpečné chování bez destruktivního provozu.`,
+    fixGeneral: "Najdi nejmenší odpovědnou změnu v repozitáři, která řeší doporučení, a ověř ji dostupnými testy."
+  },
+  en: {
+    title: "SecurityPreflight Codex remediation package",
+    generated: "Generated",
+    objective: "Objective",
+    objectiveBody:
+      "This redacted package translates security scan results into concrete work for Codex. It does not include raw scanner stdout or source code.",
+    context: "Scan context",
+    field: "Field",
+    value: "Value",
+    project: "Project",
+    projectId: "Project ID",
+    dataClassification: "Data classification",
+    scanRun: "Scan run",
+    profile: "Profile",
+    status: "Status",
+    gate: "Gate",
+    findingCount: "Finding count",
+    codexPrompt: "Prompt for Codex",
+    promptIntro: "Fix the SecurityPreflight findings in the attached repository.",
+    promptScope: "Context:",
+    promptRules: "Rules:",
+    rulePrioritize: "Start with Critical and High findings, then Medium.",
+    ruleMinimal: "Make minimal, defensible changes and avoid unrelated refactors.",
+    ruleNoSecrets: "Do not add secrets or production values to code, docs, or tests.",
+    ruleContracts: "If you change the API, update openapi/openapi.json and docs/api.md.",
+    ruleTests: "After fixing, run the validation commands listed below.",
+    ruleReport: "In the final response, state which findings were fixed, how they were verified, and what risk remains.",
+    promptTask: "Use the prioritized findings below as the binding remediation backlog.",
+    priorityFindings: "Priority findings",
+    noFindings: "No findings in the redacted report.",
+    blockers: "Blockers and gate reasons",
+    validation: "Validation commands",
+    evidence: "Evidence files",
+    steps: "Scan steps",
+    safety: "Safety limits",
+    safetyNoExploit: "Do not add exploit, brute-force, DoS, or authentication bypass tests.",
+    safetyRedacted: "Use only redacted findings and do not move raw evidence outside approved storage.",
+    safetyReview: "For healthcare and sensitive applications, keep final assessment human-led.",
+    severity: "Severity",
+    tool: "Tool",
+    location: "Location",
+    findingId: "Finding ID",
+    recommendation: "Recommendation",
+    codexInstruction: "Remediation instruction",
+    notAvailable: "not available",
+    none: "none",
+    fixFile: (filePath, line) => `Open \`${filePath}${line ? `:${line}` : ""}\`, fix the root cause, and add or update a regression test when practical.`,
+    fixEndpoint: (endpoint) => `Review endpoint \`${endpoint}\`, fix configuration or server logic, and verify safe behavior without destructive traffic.`,
+    fixGeneral: "Find the smallest responsible repository change that addresses the recommendation and verify it with available tests."
+  }
+};
 
 async function buildPdf(input: BuildScanRunReportExportInput): Promise<Buffer> {
   const run = input.run;

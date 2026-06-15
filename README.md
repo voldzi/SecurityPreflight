@@ -15,6 +15,8 @@ CODEX and Claude Code, following the central application standards
 - Deployment readiness checks for local, CI, and production-oriented workflows.
 - Evidence-oriented reporting for issues, risks, and remediation status.
 - STRATOS-style report exports as redacted PDF and PPTX payloads.
+- Redacted Codex remediation package export with prioritized findings,
+  validation commands, and safety boundaries for follow-up fixes.
 - Czech and English Web UI with a STRATOS topbar language switch; the selected
   locale is stored only in browser `localStorage`.
 - Server-side AKB bridge for cited, scan-run-scoped AI questions without

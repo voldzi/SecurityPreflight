@@ -40,6 +40,28 @@ symptoms, diagnosis, fix, verification.
 - If a DAST target is unavailable, verify it is a permitted localhost or
   allowlisted staging host before retrying.
 
+## Run a UI Scan and Hand Off to Codex
+
+- Open the SecurityPreflight Web UI and use the `New scan` / `Nová kontrola`
+  workspace.
+- For a repository or local project, choose `Directory`, register the mounted
+  project path, and select the project from the target selector. The path must
+  be visible inside the API/worker container under `PROJECTS_ROOT_CONTAINER`;
+  production Docker cannot scan an arbitrary desktop path unless it is mounted.
+- For a website or API, choose `Web/API`, enter an `http` or `https` URL, and
+  use only targets owned by the operator or explicitly approved for testing.
+  The backend derives an allowlist from the host and applies DAST guardrails.
+- Select a scan profile. Use `Dry run` first for new targets to inspect
+  blocked guardrails and planned steps without running scanners.
+- Run the scan, open the scan log, and confirm that report evidence exists
+  under `REPORTS_PATH/<scanRunId>/`.
+- Use PDF/PPTX exports for human review. Use the Codex remediation export for
+  a redacted Markdown package containing the prompt, prioritized findings,
+  gate blockers, evidence file names, validation commands, and safety limits.
+- Attach the Codex remediation package to a Codex task together with the
+  affected repository. Do not attach raw scanner stdout, secrets, production
+  `.env` files, or private evidence outside approved storage.
+
 ## Docker Network Collides With LAN
 
 - Symptoms: after starting SecurityPreflight, a real LAN host becomes

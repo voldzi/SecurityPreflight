@@ -256,6 +256,68 @@ code,
   padding: 16px;
 }
 
+.security-new-scan-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+  padding: 16px;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
+}
+
+.security-new-scan-hero span {
+  display: block;
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.security-new-scan-hero h2 {
+  margin: 4px 0 0;
+  color: var(--stratos-color-text);
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.security-new-scan-hero p {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: var(--stratos-color-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.security-new-scan-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.security-new-scan-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.security-scan-control-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.security-step-list {
+  min-height: 0;
+}
+
 .security-analysis-panel h2,
 .security-run-header h2,
 .security-detail-stack h2 {
@@ -859,6 +921,10 @@ code,
   overflow-wrap: anywhere;
 }
 
+.security-project-form-compact {
+  border-bottom: 0;
+}
+
 .security-target-mode {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1060,7 +1126,8 @@ code,
 
 @media (max-width: 1180px) {
   .security-content,
-  .security-analysis-panel {
+  .security-analysis-panel,
+  .security-new-scan-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1080,9 +1147,18 @@ code,
   }
 
   .security-split-grid,
+  .security-new-scan-hero,
   .security-metric-grid,
   .security-project-form {
     grid-template-columns: 1fr;
+  }
+
+  .security-new-scan-hero {
+    display: grid;
+  }
+
+  .security-new-scan-hero-actions {
+    justify-content: flex-start;
   }
 
   .security-project-path,

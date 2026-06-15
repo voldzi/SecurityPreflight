@@ -77,6 +77,7 @@ The API uses path versioning:
 | PATCH | `/api/v1/scans/runs/{scanRunId}/findings/{findingId}/triage` | Update persisted finding triage state, owner/note/dates optional |
 | GET | `/api/v1/scans/runs/{scanRunId}/report` | Read a generated markdown or JSON report artifact |
 | POST | `/api/v1/reports/export` | Export a scan run report as base64 PDF or PPTX |
+| POST | `/api/v1/reports/codex-remediation` | Export a redacted Markdown remediation package for Codex |
 | GET | `/api/v1/akb/status` | Report AKB RAG configuration and storage boundaries without secrets |
 | POST | `/api/v1/akb/ai/ask` | Ask AKB a cited, scan-run-scoped question |
 | GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
@@ -245,6 +246,23 @@ payload with `fileName`, `mimeType`, `contentHash`, and `parametersJson`. The
 export is generated from redacted report evidence only. It does not include raw
 scanner stdout/stderr or source code.
 
+### Export a Codex remediation package
+
+```bash
+curl -X POST http://localhost:8781/api/v1/reports/codex-remediation \
+  -H 'content-type: application/json' \
+  -d '{
+    "scanRunId": "scan_abc123",
+    "locale": "cs"
+  }'
+```
+
+The endpoint returns a base64 encoded Markdown file with a focused Codex prompt,
+prioritized findings, gate blockers, evidence file names, validation commands,
+and safety boundaries. The payload is redacted and is intended to be attached to
+a Codex remediation task together with the affected repository. It does not
+replace human review for healthcare or other sensitive applications.
+
 ### AKB status and cited AI question
 
 ```bash
@@ -319,5 +337,6 @@ The OpenAPI specification is validated in the CI pipeline
   execution plan contract before scanner execution is enabled.
 - Central storage integrations should consume `CentralResultEnvelope` through
   the OpenAPI contract instead of scraping reports.
-- STRATOS report exports should use `POST /api/v1/reports/export`; document-
-  grounded AI should use the AKB bridge, not a browser-side LLM call.
+- STRATOS report exports should use `POST /api/v1/reports/export`; Codex
+  remediation handoff should use `POST /api/v1/reports/codex-remediation`;
+  document-grounded AI should use the AKB bridge, not a browser-side LLM call.
