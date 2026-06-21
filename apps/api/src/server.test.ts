@@ -178,6 +178,60 @@ describe("api server", () => {
     expect(response.json().data.some((profile: { id: string }) => profile.id === "healthcare-reference")).toBe(true);
   });
 
+  it("serves measured capability readiness without exposing secrets", async () => {
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    const previousRedisUrl = process.env.REDIS_URL;
+    const previousReportsPath = process.env.REPORTS_PATH;
+    const previousAutoDiscovery = process.env.PROJECTS_AUTODISCOVERY_ENABLED;
+    const previousProjectsRoot = process.env.PROJECTS_ROOT_CONTAINER;
+    const previousAkbBaseUrl = process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL;
+    const previousResultSinkEnabled = process.env.SECURITY_PREFLIGHT_RESULT_SINK_ENABLED;
+    const previousResultSinkUrl = process.env.SECURITY_PREFLIGHT_RESULT_SINK_URL;
+    const previousMode = process.env.SECURITY_PREFLIGHT_AUTH_MODE;
+    const previousApiToken = process.env.SECURITY_PREFLIGHT_API_TOKEN;
+
+    process.env.DATABASE_URL = "postgres://user:secret@example.test/security_preflight";
+    process.env.REDIS_URL = "redis://redis:6379/0";
+    process.env.REPORTS_PATH = "/reports";
+    process.env.PROJECTS_AUTODISCOVERY_ENABLED = "true";
+    process.env.PROJECTS_ROOT_CONTAINER = "/workspace/projects";
+    process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL = "https://akb.example.test/api/v1";
+    process.env.SECURITY_PREFLIGHT_RESULT_SINK_ENABLED = "true";
+    process.env.SECURITY_PREFLIGHT_RESULT_SINK_URL = "https://central.example.test/api/v1/results/ingest";
+    process.env.SECURITY_PREFLIGHT_AUTH_MODE = "shared-token";
+    process.env.SECURITY_PREFLIGHT_API_TOKEN = "test-api-token";
+
+    try {
+      const server = createServer({ logger: false });
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/v1/capabilities",
+        headers: {
+          authorization: "Bearer test-api-token",
+          "x-forwarded-proto": "https"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data.maturityScore).toBeGreaterThanOrEqual(80);
+      expect(response.json().data.rows).toHaveLength(9);
+      expect(response.json().data.rows.some((row: { id: string; status: string }) => row.id === "akb-ai" && row.status === "Ready")).toBe(true);
+      expect(JSON.stringify(response.json())).not.toContain("secret");
+      expect(JSON.stringify(response.json())).not.toContain("test-api-token");
+    } finally {
+      restoreEnv("DATABASE_URL", previousDatabaseUrl);
+      restoreEnv("REDIS_URL", previousRedisUrl);
+      restoreEnv("REPORTS_PATH", previousReportsPath);
+      restoreEnv("PROJECTS_AUTODISCOVERY_ENABLED", previousAutoDiscovery);
+      restoreEnv("PROJECTS_ROOT_CONTAINER", previousProjectsRoot);
+      restoreEnv("SECURITY_PREFLIGHT_AKB_RAG_BASE_URL", previousAkbBaseUrl);
+      restoreEnv("SECURITY_PREFLIGHT_RESULT_SINK_ENABLED", previousResultSinkEnabled);
+      restoreEnv("SECURITY_PREFLIGHT_RESULT_SINK_URL", previousResultSinkUrl);
+      restoreEnv("SECURITY_PREFLIGHT_AUTH_MODE", previousMode);
+      restoreEnv("SECURITY_PREFLIGHT_API_TOKEN", previousApiToken);
+    }
+  });
+
   it("registers, updates, lists, and deletes projects with stack detection", async () => {
     const previousReportsPath = process.env.REPORTS_PATH;
     const previousProjectsRoot = process.env.PROJECTS_ROOT_CONTAINER;

@@ -1289,6 +1289,57 @@
         }
       }
     },
+    "/api/v1/capabilities": {
+      "get": {
+        "summary": "Get measured SecurityPreflight capability readiness",
+        "operationId": "getCapabilityAudit",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Measured capability readiness without secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityAuditResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid capability audit request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}": {
       "parameters": [
         {
@@ -4026,6 +4077,117 @@
                 ]
               }
             }
+          }
+        }
+      },
+      "CapabilityAuditResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CapabilityAudit"
+          }
+        }
+      },
+      "CapabilityAudit": {
+        "type": "object",
+        "required": [
+          "generatedAt",
+          "maturityScore",
+          "criticalGaps",
+          "rows"
+        ],
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "maturityScore": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "criticalGaps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityAuditRow"
+            }
+          }
+        }
+      },
+      "CapabilityAuditRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "priority",
+          "evidence",
+          "gaps"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Ready",
+              "Partial",
+              "Gap"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P0",
+              "P1"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityAuditSignal"
+            }
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityAuditSignal"
+            }
+          }
+        }
+      },
+      "CapabilityAuditSignal": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
           }
         }
       }

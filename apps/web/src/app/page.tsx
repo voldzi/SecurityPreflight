@@ -379,6 +379,27 @@ interface RegisteredProject {
   updatedAt: string;
 }
 
+interface CapabilityAuditSignal {
+  id: string;
+  value?: string | number | boolean;
+  total?: number;
+}
+
+interface CapabilityAuditRow {
+  id: string;
+  status: CapabilityStatus;
+  priority: string;
+  evidence: CapabilityAuditSignal[];
+  gaps: CapabilityAuditSignal[];
+}
+
+interface CapabilityAudit {
+  generatedAt: string;
+  maturityScore: number;
+  criticalGaps: number;
+  rows: CapabilityAuditRow[];
+}
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8781";
 const dockerProjectPath = "/workspace/projects";
 const authTokenStorageKey = "security-preflight.auth.token";
@@ -562,6 +583,110 @@ function progressValue(completed: number, total: number, status?: string): numbe
   return Math.min(100, Math.round((completed / total) * 100));
 }
 
+function mergeCapabilityAuditRows(baseRows: CapabilityRow[], audit: CapabilityAudit | null, locale: AppLocale): CapabilityRow[] {
+  if (!audit) return baseRows;
+
+  const runtimeRows = new Map(audit.rows.map((row) => [row.id, row]));
+
+  return baseRows.map((row) => {
+    const runtime = runtimeRows.get(row.id);
+    if (!runtime) return row;
+
+    return {
+      ...row,
+      status: runtime.status,
+      priority: runtime.priority || row.priority,
+      implemented: runtime.evidence.length
+        ? runtime.evidence.map((signal) => capabilitySignalLabel(signal, locale)).join("; ")
+        : row.implemented,
+      gap: runtime.gaps.length
+        ? runtime.gaps.map((signal) => capabilitySignalLabel(signal, locale)).join("; ")
+        : locale === "cs"
+          ? "Bez otevřené mezery podle měřeného readiness auditu."
+          : "No open gap in the measured readiness audit."
+    };
+  });
+}
+
+function capabilitySignalLabel(signal: CapabilityAuditSignal, locale: AppLocale): string {
+  const value = capabilitySignalValue(signal, locale);
+
+  const labels: Record<string, { cs: string; en: string }> = {
+    "profile-count": { cs: `${value} scan profilů`, en: `${value} scan profiles` },
+    "healthcare-profile": { cs: "healthcare referenční profil je dostupný", en: "healthcare reference profile is available" },
+    "web-perimeter-profile": { cs: "web/API perimeter profil je dostupný", en: "web/API perimeter profile is available" },
+    "enterprise-profile": { cs: "enterprise assurance profil je dostupný", en: "enterprise assurance profile is available" },
+    "active-dast-guardrails": { cs: "aktivní DAST má fail-closed guardraily", en: "active DAST has fail-closed guardrails" },
+    "queue-endpoint": { cs: "queue endpoint je dostupný", en: "queue endpoint is available" },
+    "redis-configured": { cs: "Redis fronta je nakonfigurovaná", en: "Redis queue is configured" },
+    "postgres-persistence": { cs: "PostgreSQL perzistence je aktivní", en: "PostgreSQL persistence is active" },
+    "reports-path-configured": { cs: "evidence storage je nakonfigurovaný", en: "evidence storage is configured" },
+    "progress-endpoint": { cs: "serverový progress endpoint je dostupný", en: "server-side progress endpoint is available" },
+    "healthcare-check-count": { cs: `${value} healthcare kontrol v profilu`, en: `${value} healthcare checks in profile` },
+    "healthcare-tool-catalog": { cs: `${value} healthcare nástrojů v katalogu`, en: `${value} healthcare tools in catalog` },
+    "healthcare-tool-categories": { cs: `${value} kategorií scannerů`, en: `${value} scanner categories` },
+    "greenbone-openscap-defectdojo": { cs: "Greenbone/OpenVAS, OpenSCAP a DefectDojo evidence jsou v pipeline", en: "Greenbone/OpenVAS, OpenSCAP, and DefectDojo evidence are in the pipeline" },
+    "triage-api": { cs: "triage API je dostupné", en: "triage API is available" },
+    "triage-owner-dates": { cs: "nálezy podporují vlastníka, poznámku a termíny", en: "findings support owner, note, and due dates" },
+    "finding-audit-events": { cs: "audit události nálezů se persistují", en: "finding audit events are persisted" },
+    "codex-remediation-export": { cs: "balík pro Codex je dostupný", en: "Codex remediation package is available" },
+    "markdown-json-reports": { cs: "Markdown a JSON reporty", en: "Markdown and JSON reports" },
+    "sarif-export": { cs: "SARIF export pro DefectDojo", en: "SARIF export for DefectDojo" },
+    "pdf-pptx-export": { cs: "PDF/PPTX exporty", en: "PDF/PPTX exports" },
+    "central-envelope": { cs: "centrální redigovaná obálka", en: "central redacted envelope" },
+    "delivery-manifests": { cs: "delivery manifesty", en: "delivery manifests" },
+    "akb-boundary-no-local-storage": { cs: "AKB prompty, odpovědi a chunky se lokálně neukládají", en: "AKB prompts, answers, and chunks are not stored locally" },
+    "akb-requires-citations": { cs: "AKB odpovědi vyžadují citace", en: "AKB answers require citations" },
+    "akb-rag-configured": { cs: "AKB RAG endpoint je nakonfigurovaný", en: "AKB RAG endpoint is configured" },
+    "akb-auth-mode": { cs: `AKB auth režim: ${value}`, en: `AKB auth mode: ${value}` },
+    "telemetry-ingest-endpoint": { cs: "centrální ingest endpoint je dostupný", en: "central ingest endpoint is available" },
+    "telemetry-delivery-manifest": { cs: "telemetry delivery manifest se ukládá", en: "telemetry delivery manifest is stored" },
+    "result-sink-enabled": { cs: `externí result sink: ${value}`, en: `external result sink: ${value}` },
+    "defectdojo-export-configured": { cs: `DefectDojo export: ${value}`, en: `DefectDojo export: ${value}` },
+    "project-registry-persistence": { cs: "registr projektů je perzistentní", en: "project registry is persistent" },
+    "project-update-delete-api": { cs: "projekty lze upravovat a mazat přes API", en: "projects can be updated and deleted through API" },
+    "project-path-validation": { cs: "cesty jsou validované pod povolenými rooty", en: "paths are validated under allowed roots" },
+    "project-stack-detection": { cs: "detekce stacku je aktivní", en: "stack detection is active" },
+    "project-autodiscovery": { cs: "automatické načítání /srv a /opt rootů je aktivní", en: "automatic /srv and /opt root discovery is active" },
+    "project-roots-configured": { cs: "povolené project rooty jsou nakonfigurované", en: "allowed project roots are configured" },
+    "auth-required": { cs: "API vyžaduje autentizaci", en: "API requires authentication" },
+    "oidc-configured": { cs: "STRATOS OIDC/JWKS je nakonfigurovaný", en: "STRATOS OIDC/JWKS is configured" },
+    "public-oidc-configured": { cs: "web má veřejnou OIDC konfiguraci", en: "web has public OIDC configuration" },
+    "rbac-required-roles": { cs: `${value} čtenářských rolí`, en: `${value} viewer roles` },
+    "rbac-operator-roles": { cs: `${value} operátorských rolí`, en: `${value} operator roles` },
+    "tls-forwarded": { cs: "TLS terminace je předaná přes reverse proxy", en: "TLS termination is forwarded by reverse proxy" },
+    "missing-healthcare-profile": { cs: "chybí healthcare referenční profil", en: "healthcare reference profile is missing" },
+    "missing-web-perimeter-profile": { cs: "chybí web/API perimeter profil", en: "web/API perimeter profile is missing" },
+    "missing-enterprise-profile": { cs: "chybí enterprise assurance profil", en: "enterprise assurance profile is missing" },
+    "production-dast-unguarded": { cs: "některý profil dovoluje produkční aktivní DAST bez guardrailů", en: "a profile allows production active DAST without guardrails" },
+    "missing-redis": { cs: "chybí Redis konfigurace", en: "Redis configuration is missing" },
+    "missing-database": { cs: "chybí PostgreSQL perzistence", en: "PostgreSQL persistence is missing" },
+    "missing-reports-path": { cs: "chybí REPORTS_PATH", en: "REPORTS_PATH is missing" },
+    "missing-healthcare-check": { cs: `v healthcare profilu chybí kontrola ${value}`, en: `healthcare profile is missing ${value}` },
+    "akb-rag-missing": { cs: "chybí SECURITY_PREFLIGHT_AKB_RAG_BASE_URL", en: "SECURITY_PREFLIGHT_AKB_RAG_BASE_URL is missing" },
+    "akb-auth-missing": { cs: "AKB nemá caller bearer, OIDC client credentials ani service token", en: "AKB has no caller bearer, OIDC client credentials, or service token" },
+    "telemetry-required-sink-missing": { cs: "povinný telemetry sink není nakonfigurovaný", en: "required telemetry sink is not configured" },
+    "defectdojo-config-missing": { cs: "DefectDojo export je zapnutý, ale konfigurace není úplná", en: "DefectDojo export is enabled but not fully configured" },
+    "project-autodiscovery-disabled": { cs: "automatické načítání projektů je vypnuté", en: "automatic project discovery is disabled" },
+    "project-roots-missing": { cs: "chybí PROJECTS_ROOT_CONTAINER nebo PROJECTS_ROOTS_CONTAINER", en: "PROJECTS_ROOT_CONTAINER or PROJECTS_ROOTS_CONTAINER is missing" },
+    "auth-not-required": { cs: "produkční API neběží ve vyžadovaném auth režimu", en: "production API is not running in required auth mode" },
+    "oidc-not-configured": { cs: "OIDC/JWKS konfigurace není kompletní", en: "OIDC/JWKS configuration is incomplete" },
+    "public-oidc-missing": { cs: "veřejná OIDC konfigurace webu není kompletní", en: "public web OIDC configuration is incomplete" },
+    "rbac-roles-missing": { cs: "chybí RBAC role pro čtení nebo operace", en: "viewer or operator RBAC roles are missing" }
+  };
+
+  return labels[signal.id]?.[locale] ?? (value ? `${signal.id}: ${value}` : signal.id);
+}
+
+function capabilitySignalValue(signal: CapabilityAuditSignal, locale: AppLocale): string {
+  if (typeof signal.value === "boolean") {
+    return signal.value ? translateStatus(locale, "configured") : translateStatus(locale, "not configured");
+  }
+
+  if (signal.value == null) return "";
+  return String(signal.value);
+}
+
 function findingLocation(finding: ScanRunDetail["findings"][number], fallback: string): string {
   if (finding.filePath) return `${finding.filePath}${finding.line ? `:${finding.line}` : ""}`;
   if (finding.endpoint) return finding.endpoint;
@@ -707,6 +832,7 @@ export default function DashboardPage() {
   const [akbAnswer, setAkbAnswer] = useState<AkbAnswer | null>(null);
   const [akbLoading, setAkbLoading] = useState(false);
   const [akbMessage, setAkbMessage] = useState<string>(uiText[defaultLocale].messages.akbInitial);
+  const [capabilityAudit, setCapabilityAudit] = useState<CapabilityAudit | null>(null);
   const [scanResult, setScanResult] = useState<ScanActionResult>({
     mode: "plan",
     status: "idle",
@@ -714,7 +840,11 @@ export default function DashboardPage() {
   });
   const copy = uiText[locale];
   const fallbackTools = localizedFallbackTools[locale];
-  const capabilityRows = localizedCapabilityRows[locale];
+  const baseCapabilityRows = localizedCapabilityRows[locale];
+  const capabilityRows = useMemo(
+    () => mergeCapabilityAuditRows(baseCapabilityRows, capabilityAudit, locale),
+    [baseCapabilityRows, capabilityAudit, locale]
+  );
   const executionStages = localizedExecutionStages[locale];
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null;
   const effectiveProfileId = selectedProfileId;
@@ -1522,6 +1652,12 @@ export default function DashboardPage() {
   }, [authReady, authToken]);
 
   useEffect(() => {
+    if (authReady) {
+      void refreshCapabilityAudit();
+    }
+  }, [authReady, authToken]);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -1644,6 +1780,7 @@ export default function DashboardPage() {
     setDoctor(null);
     setAkbStatus(null);
     setAkbAnswer(null);
+    setCapabilityAudit(null);
     setDetailOpen(false);
     setScanLogOpen(false);
     setCommandOpen(false);
@@ -1883,6 +2020,17 @@ export default function DashboardPage() {
       if (handleApiAccessFailure(error)) return;
       setAkbStatus(null);
       setAkbMessage(error instanceof Error ? error.message : copy.messages.akbStatusUnavailable);
+    }
+  }
+
+  async function refreshCapabilityAudit() {
+    try {
+      const payload = await fetchJson<{ data: CapabilityAudit }>(`${apiBaseUrl}/api/v1/capabilities`, undefined, authToken);
+      if (accessDeniedRef.current) return;
+      setCapabilityAudit(payload.data);
+    } catch (error) {
+      if (handleApiAccessFailure(error)) return;
+      setCapabilityAudit(null);
     }
   }
 

@@ -501,7 +501,7 @@ export const uiText = {
     },
     capabilities: {
       title: "Celková funkčnost",
-      body: "Aplikace má funkční lokální scan pipeline, OpenAPI kontrakt, worker evidence, log běhu, report exporty a AKB bridge podle STRATOS hranic. Největší mezery zůstávají triage findings, serverový live progress stream, produkční AKB/OIDC konfigurace a bezpečnostní hranice pro sdílené nasazení.",
+      body: "Audit schopností se počítá z měřeného stavu API, produkční konfigurace a STRATOS integračních hranic. Zahrnuje scan pipeline, projekty, findings triage, reporty, telemetry, AKB bridge, OIDC/RBAC a zdravotnický referenční profil.",
       maturityEstimate: "Odhad zralosti",
       maturityProgress: "Funkční zralost",
       auditTitle: "Audit schopností",
@@ -1052,7 +1052,7 @@ export const uiText = {
     },
     capabilities: {
       title: "Overall functionality",
-      body: "The application has a working local scan pipeline, OpenAPI contract, worker evidence, run log, report exports, and an AKB bridge aligned with STRATOS boundaries. The biggest gaps remain findings triage, server-side live progress streaming, production AKB/OIDC configuration, and shared-deployment security boundaries.",
+      body: "The capability audit is calculated from measured API state, production configuration, and STRATOS integration boundaries. It covers scan pipeline, projects, findings triage, reports, telemetry, AKB bridge, OIDC/RBAC, and the healthcare reference profile.",
       maturityEstimate: "Maturity estimate",
       maturityProgress: "Functional maturity",
       auditTitle: "Capability audit",

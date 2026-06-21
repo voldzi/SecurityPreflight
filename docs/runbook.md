@@ -141,6 +141,11 @@ Never configure SecurityPreflight Docker IPAM with `192.168.x.x` LAN ranges.
   reference.
 - For central telemetry, inspect `central-result-envelope.json` and
   `central-telemetry-delivery.json`.
+- For the capability audit, call `GET /api/v1/capabilities` through the
+  authenticated API boundary. In production, AKB readiness expects the API
+  container to be attached to `SECURITY_PREFLIGHT_AKB_DOCKER_NETWORK`
+  (`akl_app_zone` by default) and `SECURITY_PREFLIGHT_AKB_RAG_BASE_URL` to end
+  in `/api/v1`.
 - Do not treat a skipped external scanner step as a production pass.
 
 ## High Latency

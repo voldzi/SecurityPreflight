@@ -63,6 +63,7 @@ The API uses path versioning:
 | GET | `/health` | Health check |
 | GET | `/ready` | Readiness check |
 | GET | `/api/v1/auth/status` | Report API auth mode, OIDC public config, and RBAC roles without secrets |
+| GET | `/api/v1/capabilities` | Report measured application capability readiness, maturity score, and open P0/P1 gaps without secrets |
 | GET | `/api/v1/projects` | List registered local projects |
 | POST | `/api/v1/projects` | Register a local project, validate its mounted path, and detect its stack |
 | GET | `/api/v1/projects/{projectId}` | Get one registered project |
@@ -88,6 +89,14 @@ Scan run evidence manifests include booleans for `execution-result.json`,
 `report.json`, `report.md`, `central-result-envelope.json`,
 `defectdojo.sarif.json`, `central-telemetry-delivery.json`, and
 `defectdojo-delivery.json`.
+
+`GET /api/v1/capabilities` is the dashboard source for the capability audit.
+It reports feature readiness from live configuration and product contracts such
+as OIDC/RBAC, AKB RAG configuration, project autodiscovery, PostgreSQL/Redis
+persistence, telemetry delivery settings, and the healthcare reference profile.
+The response contains only signal IDs, booleans, counts, and statuses; it must
+not include secrets, bearer tokens, raw scanner output, or configured token
+values.
 
 ## Error Responses
 

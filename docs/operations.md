@@ -410,7 +410,8 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_RESULT_SINK_URL` | no | unset | Central result ingest URL, usually `/api/v1/results/ingest` on the central service |
 | `SECURITY_PREFLIGHT_RESULT_SINK_TOKEN_REF` | no | unset | Optional `env:NAME`, `file:/path`, or env-name bearer token reference for central delivery |
 | `SECURITY_PREFLIGHT_RESULT_SINK_REQUIRED` | no | `false` | Fails the worker job if central result delivery fails |
-| `SECURITY_PREFLIGHT_AKB_RAG_BASE_URL` | no | unset | AKB RAG API base URL, normally ending in `/api/v1` |
+| `SECURITY_PREFLIGHT_AKB_DOCKER_NETWORK` | no | `akl_app_zone` | Existing Docker network that exposes AKB RAG services to the API in production |
+| `SECURITY_PREFLIGHT_AKB_RAG_BASE_URL` | no | `http://rag-retrieval-service:8080/api/v1` in production override, unset locally | AKB RAG API base URL, normally ending in `/api/v1` |
 | `SECURITY_PREFLIGHT_AKB_PUBLIC_BASE_URL` | no | `https://stratos.zeleznalady.cz/akb` | Human-facing AKB URL shown in UI status |
 | `SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN` | no | unset | Compatibility bearer token for AKB when OIDC is unavailable; never commit |
 | `SECURITY_PREFLIGHT_AKB_OIDC_TOKEN_URL` | no | unset | OIDC token endpoint for AKB client credentials |
@@ -442,9 +443,11 @@ table and must stay in sync.
 - Optional DefectDojo instance for centralized finding triage through SARIF
   import. Production tokens must live in a secret store and be referenced by
   name only.
-- Optional AKB RAG service for STRATOS document-grounded AI. Production should
-  use OIDC client credentials or a controlled backend token, never browser-side
-  direct AKB calls.
+- Optional AKB RAG service for STRATOS document-grounded AI. The production
+  Compose override attaches the API to the existing `akl_app_zone` Docker
+  network and uses `http://rag-retrieval-service:8080/api/v1` by default.
+  Production should use caller bearer propagation, OIDC client credentials, or
+  a controlled backend token, never browser-side direct AKB calls.
 
 ## Backup and Restore
 

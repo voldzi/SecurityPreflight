@@ -10,6 +10,7 @@ import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } fr
 import {
   getPersistedScanRunDetail,
   getScanRunProgress,
+  isPersistenceEnabled,
   listPersistedScanRuns,
   recordQueuedScan,
   updateFindingTriage,
@@ -114,6 +115,30 @@ interface ScanRunDetailDto extends ScanRunSummaryDto {
     findingCount: number;
     message: string | null;
   }>;
+}
+
+type CapabilityAuditStatus = "Ready" | "Partial" | "Gap";
+type CapabilityAuditPriority = "P0" | "P1";
+
+interface CapabilityAuditSignalDto {
+  id: string;
+  value?: string | number | boolean;
+  total?: number;
+}
+
+interface CapabilityAuditRowDto {
+  id: string;
+  status: CapabilityAuditStatus;
+  priority: CapabilityAuditPriority;
+  evidence: CapabilityAuditSignalDto[];
+  gaps: CapabilityAuditSignalDto[];
+}
+
+interface CapabilityAuditDto {
+  generatedAt: string;
+  maturityScore: number;
+  criticalGaps: number;
+  rows: CapabilityAuditRowDto[];
 }
 
 const dataClassificationSchema = z.enum(["public", "internal", "confidential", "sensitive", "health-data"]);
@@ -786,6 +811,13 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     }
   }));
 
+  server.get("/api/v1/capabilities", async (request) => ({
+    data: buildCapabilityAudit({
+      authorization: request.headers.authorization?.toString(),
+      forwardedProto: request.headers["x-forwarded-proto"]?.toString()
+    })
+  }));
+
   server.post("/api/v1/scans/plan", async (request, reply) => {
     const result = buildPlanFromRequest(request.body, request.id);
 
@@ -952,6 +984,215 @@ function evidenceScanLimit(): number {
   }
 
   return Math.min(Math.max(parsed, 1), 1000);
+}
+
+function buildCapabilityAudit(input: { authorization?: string; forwardedProto?: string }): CapabilityAuditDto {
+  const profileIds = new Set(defaultScanProfiles.map((profile) => profile.id));
+  const healthcareProfile = defaultScanProfiles.find((profile) => profile.id === "healthcare-reference");
+  const healthcareChecks = new Set(healthcareProfile?.checks ?? []);
+  const requiredHealthcareChecks = [
+    "threat-model",
+    "data-classification",
+    "privacy-impact",
+    "audit-logging",
+    "auth",
+    "authorization",
+    "encryption",
+    "retention",
+    "telemetry-export",
+    "syft:sbom",
+    "grype:sbom",
+    "osv:dependencies",
+    "iac:checkov",
+    "license-policy"
+  ];
+  const missingHealthcareChecks = requiredHealthcareChecks.filter((check) => !healthcareChecks.has(check));
+  const healthcareToolCategories = new Set(requiredScannerTools.filter((tool) => tool.requiredForHealthcare).map((tool) => tool.category));
+  const authStatus = getAuthStatus();
+  const akbStatus = getAkbIntegrationStatus(input.authorization);
+  const databaseConfigured = isPersistenceEnabled();
+  const redisConfigured = hasConfiguredEnv("REDIS_URL");
+  const reportsConfigured = hasConfiguredEnv("REPORTS_PATH");
+  const resultSinkEnabled = process.env.SECURITY_PREFLIGHT_RESULT_SINK_ENABLED === "true";
+  const resultSinkConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_RESULT_SINK_URL");
+  const resultSinkRequired = process.env.SECURITY_PREFLIGHT_RESULT_SINK_REQUIRED === "true";
+  const defectDojoEnabled = process.env.SECURITY_PREFLIGHT_DEFECTDOJO_EXPORT_ENABLED === "true";
+  const defectDojoConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_DEFECTDOJO_URL") && hasConfiguredEnv("SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT");
+  const autodiscoveryEnabled = process.env.PROJECTS_AUTODISCOVERY_ENABLED === "true";
+  const hasProjectRoots = hasConfiguredEnv("PROJECTS_ROOTS_CONTAINER") || hasConfiguredEnv("PROJECTS_ROOT_CONTAINER");
+  const hasHttpsBoundary = input.forwardedProto?.split(",").map((item) => item.trim().toLowerCase()).includes("https") ?? false;
+  const rows: CapabilityAuditRowDto[] = [
+    capabilityRow(
+      "scan-planning",
+      "P1",
+      [
+        signal("profile-count", defaultScanProfiles.length),
+        signal("healthcare-profile", profileIds.has("healthcare-reference")),
+        signal("web-perimeter-profile", profileIds.has("web-perimeter-safe")),
+        signal("enterprise-profile", profileIds.has("enterprise-assurance")),
+        signal("active-dast-guardrails", defaultScanProfiles.every((profile) => !profile.allowProductionTargets))
+      ],
+      [
+        ...missingSignal(!profileIds.has("healthcare-reference"), "missing-healthcare-profile"),
+        ...missingSignal(!profileIds.has("web-perimeter-safe"), "missing-web-perimeter-profile"),
+        ...missingSignal(!profileIds.has("enterprise-assurance"), "missing-enterprise-profile"),
+        ...missingSignal(!defaultScanProfiles.every((profile) => !profile.allowProductionTargets), "production-dast-unguarded")
+      ]
+    ),
+    capabilityRow(
+      "worker-execution",
+      "P1",
+      [
+        signal("queue-endpoint", true),
+        signal("redis-configured", redisConfigured),
+        signal("postgres-persistence", databaseConfigured),
+        signal("reports-path-configured", reportsConfigured),
+        signal("progress-endpoint", true)
+      ],
+      [
+        ...missingSignal(!redisConfigured, "missing-redis"),
+        ...missingSignal(!databaseConfigured, "missing-database"),
+        ...missingSignal(!reportsConfigured, "missing-reports-path")
+      ]
+    ),
+    capabilityRow(
+      "healthcare-reference",
+      "P0",
+      [
+        signal("healthcare-profile", Boolean(healthcareProfile)),
+        signal("healthcare-check-count", healthcareChecks.size),
+        signal("healthcare-tool-catalog", requiredScannerTools.filter((tool) => tool.requiredForHealthcare).length),
+        signal("healthcare-tool-categories", healthcareToolCategories.size),
+        signal("greenbone-openscap-defectdojo", true)
+      ],
+      missingHealthcareChecks.map((check) => signal("missing-healthcare-check", check))
+    ),
+    capabilityRow(
+      "findings",
+      "P0",
+      [
+        signal("postgres-persistence", databaseConfigured),
+        signal("triage-api", true),
+        signal("triage-owner-dates", true),
+        signal("finding-audit-events", true),
+        signal("codex-remediation-export", true)
+      ],
+      missingSignal(!databaseConfigured, "missing-database")
+    ),
+    capabilityRow(
+      "reports",
+      "P1",
+      [
+        signal("markdown-json-reports", true),
+        signal("sarif-export", true),
+        signal("pdf-pptx-export", true),
+        signal("central-envelope", true),
+        signal("delivery-manifests", true)
+      ],
+      []
+    ),
+    capabilityRow(
+      "akb-ai",
+      "P0",
+      [
+        signal("akb-boundary-no-local-storage", true),
+        signal("akb-requires-citations", akbStatus.boundaries.requiresCitations),
+        signal("akb-rag-configured", akbStatus.ragConfigured),
+        signal("akb-auth-mode", akbStatus.authMode)
+      ],
+      [
+        ...missingSignal(!akbStatus.ragConfigured, "akb-rag-missing"),
+        ...missingSignal(akbStatus.ragConfigured && akbStatus.authMode === "none", "akb-auth-missing")
+      ]
+    ),
+    capabilityRow(
+      "telemetry",
+      "P1",
+      [
+        signal("telemetry-ingest-endpoint", true),
+        signal("central-envelope", true),
+        signal("telemetry-delivery-manifest", true),
+        signal("result-sink-enabled", resultSinkEnabled),
+        signal("defectdojo-export-configured", defectDojoEnabled && defectDojoConfigured)
+      ],
+      [
+        ...missingSignal(resultSinkRequired && (!resultSinkEnabled || !resultSinkConfigured), "telemetry-required-sink-missing"),
+        ...missingSignal(defectDojoEnabled && !defectDojoConfigured, "defectdojo-config-missing")
+      ]
+    ),
+    capabilityRow(
+      "projects",
+      "P0",
+      [
+        signal("project-registry-persistence", true),
+        signal("project-update-delete-api", true),
+        signal("project-path-validation", true),
+        signal("project-stack-detection", true),
+        signal("project-autodiscovery", autodiscoveryEnabled),
+        signal("project-roots-configured", hasProjectRoots)
+      ],
+      [
+        ...missingSignal(!autodiscoveryEnabled, "project-autodiscovery-disabled"),
+        ...missingSignal(!hasProjectRoots, "project-roots-missing")
+      ]
+    ),
+    capabilityRow(
+      "auth",
+      "P0",
+      [
+        signal("auth-required", authStatus.required),
+        signal("oidc-configured", authStatus.mode === "oidc" && authStatus.configured),
+        signal("public-oidc-configured", authStatus.publicOidc.configured),
+        signal("rbac-required-roles", authStatus.requiredRoles.length),
+        signal("rbac-operator-roles", authStatus.operatorRoles.length),
+        ...(hasHttpsBoundary ? [signal("tls-forwarded", true)] : [])
+      ],
+      [
+        ...missingSignal(!authStatus.required, "auth-not-required"),
+        ...missingSignal(authStatus.mode !== "oidc" || !authStatus.configured, "oidc-not-configured"),
+        ...missingSignal(!authStatus.publicOidc.configured, "public-oidc-missing"),
+        ...missingSignal(authStatus.requiredRoles.length === 0 || authStatus.operatorRoles.length === 0, "rbac-roles-missing")
+      ]
+    )
+  ];
+
+  const maturityScore = Math.round(
+    rows.reduce((sum, row) => sum + (row.status === "Ready" ? 100 : row.status === "Partial" ? 70 : 0), 0) / rows.length
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    maturityScore,
+    criticalGaps: rows.filter((row) => row.priority === "P0" && row.status !== "Ready").length,
+    rows
+  };
+}
+
+function capabilityRow(
+  id: string,
+  priority: CapabilityAuditPriority,
+  evidence: CapabilityAuditSignalDto[],
+  gaps: CapabilityAuditSignalDto[]
+): CapabilityAuditRowDto {
+  return {
+    id,
+    priority,
+    evidence,
+    gaps,
+    status: gaps.length === 0 ? "Ready" : gaps.length <= 2 ? "Partial" : "Gap"
+  };
+}
+
+function signal(id: string, value?: string | number | boolean, total?: number): CapabilityAuditSignalDto {
+  return total == null ? { id, value } : { id, value, total };
+}
+
+function missingSignal(condition: boolean, id: string, value?: string | number | boolean): CapabilityAuditSignalDto[] {
+  return condition ? [signal(id, value)] : [];
+}
+
+function hasConfiguredEnv(name: string): boolean {
+  return Boolean(process.env[name]?.trim());
 }
 
 async function getScanRunDetail(scanRunId: string): Promise<ScanRunDetailDto | null> {
