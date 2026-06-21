@@ -2824,6 +2824,50 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+              <div className="security-live-handoff" aria-label={copy.newScan.latestOutcome}>
+                <div className="security-live-handoff-card">
+                  <span>
+                    <FileWarning size={14} aria-hidden="true" />
+                    {copy.scanLog.persistedFindings}
+                  </span>
+                  <strong>{copy.execution.findingsCount(latestRun?.findingCount ?? 0)}</strong>
+                  <p>{latestRun ? profileName(locale, latestRun.profile.id, latestRun.profile.name) : copy.execution.selectScanForDetail}</p>
+                </div>
+                <div className="security-live-handoff-card">
+                  <span>
+                    <Archive size={14} aria-hidden="true" />
+                    {copy.newScan.evidence}
+                  </span>
+                  <strong>{String(latestEvidenceCount)}</strong>
+                  <p>{latestRun?.evidence.root ?? "/reports"}</p>
+                </div>
+                <div className="security-live-handoff-card">
+                  <span>
+                    <ScrollText size={14} aria-hidden="true" />
+                    {copy.newScan.redactedMarkdown}
+                  </span>
+                  <strong>{codexReady ? translateStatus(locale, "ready") : translateStatus(locale, "empty")}</strong>
+                  <p>{exportingCodex ? copy.messages.generatingCodex : codexMessage}</p>
+                </div>
+                <div className="security-live-handoff-card">
+                  <span>
+                    <Bot size={14} aria-hidden="true" />
+                    {copy.telemetry.akbIntegration}
+                  </span>
+                  <strong>{akbStatus?.configured ? translateStatus(locale, "configured") : translateStatus(locale, "not configured")}</strong>
+                  <p>{copy.telemetry.storageMeta}</p>
+                </div>
+              </div>
+              <div className="security-live-actions">
+                <Button disabled={!latestRun} onClick={() => selectWorkspaceView("execution")} size="compact">
+                  <Archive size={14} />
+                  {copy.scanLog.openExecution}
+                </Button>
+                <Button variant="primary" disabled={!latestRun || exportingCodex || !authReady} onClick={exportCodexRemediation} size="compact">
+                  <Sparkles size={14} />
+                  {copy.newScan.exportCodex}
+                </Button>
+              </div>
             </div>
           </DataGridShell>
         </div>
@@ -2904,77 +2948,6 @@ export default function DashboardPage() {
           ) : null}
         </section>
 
-        <div className="security-split-grid">
-          <StructuredList
-            title={copy.newScan.latestOutcome}
-            description={latestRun ? `${latestRun.id} · ${formatDuration(latestRun.durationMs, locale)}` : copy.execution.runScanForEvidence}
-            count={
-              <Badge tone={latestRun ? statusTone(latestRun.gateResult) : "neutral"}>
-                {latestRun ? gateDisplayLabel(latestRun.gateResult, locale) : translateStatus(locale, "empty")}
-              </Badge>
-            }
-            toolbar={
-              <span className="security-toolbar-actions">
-                <Button disabled={loadingRuns} onClick={() => refreshScanRuns(latestRun?.id)} size="compact">
-                  <RefreshCw size={14} />
-                  {copy.execution.refresh}
-                </Button>
-                <Button disabled={!latestRun} onClick={() => selectWorkspaceView("execution")} size="compact">
-                  <Archive size={14} />
-                  {copy.scanLog.openExecution}
-                </Button>
-              </span>
-            }
-            items={[
-              {
-                id: "findings",
-                title: copy.scanLog.persistedFindings,
-                leading: <FileWarning size={15} />,
-                badges: <Badge tone={latestRun?.findingCount ? "danger" : "good"}>{copy.execution.findingsCount(latestRun?.findingCount ?? 0)}</Badge>,
-                meta: latestRun ? profileName(locale, latestRun.profile.id, latestRun.profile.name) : copy.execution.selectScanForDetail
-              },
-              {
-                id: "evidence",
-                title: copy.newScan.evidence,
-                leading: <Archive size={15} />,
-                badges: <Badge tone={latestEvidenceCount ? "good" : "neutral"}>{String(latestEvidenceCount)}</Badge>,
-                meta: latestRun?.evidence.root ?? "/reports"
-              }
-            ]}
-            ariaLabel={copy.newScan.latestOutcome}
-            className="security-list-card"
-          />
-
-          <StructuredList
-            title={copy.newScan.codexPackage}
-            description={exportingCodex ? copy.messages.generatingCodex : codexMessage}
-            count={<Badge tone={codexReady ? "good" : "neutral"}>{latestRun?.id ?? copy.newScan.noRun}</Badge>}
-            toolbar={
-              <Button variant="primary" disabled={!latestRun || exportingCodex || !authReady} onClick={exportCodexRemediation} size="compact">
-                <Sparkles size={14} />
-                {copy.newScan.exportCodex}
-              </Button>
-            }
-            items={[
-              {
-                id: "codex-markdown",
-                title: copy.newScan.redactedMarkdown,
-                leading: <ScrollText size={15} />,
-                badges: <Badge tone={codexReady ? "good" : "neutral"}>{codexReady ? translateStatus(locale, "ready") : translateStatus(locale, "empty")}</Badge>,
-                meta: copy.newScan.codexMeta
-              },
-              {
-                id: "akb",
-                title: copy.telemetry.akbIntegration,
-                leading: <Bot size={15} />,
-                badges: <Badge tone={akbStatus?.configured ? "good" : "warning"}>{akbStatus?.configured ? translateStatus(locale, "configured") : translateStatus(locale, "not configured")}</Badge>,
-                meta: copy.telemetry.storageMeta
-              }
-            ]}
-            ariaLabel={copy.newScan.codexPackage}
-            className="security-list-card"
-          />
-        </div>
       </div>
     );
   }

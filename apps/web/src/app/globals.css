@@ -506,6 +506,69 @@ code,
   min-width: 0;
 }
 
+.security-live-handoff {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.security-live-handoff-card {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-sm);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 9px;
+}
+
+.security-live-handoff-card > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.security-live-handoff-card > span svg {
+  flex: 0 0 auto;
+}
+
+.security-live-handoff-card strong {
+  min-width: 0;
+  color: var(--stratos-color-text);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.security-live-handoff-card p {
+  min-width: 0;
+  margin: 0;
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.security-live-actions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
 .security-live-step {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -1520,7 +1583,8 @@ code,
   .security-new-scan-layout,
   .security-scan-composer-grid,
   .security-scan-command-row,
-  .security-facts-inline {
+  .security-facts-inline,
+  .security-live-handoff {
     grid-template-columns: 1fr;
   }
 
