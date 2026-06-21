@@ -30,7 +30,7 @@ export interface CentralResultEnvelope {
 }
 
 export function generateJsonReport(input: ReportInput): string {
-  return redactSecrets(JSON.stringify(input, null, 2));
+  return JSON.stringify(input, redactingJsonReplacer, 2);
 }
 
 export function generateSarifReport(input: ReportInput): string {
@@ -123,7 +123,7 @@ export function generateSarifReport(input: ReportInput): string {
     ]
   };
 
-  return redactSecrets(JSON.stringify(sarif, null, 2));
+  return JSON.stringify(sarif, null, 2);
 }
 
 export function generateCentralResultEnvelope(input: ReportInput, generatedAt = new Date().toISOString()): CentralResultEnvelope {
@@ -272,4 +272,8 @@ function sarifSecuritySeverity(severity: Finding["severity"]): string {
 
 function truncateReportEvidence(value: string, maxLength = 2_000): string {
   return value.length <= maxLength ? value : `${value.slice(0, maxLength)}\n...[truncated]`;
+}
+
+function redactingJsonReplacer(_key: string, value: unknown): unknown {
+  return typeof value === "string" ? redactSecrets(value) : value;
 }

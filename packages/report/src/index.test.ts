@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptySeveritySummary, type Finding, type Project, type ScanProfile, type ScanRun } from "@security-preflight/core";
-import { generateCentralResultEnvelope, generateSarifReport } from "./index.js";
+import { generateCentralResultEnvelope, generateJsonReport, generateSarifReport } from "./index.js";
 
 describe("central result envelope", () => {
   it("generates a redacted stable result envelope", () => {
@@ -152,5 +152,77 @@ describe("central result envelope", () => {
     expect(sarif.runs[0].tool.driver.name).toBe("SecurityPreflight");
     expect(sarif.runs[0].results[0].level).toBe("error");
     expect(JSON.stringify(sarif)).not.toContain("secret-value");
+  });
+
+  it("generates parseable redacted JSON when findings contain control characters", () => {
+    const project: Project = {
+      id: "project_1",
+      name: "Healthcare API",
+      path: "/tmp/healthcare-api",
+      repositoryUrl: null,
+      defaultBranch: "main",
+      technologyStack: ["Node.js"],
+      dataClassification: "health-data",
+      owner: "security",
+      createdAt: "2026-06-13T09:00:00.000Z",
+      updatedAt: "2026-06-13T09:00:00.000Z"
+    };
+    const scanRun: ScanRun = {
+      id: "scan_1",
+      projectId: project.id,
+      profileId: "healthcare-reference",
+      status: "failed",
+      startedAt: "2026-06-13T10:00:00.000Z",
+      finishedAt: "2026-06-13T10:01:00.000Z",
+      commitHash: null,
+      branch: "main",
+      toolVersions: {},
+      summary: emptySeveritySummary(),
+      gateResult: "fail"
+    };
+    const profile: ScanProfile = {
+      id: "healthcare-reference",
+      name: "healthcare-reference",
+      description: "Healthcare reference profile",
+      checks: ["trivy:fs"],
+      failThreshold: "medium",
+      allowActiveDast: false,
+      allowProductionTargets: false,
+      timeoutSeconds: 2400
+    };
+    const finding: Finding = {
+      id: "finding_1",
+      scanRunId: scanRun.id,
+      tool: "trivy",
+      type: "sca",
+      severity: "low",
+      title: "Cookie encoder finding",
+      description: "cookie: session=secret-value\r\nSet-Cookie: admin=1",
+      evidence: "Authorization: Bearer secret-value\r\ncookie: session=secret-value",
+      filePath: null,
+      line: null,
+      endpoint: null,
+      cwe: "CWE-93",
+      cve: "CVE-2026-43969",
+      owasp: null,
+      recommendation: "Upgrade dependency.",
+      status: "open",
+      fingerprint: "abc123456789"
+    };
+    const reportText = generateJsonReport({
+      project,
+      scanRun,
+      profile,
+      gate: {
+        result: "fail",
+        blockingReasons: ["LOW healthcare-reference finding: Cookie encoder finding"],
+        summary: { ...emptySeveritySummary(), low: 1 }
+      },
+      findings: [finding]
+    });
+    const report = JSON.parse(reportText);
+
+    expect(report.findings[0].description).toContain("cookie: ********");
+    expect(reportText).not.toContain("secret-value");
   });
 });
