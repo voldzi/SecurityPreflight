@@ -659,6 +659,7 @@ export default function DashboardPage() {
   const [detailMode, setDetailMode] = useState<DetailSurfaceMode>("sidebar");
   const [scanLogOpen, setScanLogOpen] = useState(false);
   const [scanLogMode, setScanLogMode] = useState<DetailSurfaceMode>("sidebar");
+  const [projectRegistryOpen, setProjectRegistryOpen] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<"PDF" | "PPTX" | null>(null);
   const [exportingCodex, setExportingCodex] = useState(false);
   const [triagingFindingId, setTriagingFindingId] = useState<string | null>(null);
@@ -2378,6 +2379,27 @@ export default function DashboardPage() {
         meta: latestRun ? `${latestRun.id} · ${copy.execution.findingsCount(latestRun.findingCount)}` : copy.newScan.codexPending
       }
     ];
+    const activeRunId = scanResult.scanRunId ?? selectedRun?.id ?? latestRun?.id;
+    const activeRunDetail = selectedRun?.id === activeRunId ? selectedRun : null;
+    const activeProgress = scanProgress?.scanRunId === activeRunId ? scanProgress : null;
+    const liveTotalSteps = activeProgress?.totalSteps ?? activeRunDetail?.steps.length ?? scanResult.stepCount ?? selectedProfile?.checks.length ?? 0;
+    const liveCompletedSteps = activeProgress?.completedSteps ?? (activeRunDetail ? completedStepCount(activeRunDetail.steps) : scanResult.status === "success" ? liveTotalSteps : 0);
+    const liveProgressValue = progressValue(liveCompletedSteps, liveTotalSteps, activeProgress?.status ?? activeRunDetail?.status ?? scanResult.status);
+    const liveStatus = activeProgress?.status ?? activeRunDetail?.status ?? scanResult.status;
+    const scanIsActive = scanResult.status === "loading" || ["queued", "running"].includes(liveStatus.toLowerCase());
+    const liveStepItems = activeRunDetail?.steps.length
+      ? activeRunDetail.steps.slice(0, 8).map((step) => ({
+          id: step.stepId,
+          title: step.checkId,
+          status: step.status,
+          findingCount: step.findingCount
+        }))
+      : (selectedProfile?.checks ?? []).slice(0, 8).map((check, index) => ({
+          id: `${check}-${index}`,
+          title: check,
+          status: scanIsActive && index === 0 ? "running" : "pending",
+          findingCount: 0
+        }));
 
     return (
       <div className="security-view-stack">
@@ -2399,80 +2421,117 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <StructuredList
-          title={copy.newScan.workflow}
-          description={copy.newScan.workflowDescription}
-          count={<Badge tone={queuedOrRunning ? "warning" : codexReady ? "good" : "neutral"}>{scanResult.scanRunId ?? copy.newScan.noRun}</Badge>}
-          items={stepItems}
-          ariaLabel={copy.newScan.workflow}
-          className="security-list-card security-step-list"
-        />
+        <section className="security-flow-strip" aria-label={copy.newScan.workflow}>
+          {stepItems.map((item) => (
+            <div key={item.id} className="security-flow-step">
+              <span className="security-flow-icon">{item.leading}</span>
+              <span>
+                <strong>{item.title}</strong>
+                <small>{item.meta}</small>
+              </span>
+              {item.badges}
+            </div>
+          ))}
+        </section>
 
         <div className="security-new-scan-layout">
           <DataGridShell
-            title={<strong>{copy.newScan.target}</strong>}
-            toolbar={<Badge tone={targetReady ? "good" : "warning"}>{scanTargetMode === "web" ? copy.runPanel.webTarget : copy.runPanel.directoryTarget}</Badge>}
+            title={<strong>{copy.newScan.scanComposer}</strong>}
+            toolbar={<Badge tone={targetReady ? "good" : "warning"}>{targetReady ? copy.newScan.readyToRun : translateStatus(locale, "missing")}</Badge>}
             className="security-grid-shell"
           >
-            <div className="security-scan-control-panel">
-              <div className="security-target-mode" role="group" aria-label={copy.runPanel.targetType}>
-                <button
-                  type="button"
-                  className={scanTargetMode === "project" ? "is-active" : undefined}
-                  aria-pressed={scanTargetMode === "project"}
-                  onClick={() => {
-                    setScanTargetMode("project");
-                    setSelectedProfileId("documentation-compliance");
-                  }}
-                >
-                  <FolderGit2 size={14} aria-hidden="true" />
-                  {copy.runPanel.directoryTarget}
-                </button>
-                <button
-                  type="button"
-                  className={scanTargetMode === "web" ? "is-active" : undefined}
-                  aria-pressed={scanTargetMode === "web"}
-                  onClick={() => {
-                    setScanTargetMode("web");
-                    setSelectedProfileId("web-perimeter-safe");
-                  }}
-                >
-                  <Globe2 size={14} aria-hidden="true" />
-                  {copy.runPanel.webTarget}
-                </button>
+            <div className="security-scan-composer">
+              <div className="security-scan-composer-grid">
+                <section className="security-scan-composer-section">
+                  <div className="security-section-heading">
+                    <FolderGit2 size={16} aria-hidden="true" />
+                    <strong>{copy.newScan.target}</strong>
+                  </div>
+                  <div className="security-target-mode" role="group" aria-label={copy.runPanel.targetType}>
+                    <button
+                      type="button"
+                      className={scanTargetMode === "project" ? "is-active" : undefined}
+                      aria-pressed={scanTargetMode === "project"}
+                      onClick={() => {
+                        setScanTargetMode("project");
+                        setSelectedProfileId("documentation-compliance");
+                      }}
+                    >
+                      <FolderGit2 size={14} aria-hidden="true" />
+                      {copy.runPanel.directoryTarget}
+                    </button>
+                    <button
+                      type="button"
+                      className={scanTargetMode === "web" ? "is-active" : undefined}
+                      aria-pressed={scanTargetMode === "web"}
+                      onClick={() => {
+                        setScanTargetMode("web");
+                        setSelectedProfileId("web-perimeter-safe");
+                      }}
+                    >
+                      <Globe2 size={14} aria-hidden="true" />
+                      {copy.runPanel.webTarget}
+                    </button>
+                  </div>
+
+                  {scanTargetMode === "project" ? (
+                    <SelectField
+                      label={copy.projects.selectProject}
+                      value={selectedProject?.id ?? ""}
+                      onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
+                      searchPlaceholder={copy.projects.selectProject}
+                    >
+                      {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </SelectField>
+                  ) : (
+                    <label className="security-akb-question">
+                      <span>{copy.runPanel.webTargetUrl}</span>
+                      <input
+                        value={webTargetUrl}
+                        onChange={(event) => setWebTargetUrl(event.currentTarget.value)}
+                        placeholder={copy.runPanel.webTargetPlaceholder}
+                        inputMode="url"
+                        autoComplete="url"
+                      />
+                    </label>
+                  )}
+                  <p className="security-run-description">{scanTargetMode === "web" ? copy.runPanel.webTargetHelp : copy.runPanel.directoryTargetHelp}</p>
+                </section>
+
+                <section className="security-scan-composer-section">
+                  <div className="security-section-heading">
+                    <ClipboardList size={16} aria-hidden="true" />
+                    <strong>{copy.newScan.scanControl}</strong>
+                  </div>
+                  <SelectField
+                    label={copy.runPanel.scanProfile}
+                    value={effectiveProfileId}
+                    onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
+                    searchPlaceholder={copy.runPanel.findProfile}
+                  >
+                    {profileOptions.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profileName(locale, profile.id, profile.name)}
+                      </option>
+                    ))}
+                  </SelectField>
+                  <p className="security-run-description">{selectedProfileDescription}</p>
+                </section>
               </div>
 
-              {scanTargetMode === "project" ? (
-                <SelectField
-                  label={copy.projects.selectProject}
-                  value={selectedProject?.id ?? ""}
-                  onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
-                  searchPlaceholder={copy.projects.selectProject}
-                >
-                  {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </SelectField>
-              ) : (
-                <label className="security-akb-question">
-                  <span>{copy.runPanel.webTargetUrl}</span>
-                  <input
-                    value={webTargetUrl}
-                    onChange={(event) => setWebTargetUrl(event.currentTarget.value)}
-                    placeholder={copy.runPanel.webTargetPlaceholder}
-                    inputMode="url"
-                    autoComplete="url"
-                  />
-                </label>
-              )}
-
-              <div className="security-facts">
+              <div className="security-facts security-facts-inline">
                 <div>
                   <span>{copy.newScan.selectedTarget}</span>
                   <strong>{targetValue}</strong>
+                </div>
+                <div>
+                  <span>{copy.runPanel.checks}</span>
+                  <strong>{selectedProfile?.checks.length ?? 0}</strong>
                 </div>
                 <div>
                   <span>{copy.projects.dataClassification}</span>
@@ -2483,111 +2542,134 @@ export default function DashboardPage() {
                   <strong>{healthcareDoctor ? copy.runPanel.healthcareReady(healthcareDoctor.available) : copy.runPanel.notChecked}</strong>
                 </div>
               </div>
-              <p className="security-run-description">{scanTargetMode === "web" ? copy.runPanel.webTargetHelp : copy.runPanel.directoryTargetHelp}</p>
+
+              <div className="security-scan-command-row">
+                <div className="security-actions">
+                  <Button variant="primary" disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("queue")}>
+                    <Play size={14} />
+                    {copy.runPanel.runScan}
+                  </Button>
+                  <Button disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("plan")}>
+                    <ClipboardList size={14} />
+                    {copy.runPanel.dryRun}
+                  </Button>
+                  <Button disabled={!scanResult.scanRunId && !latestRun} onClick={openScanLog}>
+                    <TerminalSquare size={14} />
+                    {copy.runPanel.openScanLog}
+                  </Button>
+                </div>
+                <div className="security-result" data-tone={statusTone(scanResult.status)} role="status">
+                  <strong>{scanResult.status === "loading" ? copy.runPanel.working : statusDisplayLabel(scanResult.status, locale)}</strong>
+                  <p>{scanResult.message}</p>
+                  {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
+                  {scanResult.stepCount != null ? <span>{copy.runPanel.plannedSteps(scanResult.stepCount)}</span> : null}
+                </div>
+              </div>
             </div>
           </DataGridShell>
 
           <DataGridShell
-            title={<strong>{copy.newScan.scanControl}</strong>}
-            toolbar={<Badge tone={selectedProfile?.allowActiveDast ? "warning" : "info"}>{profileName(locale, effectiveProfileId, effectiveProfileId)}</Badge>}
+            title={<strong>{copy.newScan.liveProgress}</strong>}
+            toolbar={<Badge tone={scanIsActive ? "warning" : activeRunDetail ? statusTone(activeRunDetail.gateResult) : "neutral"}>{scanIsActive ? copy.newScan.runningNow : copy.newScan.lastRun}</Badge>}
             className="security-grid-shell"
           >
-            <div className="security-scan-control-panel">
-              <SelectField
-                label={copy.runPanel.scanProfile}
-                value={effectiveProfileId}
-                onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
-                searchPlaceholder={copy.runPanel.findProfile}
-              >
-                {profileOptions.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profileName(locale, profile.id, profile.name)}
-                  </option>
-                ))}
-              </SelectField>
-              <p className="security-run-description">{selectedProfileDescription}</p>
-              <div className="security-actions">
-                <Button variant="primary" disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("queue")}>
-                  <Play size={14} />
-                  {copy.runPanel.runScan}
-                </Button>
-                <Button disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("plan")}>
-                  <ClipboardList size={14} />
-                  {copy.runPanel.dryRun}
-                </Button>
-                <Button disabled={!scanResult.scanRunId && !latestRun} onClick={openScanLog}>
-                  <TerminalSquare size={14} />
-                  {copy.runPanel.openScanLog}
-                </Button>
+            <div className={`security-live-scan${scanIsActive ? " is-running" : ""}`}>
+              <div className="security-live-orb" aria-hidden="true">
+                <Activity size={28} />
               </div>
-              <div className="security-result" data-tone={statusTone(scanResult.status)} role="status">
-                <strong>{scanResult.status === "loading" ? copy.runPanel.working : statusDisplayLabel(scanResult.status, locale)}</strong>
-                <p>{scanResult.message}</p>
-                {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
-                {scanResult.stepCount != null ? <span>{copy.runPanel.plannedSteps(scanResult.stepCount)}</span> : null}
+              <div className="security-live-copy">
+                <span>{activeRunId ?? copy.newScan.noRun}</span>
+                <strong>{copy.scanLog.completedSteps(liveCompletedSteps, liveTotalSteps)}</strong>
+                <ProgressBar value={liveProgressValue} tone={liveProgressValue === 100 ? "good" : "warning"} label={copy.scanLog.progress} />
+              </div>
+              <div className="security-live-steps">
+                {liveStepItems.map((step, index) => (
+                  <div key={step.id} className="security-live-step" data-status={step.status.toLowerCase()}>
+                    <span>{index + 1}</span>
+                    <strong>{step.title}</strong>
+                    <small>{step.findingCount ? copy.execution.findingsCount(step.findingCount) : statusDisplayLabel(step.status, locale)}</small>
+                  </div>
+                ))}
               </div>
             </div>
           </DataGridShell>
         </div>
 
-        <DataGridShell
-          title={<strong>{copy.newScan.projectRegistry}</strong>}
-          toolbar={
-            <Button disabled={loadingProjects || !authReady} onClick={refreshProjects} size="compact">
+        <section className={`security-register-drawer${projectRegistryOpen ? " is-open" : ""}`}>
+          <div className="security-register-summary">
+            <button
+              type="button"
+              className="security-register-toggle"
+              aria-expanded={projectRegistryOpen}
+              onClick={() => setProjectRegistryOpen((open) => !open)}
+            >
+              <ChevronRight size={15} aria-hidden="true" />
+              <span>
+                <strong>{copy.newScan.projectRegistry}</strong>
+                <small>{copy.newScan.projectRegistryDescription}</small>
+              </span>
+            </button>
+            <Button
+              disabled={loadingProjects || !authReady}
+              onClick={() => {
+                void refreshProjects();
+              }}
+              size="compact"
+            >
               <History size={14} />
               {copy.projects.refresh}
             </Button>
-          }
-          className="security-grid-shell"
-        >
-          <div className="security-project-form security-project-form-compact">
-            <label className="security-akb-question" htmlFor="new-project-name">
-              <span>{copy.projects.name}</span>
-              <input
-                id="new-project-name"
-                aria-label={copy.projects.name}
-                value={projectForm.name}
-                onChange={(event) => setProjectForm((current) => ({ ...current, name: event.currentTarget.value }))}
-                autoComplete="off"
-              />
-            </label>
-            <label className="security-akb-question security-project-path" htmlFor="new-project-path">
-              <span>{copy.projects.path}</span>
-              <input
-                id="new-project-path"
-                aria-label={copy.projects.path}
-                value={projectForm.path}
-                onChange={(event) => setProjectForm((current) => ({ ...current, path: event.currentTarget.value }))}
-                autoComplete="off"
-              />
-            </label>
-            <label className="security-akb-question" htmlFor="new-project-data-classification">
-              <span>{copy.projects.dataClassification}</span>
-              <select
-                id="new-project-data-classification"
-                aria-label={copy.projects.dataClassification}
-                value={projectForm.dataClassification}
-                onChange={(event) => {
-                  const value = event.currentTarget.value as RegisteredProject["dataClassification"];
-                  setProjectForm((current) => ({ ...current, dataClassification: value }));
-                }}
-              >
-                {(["internal", "sensitive", "health-data", "confidential", "public"] as const).map((classification) => (
-                  <option key={classification} value={classification}>
-                    {copy.projects.classifications[classification]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="security-project-form-actions">
-              <Button variant="primary" disabled={registeringProject || !authReady} onClick={registerProject}>
-                <FolderGit2 size={14} />
-                {registeringProject ? copy.projects.registering : copy.projects.register}
-              </Button>
-              <span>{projectMessage}</span>
-            </div>
           </div>
-        </DataGridShell>
+          {projectRegistryOpen ? (
+            <div className="security-project-form security-project-form-compact security-register-body">
+              <label className="security-akb-question" htmlFor="new-project-name">
+                <span>{copy.projects.name}</span>
+                <input
+                  id="new-project-name"
+                  aria-label={copy.projects.name}
+                  value={projectForm.name}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, name: event.currentTarget.value }))}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="security-akb-question security-project-path" htmlFor="new-project-path">
+                <span>{copy.projects.path}</span>
+                <input
+                  id="new-project-path"
+                  aria-label={copy.projects.path}
+                  value={projectForm.path}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, path: event.currentTarget.value }))}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="security-akb-question" htmlFor="new-project-data-classification">
+                <span>{copy.projects.dataClassification}</span>
+                <select
+                  id="new-project-data-classification"
+                  aria-label={copy.projects.dataClassification}
+                  value={projectForm.dataClassification}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value as RegisteredProject["dataClassification"];
+                    setProjectForm((current) => ({ ...current, dataClassification: value }));
+                  }}
+                >
+                  {(["internal", "sensitive", "health-data", "confidential", "public"] as const).map((classification) => (
+                    <option key={classification} value={classification}>
+                      {copy.projects.classifications[classification]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="security-project-form-actions">
+                <Button variant="primary" disabled={registeringProject || !authReady} onClick={registerProject}>
+                  <FolderGit2 size={14} />
+                  {registeringProject ? copy.projects.registering : copy.projects.register}
+                </Button>
+                <span>{projectMessage}</span>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
         <div className="security-split-grid">
           <StructuredList
@@ -3620,6 +3702,14 @@ export default function DashboardPage() {
     );
   }
 
+  const runPanelRunId = scanResult.scanRunId ?? selectedRun?.id ?? latestRun?.id;
+  const runPanelDetail = selectedRun?.id === runPanelRunId ? selectedRun : null;
+  const runPanelProgress = scanProgress?.scanRunId === runPanelRunId ? scanProgress : null;
+  const runPanelTotalSteps = runPanelProgress?.totalSteps ?? runPanelDetail?.steps.length ?? scanResult.stepCount ?? selectedProfile?.checks.length ?? 0;
+  const runPanelCompletedSteps = runPanelProgress?.completedSteps ?? (runPanelDetail ? completedStepCount(runPanelDetail.steps) : scanResult.status === "success" ? runPanelTotalSteps : 0);
+  const runPanelProgressValue = progressValue(runPanelCompletedSteps, runPanelTotalSteps, runPanelProgress?.status ?? runPanelDetail?.status ?? scanResult.status);
+  const runPanelActive = scanResult.status === "loading" || ["queued", "running"].includes((runPanelProgress?.status ?? "").toLowerCase());
+
   return (
     <AppShell
       className="security-shell"
@@ -3686,80 +3776,23 @@ export default function DashboardPage() {
             <RagBadge status={statusRag(scanGate)} label={scanResult.gate ? actionGateDisplayLabel(scanResult.gate, locale) : statusDisplayLabel(scanResult.status, locale)} />
           </div>
 
-          <div className="security-target-mode" role="group" aria-label={copy.runPanel.targetType}>
-            <button
-              type="button"
-              className={scanTargetMode === "project" ? "is-active" : undefined}
-              aria-pressed={scanTargetMode === "project"}
-              onClick={() => {
-                setScanTargetMode("project");
-                setSelectedProfileId("documentation-compliance");
-              }}
-            >
-              <FolderGit2 size={14} aria-hidden="true" />
-              {copy.runPanel.directoryTarget}
-            </button>
-            <button
-              type="button"
-              className={scanTargetMode === "web" ? "is-active" : undefined}
-              aria-pressed={scanTargetMode === "web"}
-              onClick={() => {
-                setScanTargetMode("web");
-                setSelectedProfileId("web-perimeter-safe");
-              }}
-            >
-              <Globe2 size={14} aria-hidden="true" />
-              {copy.runPanel.webTarget}
-            </button>
+          <div className={`security-run-panel-progress${runPanelActive ? " is-running" : ""}`}>
+            <div>
+              <span>{copy.scanLog.progress}</span>
+              <strong>{copy.scanLog.completedSteps(runPanelCompletedSteps, runPanelTotalSteps)}</strong>
+            </div>
+            <ProgressBar value={runPanelProgressValue} tone={runPanelProgressValue === 100 ? "good" : "warning"} label={copy.scanLog.progress} />
+            <small>{runPanelRunId ?? copy.newScan.noRun}</small>
           </div>
-
-          {scanTargetMode === "project" ? (
-            <SelectField
-              label={copy.projects.selectProject}
-              value={selectedProject?.id ?? ""}
-              onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
-              searchPlaceholder={copy.projects.selectProject}
-            >
-              {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </SelectField>
-          ) : (
-            <label className="security-akb-question">
-              <span>{copy.runPanel.webTargetUrl}</span>
-              <input
-                value={webTargetUrl}
-                onChange={(event) => setWebTargetUrl(event.currentTarget.value)}
-                placeholder={copy.runPanel.webTargetPlaceholder}
-                inputMode="url"
-                autoComplete="url"
-              />
-            </label>
-          )}
-
-          <SelectField
-            label={copy.runPanel.scanProfile}
-            value={effectiveProfileId}
-            onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
-            searchPlaceholder={copy.runPanel.findProfile}
-          >
-            {profileOptions.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profileName(locale, profile.id, profile.name)}
-              </option>
-            ))}
-          </SelectField>
-
-          <p className="security-run-description">{selectedProfileDescription}</p>
-          <p className="security-run-description">{scanTargetMode === "web" ? copy.runPanel.webTargetHelp : copy.runPanel.directoryTargetHelp}</p>
 
           <div className="security-facts">
             <div>
               <span>{copy.runPanel.project}</span>
               <strong>{activeScanProject.name}</strong>
+            </div>
+            <div>
+              <span>{copy.runPanel.scanProfile}</span>
+              <strong>{profileName(locale, effectiveProfileId, selectedProfile?.name ?? effectiveProfileId)}</strong>
             </div>
             <div>
               <span>{copy.runPanel.checks}</span>

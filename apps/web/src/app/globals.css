@@ -302,7 +302,7 @@ code,
 
 .security-new-scan-layout {
   display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
   gap: 12px;
   min-width: 0;
 }
@@ -312,6 +312,263 @@ code,
   gap: 12px;
   min-width: 0;
   padding: 12px;
+}
+
+.security-flow-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.security-flow-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+  padding: 10px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.security-flow-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--stratos-radius-sm);
+  background: var(--stratos-color-surface-subtle);
+  color: var(--stratos-color-primary);
+}
+
+.security-flow-step strong,
+.security-section-heading strong {
+  display: block;
+  color: var(--stratos-color-text);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.security-flow-step small {
+  display: block;
+  min-width: 0;
+  margin-top: 2px;
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-scan-composer {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.security-scan-composer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.security-scan-composer-section {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface-subtle);
+  padding: 12px;
+}
+
+.security-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--stratos-color-primary);
+}
+
+.security-facts-inline {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.security-facts-inline div {
+  border-bottom: 0;
+  border-right: 1px solid var(--stratos-color-border);
+}
+
+.security-facts-inline div:last-child {
+  border-right: 0;
+}
+
+.security-scan-command-row {
+  display: grid;
+  grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+
+.security-live-scan {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  min-height: 100%;
+  overflow: hidden;
+  padding: 14px;
+}
+
+.security-live-scan::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.08), transparent),
+    repeating-linear-gradient(135deg, transparent 0 16px, rgba(15, 23, 42, 0.025) 16px 17px);
+  transform: translateX(-55%);
+  opacity: 0;
+}
+
+.security-live-scan.is-running::before {
+  animation: security-scan-sweep 2.4s linear infinite;
+  opacity: 1;
+}
+
+.security-live-orb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  width: 92px;
+  height: 92px;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(37, 99, 235, 0.22), transparent 58%),
+    var(--stratos-color-surface-subtle);
+  color: var(--stratos-color-primary);
+}
+
+.security-live-orb::before,
+.security-live-orb::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  border-top-color: transparent;
+  border-radius: inherit;
+}
+
+.security-live-scan.is-running .security-live-orb::before {
+  animation: security-spin 1.8s linear infinite;
+}
+
+.security-live-scan.is-running .security-live-orb::after {
+  inset: -6px;
+  border-color: rgba(16, 185, 129, 0.25);
+  animation: security-pulse 1.6s ease-in-out infinite;
+}
+
+.security-live-copy {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.security-live-copy span,
+.security-run-panel-progress span,
+.security-run-panel-progress small {
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.security-live-copy strong,
+.security-run-panel-progress strong {
+  color: var(--stratos-color-text);
+  font-size: 15px;
+}
+
+.security-live-steps {
+  position: relative;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.security-live-step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 7px 8px;
+}
+
+.security-live-step span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--stratos-color-surface-subtle);
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.security-live-step strong {
+  min-width: 0;
+  color: var(--stratos-color-text);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-live-step small {
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.security-live-step[data-status="running"] span,
+.security-live-step[data-status="loading"] span,
+.security-live-step[data-status="queued"] span {
+  background: var(--stratos-color-warning-soft);
+  color: #b45309;
+}
+
+.security-live-step[data-status="completed"] span,
+.security-live-step[data-status="passed"] span,
+.security-live-step[data-status="success"] span {
+  background: var(--stratos-color-success-soft);
+  color: #047857;
+}
+
+.security-live-step[data-status="failed"] span,
+.security-live-step[data-status="error"] span,
+.security-live-step[data-status="blocked"] span {
+  background: var(--stratos-color-danger-soft);
+  color: #be123c;
 }
 
 .security-step-list {
@@ -925,6 +1182,74 @@ code,
   border-bottom: 0;
 }
 
+.security-register-drawer {
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
+}
+
+.security-register-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.security-register-toggle {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.security-register-toggle > span {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.security-register-toggle svg {
+  flex: 0 0 auto;
+  color: var(--stratos-color-muted);
+  transition: transform 160ms ease;
+}
+
+.security-register-drawer.is-open .security-register-toggle svg {
+  transform: rotate(90deg);
+}
+
+.security-register-toggle strong {
+  color: var(--stratos-color-text);
+  font-size: 15px;
+}
+
+.security-register-toggle small {
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.security-register-toggle:focus-visible {
+  outline: 2px solid var(--stratos-color-primary);
+  outline-offset: 3px;
+}
+
+.security-register-body {
+  border-top: 1px solid var(--stratos-color-border);
+}
+
 .security-target-mode {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -997,6 +1322,54 @@ code,
 .security-akb-question textarea:focus {
   outline: 2px solid color-mix(in srgb, var(--stratos-color-primary) 45%, transparent);
   outline-offset: 1px;
+}
+
+.security-run-panel-progress {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  overflow: hidden;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface-subtle);
+  padding: 12px;
+}
+
+.security-run-panel-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.12), transparent);
+  transform: translateX(-80%);
+  opacity: 0;
+}
+
+.security-run-panel-progress.is-running::before {
+  animation: security-scan-sweep 1.9s linear infinite;
+  opacity: 1;
+}
+
+.security-run-panel-progress > div {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.security-run-panel-progress span,
+.security-run-panel-progress small {
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.security-run-panel-progress strong {
+  color: var(--stratos-color-text);
+  font-size: 15px;
 }
 
 .security-scan-log {
@@ -1124,10 +1497,67 @@ code,
   padding: 16px;
 }
 
+@keyframes security-scan-sweep {
+  from {
+    transform: translateX(-80%);
+  }
+  to {
+    transform: translateX(80%);
+  }
+}
+
+@keyframes security-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes security-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .security-live-scan.is-running::before,
+  .security-live-scan.is-running .security-live-orb::before,
+  .security-live-scan.is-running .security-live-orb::after,
+  .security-run-panel-progress.is-running::before {
+    animation: none;
+  }
+}
+
+@media (max-width: 1500px) {
+  .security-new-scan-layout,
+  .security-scan-composer-grid,
+  .security-scan-command-row,
+  .security-facts-inline {
+    grid-template-columns: 1fr;
+  }
+
+  .security-flow-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .security-facts-inline div {
+    border-right: 0;
+    border-bottom: 1px solid var(--stratos-color-border);
+  }
+
+  .security-facts-inline div:last-child {
+    border-bottom: 0;
+  }
+}
+
 @media (max-width: 1180px) {
   .security-content,
-  .security-analysis-panel,
-  .security-new-scan-layout {
+  .security-analysis-panel {
     grid-template-columns: 1fr;
   }
 
@@ -1159,6 +1589,15 @@ code,
 
   .security-new-scan-hero-actions {
     justify-content: flex-start;
+  }
+
+  .security-register-summary {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .security-register-summary > .stratos-button {
+    justify-self: start;
   }
 
   .security-project-path,
