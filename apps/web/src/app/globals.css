@@ -92,7 +92,7 @@ code,
 
 .security-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
   max-width: 100%;
@@ -231,7 +231,6 @@ code,
 
 .security-grid-shell,
 .security-list-card,
-.security-run-panel,
 .security-analysis-panel {
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
 }
@@ -488,17 +487,14 @@ code,
   min-width: 0;
 }
 
-.security-live-copy span,
-.security-run-panel-progress span,
-.security-run-panel-progress small {
+.security-live-copy span {
   color: var(--stratos-color-muted);
   font-size: 11px;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.security-live-copy strong,
-.security-run-panel-progress strong {
+.security-live-copy strong {
   color: var(--stratos-color-text);
   font-size: 15px;
 }
@@ -613,35 +609,6 @@ code,
   color: var(--stratos-color-text);
   font-size: 28px;
   line-height: 1;
-}
-
-.security-run-panel {
-  position: sticky;
-  top: 12px;
-  display: grid;
-  gap: 14px;
-  align-self: start;
-  min-width: 0;
-  border: 1px solid var(--stratos-color-border);
-  border-radius: var(--stratos-radius-md);
-  background: var(--stratos-color-surface);
-  padding: 14px;
-}
-
-.security-run-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.security-run-header span {
-  display: block;
-  margin-top: 4px;
-  color: var(--stratos-color-muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
 }
 
 .security-facts {
@@ -847,6 +814,61 @@ code,
   color: var(--stratos-color-text);
   font-size: 11px;
   line-height: 1.35;
+}
+
+.security-blocker-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.security-blocker-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.security-blocker-row {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+  padding: 10px 12px;
+}
+
+.security-blocker-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.security-blocker-row-header strong {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--stratos-color-text);
+  font-size: 13px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.security-blocker-row-header > span:last-child {
+  flex: 0 0 auto;
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.security-blocker-row p,
+.security-blocker-empty {
+  margin: 0;
+  color: var(--stratos-color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .security-cell-stack {
@@ -1334,54 +1356,6 @@ code,
   outline-offset: 1px;
 }
 
-.security-run-panel-progress {
-  position: relative;
-  display: grid;
-  gap: 8px;
-  overflow: hidden;
-  border: 1px solid var(--stratos-color-border);
-  border-radius: var(--stratos-radius-md);
-  background: var(--stratos-color-surface-subtle);
-  padding: 12px;
-}
-
-.security-run-panel-progress::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.12), transparent);
-  transform: translateX(-80%);
-  opacity: 0;
-}
-
-.security-run-panel-progress.is-running::before {
-  animation: security-scan-sweep 1.9s linear infinite;
-  opacity: 1;
-}
-
-.security-run-panel-progress > div {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
-.security-run-panel-progress span,
-.security-run-panel-progress small {
-  color: var(--stratos-color-muted);
-  font-size: 11px;
-  font-weight: 700;
-  overflow-wrap: anywhere;
-}
-
-.security-run-panel-progress strong {
-  color: var(--stratos-color-text);
-  font-size: 15px;
-}
-
 .security-scan-log {
   display: grid;
   gap: 14px;
@@ -1537,8 +1511,7 @@ code,
 @media (prefers-reduced-motion: reduce) {
   .security-live-scan.is-running::before,
   .security-live-scan.is-running .security-live-orb::before,
-  .security-live-scan.is-running .security-live-orb::after,
-  .security-run-panel-progress.is-running::before {
+  .security-live-scan.is-running .security-live-orb::after {
     animation: none;
   }
 }
@@ -1569,10 +1542,6 @@ code,
   .security-content,
   .security-analysis-panel {
     grid-template-columns: 1fr;
-  }
-
-  .security-run-panel {
-    position: static;
   }
 }
 

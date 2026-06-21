@@ -804,7 +804,8 @@ export default function DashboardPage() {
       capabilityRows.filter((row) => row.status === "Partial").length * 55) /
       capabilityRows.length
   );
-  const criticalGaps = capabilityRows.filter((row) => row.priority === "P0" && row.status !== "Ready").length;
+  const criticalCapabilityRows = capabilityRows.filter((row) => row.priority === "P0" && row.status !== "Ready");
+  const criticalGaps = criticalCapabilityRows.length;
   const scanGate = scanResult.status === "error" || scanResult.blocked ? "Blocked" : scanResult.status === "success" ? "Ready" : "Partial";
   const authReady = authStatus ? !accessDenied && (!authStatus.required || Boolean(authToken)) : false;
   const authLabel = accessDenied
@@ -2630,6 +2631,10 @@ export default function DashboardPage() {
                     <TerminalSquare size={14} />
                     {copy.runPanel.openScanLog}
                   </Button>
+                  <Button onClick={() => setDetailOpen(true)}>
+                    <AlertTriangle size={14} />
+                    {copy.runPanel.showBlockers}
+                  </Button>
                 </div>
                 <div className="security-result" data-tone={scanResultTone} role="status">
                   <strong>{scanResultLabel}</strong>
@@ -3782,24 +3787,6 @@ export default function DashboardPage() {
     );
   }
 
-  const runPanelRunId = scanResult.scanRunId ?? selectedRun?.id ?? latestRun?.id;
-  const runPanelDetail = selectedRun?.id === runPanelRunId ? selectedRun : null;
-  const runPanelProgress = scanProgress?.scanRunId === runPanelRunId ? scanProgress : null;
-  const runPanelTotalSteps = runPanelProgress?.totalSteps ?? runPanelDetail?.steps.length ?? scanResult.stepCount ?? selectedProfile?.checks.length ?? 0;
-  const runPanelCompletedSteps = runPanelProgress?.completedSteps ?? (runPanelDetail ? completedStepCount(runPanelDetail.steps) : scanResult.status === "success" ? runPanelTotalSteps : 0);
-  const runPanelProgressValue = progressValue(runPanelCompletedSteps, runPanelTotalSteps, runPanelProgress?.status ?? runPanelDetail?.status ?? scanResult.status);
-  const runPanelActive = scanResult.status === "loading" || ["queued", "running"].includes((runPanelProgress?.status ?? "").toLowerCase());
-  const runPanelResultTone = queueRequiresWebTarget || scanResult.blocked ? "warning" : statusTone(scanResult.status);
-  const runPanelResultLabel = queueRequiresWebTarget
-    ? gateDisplayLabel("warning", locale)
-    : scanResult.blocked
-      ? actionGateDisplayLabel("blocked", locale)
-      : scanResult.status === "loading"
-        ? copy.runPanel.working
-        : statusDisplayLabel(scanResult.status, locale);
-  const runPanelResultMessage = queueRequiresWebTarget ? copy.messages.activeProfileNeedsWebTarget : scanResult.message;
-  const runPanelBlockedReasons = queueRequiresWebTarget ? [copy.messages.activeProfileNeedsWebTargetReason] : (scanResult.blockedReasons ?? []);
-
   return (
     <AppShell
       className="security-shell"
@@ -3856,67 +3843,6 @@ export default function DashboardPage() {
     >
       <div className="security-content">
         <section className="security-main">{renderedView}</section>
-
-        <aside className="security-run-panel" aria-label={copy.runPanel.aria}>
-          <div className="security-run-header">
-            <div>
-              <h2>{copy.runPanel.title}</h2>
-              <span>{scanTargetMode === "web" ? webTargetUrl.trim() || copy.runPanel.webTargetPlaceholder : activeScanProject.path}</span>
-            </div>
-            <RagBadge status={statusRag(scanGate)} label={scanResult.gate ? actionGateDisplayLabel(scanResult.gate, locale) : statusDisplayLabel(scanResult.status, locale)} />
-          </div>
-
-          <div className={`security-run-panel-progress${runPanelActive ? " is-running" : ""}`}>
-            <div>
-              <span>{copy.scanLog.progress}</span>
-              <strong>{copy.scanLog.completedSteps(runPanelCompletedSteps, runPanelTotalSteps)}</strong>
-            </div>
-            <ProgressBar value={runPanelProgressValue} tone={runPanelProgressValue === 100 ? "good" : "warning"} label={copy.scanLog.progress} />
-            <small>{runPanelRunId ?? copy.newScan.noRun}</small>
-          </div>
-
-          <div className="security-facts">
-            <div>
-              <span>{copy.runPanel.project}</span>
-              <strong>{activeScanProject.name}</strong>
-            </div>
-            <div>
-              <span>{copy.runPanel.scanProfile}</span>
-              <strong>{profileName(locale, effectiveProfileId, selectedProfile?.name ?? effectiveProfileId)}</strong>
-            </div>
-            <div>
-              <span>{copy.runPanel.checks}</span>
-              <strong>{selectedProfile?.checks.length ?? 0}</strong>
-            </div>
-            <div>
-              <span>{copy.projects.dataClassification}</span>
-              <strong>{copy.projects.classifications[activeScanProject.dataClassification]}</strong>
-            </div>
-            <div>
-              <span>{copy.runPanel.tools}</span>
-              <strong>{healthcareDoctor ? copy.runPanel.healthcareReady(healthcareDoctor.available) : copy.runPanel.notChecked}</strong>
-            </div>
-          </div>
-
-          <div className="security-result" data-tone={runPanelResultTone} role="status">
-            <strong>{runPanelResultLabel}</strong>
-            <p>{runPanelResultMessage}</p>
-            {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
-            {scanResult.stepCount != null ? <span>{copy.runPanel.plannedSteps(scanResult.stepCount)}</span> : null}
-            {runPanelBlockedReasons.length ? (
-              <ul className="security-result-reasons">
-                {runPanelBlockedReasons.slice(0, 3).map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-
-          <Button className="security-wide-button" onClick={() => setDetailOpen(true)}>
-            <AlertTriangle size={14} />
-            {copy.runPanel.showBlockers}
-          </Button>
-        </aside>
       </div>
 
       <DetailSurface
@@ -3932,18 +3858,24 @@ export default function DashboardPage() {
             <h2>{copy.detail.currentAssessment}</h2>
             <p>{copy.detail.body}</p>
           </section>
-          <StructuredList
-            title={copy.detail.p0Blockers}
-            items={capabilityRows
-              .filter((row) => row.priority === "P0" && row.status !== "Ready")
-              .map((row) => ({
-                id: row.id,
-                title: row.area,
-                leading: <RagBadge status={statusRag(row.status)} label={statusDisplayLabel(row.status, locale)} />,
-                meta: row.gap
-              }))}
-            ariaLabel={copy.detail.p0Blockers}
-          />
+          <section className="security-blocker-panel" aria-label={copy.detail.p0Blockers}>
+            <h2>{copy.detail.p0Blockers}</h2>
+            <div className="security-blocker-list" role="list">
+              {criticalCapabilityRows.map((row) => (
+                <article key={row.id} className="security-blocker-row" role="listitem">
+                  <div className="security-blocker-row-header">
+                    <RagBadge status={statusRag(row.status)} label={statusDisplayLabel(row.status, locale)} />
+                    <strong>{row.area}</strong>
+                    <span>{row.priority}</span>
+                  </div>
+                  <p>{row.gap}</p>
+                </article>
+              ))}
+              {criticalCapabilityRows.length === 0 ? (
+                <p className="security-blocker-empty">{copy.scanLog.noBlockers}</p>
+              ) : null}
+            </div>
+          </section>
         </div>
       </DetailSurface>
       <DetailSurface
