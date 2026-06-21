@@ -2,6 +2,7 @@ name: security-preflight
 
 services:
   web:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: infra/Dockerfile.web
@@ -39,6 +40,7 @@ services:
       - api
 
   api:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
@@ -109,6 +111,7 @@ services:
       - redis
 
   worker:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: infra/Dockerfile.worker
@@ -160,6 +163,7 @@ services:
       - redis
 
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: security_preflight
@@ -171,6 +175,7 @@ services:
       - security_preflight_postgres:/var/lib/postgresql/data
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
@@ -179,6 +184,7 @@ services:
       - security_preflight_cache:/data
 
   scanner-toolbox:
+    restart: unless-stopped
     image: security-preflight/scanner-toolbox:local
     build:
       context: ..

@@ -348,6 +348,8 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_DB_IDLE_TIMEOUT_MS` | no | `30000` | PostgreSQL idle connection timeout in milliseconds |
 | `REDIS_URL` | yes | unset | Redis connection string |
 | `REPORTS_PATH` | yes | `/reports` | Container path for generated reports and evidence |
+| `SECURITY_PREFLIGHT_SCAN_RUNS_MERGE_EVIDENCE` | no | `false` | When PostgreSQL persistence is healthy, also scan report directories and merge evidence-only runs into `/api/v1/scans/runs`; leave disabled in production for faster list responses |
+| `SECURITY_PREFLIGHT_EVIDENCE_SCAN_LIMIT` | no | `100` | Maximum report directories parsed by the filesystem evidence fallback when PostgreSQL is unavailable or evidence merge is enabled |
 | `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker API and worker may read through a read-only mount |
 | `PROJECTS_ROOT_CONTAINER` | no | `/workspace/projects` | Container mount path for `PROJECTS_ROOT_HOST`; registered project paths must stay inside this root |
 | `SECURITY_PREFLIGHT_AUTH_MODE` | no | dev: `disabled`, production: `oidc` | API auth mode: `disabled`, `shared-token`, or `oidc` |

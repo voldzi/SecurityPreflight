@@ -1697,7 +1697,8 @@ export default function DashboardPage() {
     return payload.data;
   }
 
-  async function loadScanRunDetail(scanRunId: string): Promise<ScanRunDetail | null> {
+  async function loadScanRunDetail(scanRunId: string, options: { refreshProgress?: boolean } = {}): Promise<ScanRunDetail | null> {
+    const refreshProgress = options.refreshProgress ?? true;
     const payload = await fetchOptionalJson<{ data: ScanRunDetail }>(`${apiBaseUrl}/api/v1/scans/runs/${scanRunId}`, undefined, authToken);
 
     if (!payload) {
@@ -1706,11 +1707,13 @@ export default function DashboardPage() {
 
     if (accessDeniedRef.current) return null;
     setSelectedRun(payload.data);
-    try {
-      await loadScanRunProgress(scanRunId);
-    } catch (error) {
-      if (isAuthenticationFailure(error) || isAuthorizationFailure(error)) throw error;
-      // Detail evidence remains usable even when progress persistence is temporarily unavailable.
+    if (refreshProgress) {
+      try {
+        await loadScanRunProgress(scanRunId);
+      } catch (error) {
+        if (isAuthenticationFailure(error) || isAuthorizationFailure(error)) throw error;
+        // Detail evidence remains usable even when progress persistence is temporarily unavailable.
+      }
     }
     return payload.data;
   }
@@ -1726,7 +1729,7 @@ export default function DashboardPage() {
       const nextScanRunId = preferredScanRunId ?? selectedRun?.id ?? payload.data[0]?.id;
 
       if (nextScanRunId) {
-        await loadScanRunDetail(nextScanRunId);
+        await Promise.all([loadScanRunDetail(nextScanRunId, { refreshProgress: false }), loadScanRunProgress(nextScanRunId)]);
       } else {
         setSelectedRun(null);
       }
@@ -1750,8 +1753,10 @@ export default function DashboardPage() {
       let progress: ScanRunProgress | null = null;
 
       try {
-        progress = await loadScanRunProgress(scanRunId);
-        detail = await loadScanRunDetail(scanRunId);
+        [progress, detail] = await Promise.all([
+          loadScanRunProgress(scanRunId),
+          loadScanRunDetail(scanRunId, { refreshProgress: false })
+        ]);
       } catch (error) {
         if (handleApiAccessFailure(error)) return;
         setScanResult((current) =>

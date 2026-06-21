@@ -888,12 +888,16 @@ function getReportsPath(): string {
 
 async function listScanRuns(): Promise<ScanRunSummaryDto[]> {
   const persisted = await listPersistedScanRuns();
-  const evidenceRuns = await listEvidenceScanRuns();
 
   if (!persisted.ok) {
-    return evidenceRuns;
+    return listEvidenceScanRuns();
   }
 
+  if (!shouldMergeEvidenceScanRuns()) {
+    return persisted.data;
+  }
+
+  const evidenceRuns = await listEvidenceScanRuns();
   const persistedIds = new Set(persisted.data.map((run) => run.id));
 
   return [...persisted.data, ...evidenceRuns.filter((run) => !persistedIds.has(run.id))].sort(
@@ -915,21 +919,39 @@ async function listEvidenceScanRuns(): Promise<ScanRunSummaryDto[]> {
     throw error;
   }
 
+  const candidateNames = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((left, right) => right.localeCompare(left, "en"))
+    .slice(0, evidenceScanLimit());
+
   const runs = await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry) => {
-        try {
-          return await readScanRunSummary(entry.name);
-        } catch {
-          return null;
-        }
-      })
+    candidateNames.map(async (name) => {
+      try {
+        return await readScanRunSummary(name);
+      } catch {
+        return null;
+      }
+    })
   );
 
   return runs
     .filter((run): run is ScanRunSummaryDto => run !== null)
     .sort((left, right) => timestampValue(right.finishedAt ?? right.startedAt) - timestampValue(left.finishedAt ?? left.startedAt));
+}
+
+function shouldMergeEvidenceScanRuns(): boolean {
+  return process.env.SECURITY_PREFLIGHT_SCAN_RUNS_MERGE_EVIDENCE === "true";
+}
+
+function evidenceScanLimit(): number {
+  const parsed = Number.parseInt(process.env.SECURITY_PREFLIGHT_EVIDENCE_SCAN_LIMIT ?? "100", 10);
+
+  if (!Number.isFinite(parsed)) {
+    return 100;
+  }
+
+  return Math.min(Math.max(parsed, 1), 1000);
 }
 
 async function getScanRunDetail(scanRunId: string): Promise<ScanRunDetailDto | null> {
