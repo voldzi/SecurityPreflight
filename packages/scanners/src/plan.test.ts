@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { defaultScanProfiles } from "@security-preflight/core";
-import { buildScanExecutionPlan, evaluateDastGuardrails, executeScanPlan, writeExecutionResultEvidence } from "./index.js";
+import { defaultScanProfiles, emptySeveritySummary, type Finding } from "@security-preflight/core";
+import { buildScanExecutionPlan, evaluateDastGuardrails, executeScanPlan, writeExecutionResultEvidence, type ScanExecutionResult } from "./index.js";
 
 const profile = (id: string) => {
   const match = defaultScanProfiles.find((candidate) => candidate.id === id);
@@ -167,6 +167,65 @@ describe("scan execution planner", () => {
       expect(result.findings).toHaveLength(0);
       expect(result.gate.result).toBe("pass");
       expect(resultJson.gate.result).toBe("pass");
+    } finally {
+      await rm(reportsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("writes parseable redacted execution evidence when findings contain control characters", async () => {
+    const reportsRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-reports-"));
+
+    try {
+      const finding: Finding = {
+        id: "finding_1",
+        scanRunId: "scan_control_chars",
+        tool: "trivy",
+        type: "sca",
+        severity: "low",
+        title: "Cookie encoder finding",
+        description: "cookie: session=secret-value\r\nSet-Cookie: admin=1",
+        evidence: "Authorization: Bearer secret-value\r\ncookie: session=secret-value",
+        filePath: null,
+        line: null,
+        endpoint: null,
+        cwe: "CWE-93",
+        cve: "CVE-2026-43969",
+        owasp: null,
+        recommendation: "Upgrade dependency.",
+        status: "open",
+        fingerprint: "abc123456789"
+      };
+      const result: ScanExecutionResult = {
+        scanRunId: "scan_control_chars",
+        status: "failed",
+        startedAt: "2026-06-13T10:00:00.000Z",
+        finishedAt: "2026-06-13T10:01:00.000Z",
+        evidenceRoot: reportsRoot,
+        stepResults: [
+          {
+            stepId: "step_1",
+            checkId: "trivy:fs",
+            status: "failed",
+            startedAt: "2026-06-13T10:00:00.000Z",
+            finishedAt: "2026-06-13T10:01:00.000Z",
+            evidencePath: path.join(reportsRoot, "step.json"),
+            findings: [finding],
+            message: "Scanner produced findings."
+          }
+        ],
+        findings: [finding],
+        gate: {
+          result: "fail",
+          blockingReasons: ["LOW healthcare-reference finding: Cookie encoder finding"],
+          summary: { ...emptySeveritySummary(), low: 1 }
+        }
+      };
+      const resultPath = await writeExecutionResultEvidence(result);
+      const resultText = await readFile(resultPath, "utf8");
+      const resultJson = JSON.parse(resultText) as ScanExecutionResult;
+
+      expect(resultJson.findings[0]?.description).toContain("cookie: ********");
+      expect(resultText).not.toContain("secret-value");
     } finally {
       await rm(reportsRoot, { recursive: true, force: true });
     }

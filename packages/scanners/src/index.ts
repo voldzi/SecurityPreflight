@@ -1325,7 +1325,7 @@ async function runRemoteScannerCommand(plan: ScanExecutionPlan, step: ScanExecut
     }
   };
 
-  await writeFile(supplementalEvidencePath(step, "job"), `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
+  await writeFile(supplementalEvidencePath(step, "job"), `${JSON.stringify(payload, redactingJsonReplacer, 2)}\n`, "utf8");
 
   const startedAt = Date.now();
   try {
@@ -1567,7 +1567,7 @@ async function writeExternalCommandEvidence(
     errorMessage: result.errorMessage
   };
 
-  await writeFile(commandEvidencePath(step), `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
+  await writeFile(commandEvidencePath(step), `${JSON.stringify(payload, redactingJsonReplacer, 2)}\n`, "utf8");
 }
 
 async function parseExternalFindings(
@@ -2654,7 +2654,7 @@ async function checkExternalRunnerReadiness(plan: ScanExecutionPlan, step: ScanE
     signatureRequired: process.env.SECURITY_PREFLIGHT_EXTERNAL_SCANNER_REQUIRE_SIGNATURE !== "false",
     noSourceUpload: true
   };
-  await writeFile(supplementalEvidencePath(step, "job"), `${redactSecrets(JSON.stringify(handoff, null, 2))}\n`, "utf8");
+  await writeFile(supplementalEvidencePath(step, "job"), `${JSON.stringify(handoff, redactingJsonReplacer, 2)}\n`, "utf8");
 
   if (!endpoint || !publicKey) {
     return [
@@ -2675,7 +2675,7 @@ async function checkExternalRunnerReadiness(plan: ScanExecutionPlan, step: ScanE
   }
 
   const health = await fetchTarget(healthUrl, { method: "GET", timeoutMs: 8_000 });
-  await writeFile(supplementalEvidencePath(step, "response"), `${redactSecrets(JSON.stringify(health, null, 2))}\n`, "utf8");
+  await writeFile(supplementalEvidencePath(step, "response"), `${JSON.stringify(health, redactingJsonReplacer, 2)}\n`, "utf8");
 
   if (health.ok && health.status && health.status >= 200 && health.status < 300) {
     return [];
@@ -3512,13 +3512,13 @@ async function writeStepEvidence(
     }
   };
 
-  await writeFile(result.evidencePath, `${redactSecrets(JSON.stringify(payload, null, 2))}\n`, "utf8");
+  await writeFile(result.evidencePath, `${JSON.stringify(payload, redactingJsonReplacer, 2)}\n`, "utf8");
 }
 
 export async function writeExecutionResultEvidence(result: ScanExecutionResult): Promise<string> {
   const outputPath = path.join(result.evidenceRoot, "execution-result.json");
   await mkdir(result.evidenceRoot, { recursive: true });
-  await writeFile(outputPath, `${redactSecrets(JSON.stringify(result, null, 2))}\n`, "utf8");
+  await writeFile(outputPath, `${JSON.stringify(result, redactingJsonReplacer, 2)}\n`, "utf8");
   return outputPath;
 }
 
@@ -3641,7 +3641,11 @@ function truncateEvidence(value: string, maxLength = 12_000): string {
 }
 
 function redactObject(value: unknown): unknown {
-  return JSON.parse(redactSecrets(JSON.stringify(value)));
+  return JSON.parse(JSON.stringify(value, redactingJsonReplacer));
+}
+
+function redactingJsonReplacer(_key: string, value: unknown): unknown {
+  return typeof value === "string" ? redactSecrets(value) : value;
 }
 
 function normalizeSeverity(value: string | null, fallback: Severity): Severity {
