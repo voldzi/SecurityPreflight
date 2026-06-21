@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptySeveritySummary, type Finding, type Project, type ScanProfile, type ScanRun } from "@security-preflight/core";
-import { generateCentralResultEnvelope, generateJsonReport, generateSarifReport } from "./index.js";
+import { generateCentralResultEnvelope, generateJsonReport, generateMarkdownReport, generateSarifReport } from "./index.js";
 
 describe("central result envelope", () => {
   it("generates a redacted stable result envelope", () => {
@@ -224,5 +224,81 @@ describe("central result envelope", () => {
 
     expect(report.findings[0].description).toContain("cookie: ********");
     expect(reportText).not.toContain("secret-value");
+  });
+
+  it("separates platform readiness gaps from application findings", () => {
+    const project: Project = {
+      id: "project_1",
+      name: "Healthcare API",
+      path: "/tmp/healthcare-api",
+      repositoryUrl: "https://example.invalid/healthcare-api.git",
+      defaultBranch: "main",
+      technologyStack: ["Node.js"],
+      dataClassification: "health-data",
+      owner: "security",
+      createdAt: "2026-06-13T09:00:00.000Z",
+      updatedAt: "2026-06-13T09:00:00.000Z"
+    };
+    const scanRun: ScanRun = {
+      id: "scan_1",
+      projectId: project.id,
+      profileId: "healthcare-reference",
+      status: "completed",
+      startedAt: "2026-06-13T10:00:00.000Z",
+      finishedAt: "2026-06-13T10:01:00.000Z",
+      commitHash: null,
+      branch: "main",
+      toolVersions: {},
+      summary: emptySeveritySummary(),
+      gateResult: "warning"
+    };
+    const profile: ScanProfile = {
+      id: "healthcare-reference",
+      name: "healthcare-reference",
+      description: "Healthcare reference profile",
+      checks: ["greenbone:openvas"],
+      failThreshold: "medium",
+      allowActiveDast: false,
+      allowProductionTargets: false,
+      timeoutSeconds: 2400
+    };
+    const platformGap: Finding = {
+      id: "finding_platform",
+      scanRunId: scanRun.id,
+      tool: "greenbone",
+      type: "tooling",
+      scope: "platform",
+      severity: "high",
+      title: "Greenbone/OpenVAS integration is not configured",
+      description: "Greenbone/OpenVAS requires a configured manager endpoint.",
+      evidence: "{}",
+      filePath: null,
+      line: null,
+      endpoint: null,
+      cwe: null,
+      cve: null,
+      owasp: null,
+      recommendation: "Configure Greenbone/OpenVAS before relying on enterprise assurance evidence.",
+      status: "open",
+      fingerprint: "platform123"
+    };
+    const input = {
+      project,
+      scanRun,
+      profile,
+      gate: {
+        result: "warning" as const,
+        blockingReasons: ["PLATFORM readiness gap: Greenbone/OpenVAS integration is not configured"],
+        summary: emptySeveritySummary()
+      },
+      findings: [platformGap]
+    };
+    const markdown = generateMarkdownReport(input);
+    const sarif = JSON.parse(generateSarifReport(input));
+
+    expect(markdown).toContain("## Platform Readiness Gaps");
+    expect(markdown).toContain("Scope: platform");
+    expect(markdown).toContain("No application findings.");
+    expect(sarif.runs[0].results).toHaveLength(0);
   });
 });

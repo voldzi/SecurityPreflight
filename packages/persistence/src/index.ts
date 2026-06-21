@@ -60,6 +60,7 @@ export interface PersistedFindingDto {
   id: string;
   tool: string;
   type: string;
+  scope: string;
   severity: string;
   title: string;
   filePath: string | null;
@@ -938,6 +939,7 @@ async function updateRunFindingCount(client: PoolClient, scanRunId: string): Pro
         count(*) filter (where severity = 'info')::int as info
       from security_preflight_findings
       where scan_run_id = $1
+        and coalesce(raw_payload->>'scope', 'application') = 'application'
     `,
     [scanRunId]
   );
@@ -1042,6 +1044,7 @@ function rowToFinding(row: FindingRow): PersistedFindingDto {
     id: row.finding_id,
     tool: row.tool,
     type: row.type,
+    scope: stringValue(jsonValue(row.raw_payload, "scope")) ?? "application",
     severity: row.severity,
     title: row.title,
     filePath: row.file_path,
@@ -1147,6 +1150,7 @@ function sanitizeFindingPayload(finding: Finding): Record<string, unknown> {
     scanRunId: finding.scanRunId,
     tool: finding.tool,
     type: finding.type,
+    scope: finding.scope ?? "application",
     severity: finding.severity,
     title: truncate(finding.title, 1000),
     description: truncate(finding.description, 4000),
@@ -1224,6 +1228,10 @@ function arrayLength(value: unknown): number {
 function nullableText(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -1309,6 +1317,7 @@ interface FindingRow {
   endpoint: string | null;
   status: string;
   recommendation: string;
+  raw_payload: unknown;
   triage_status: string;
   triage_note: string | null;
   triage_owner: string | null;

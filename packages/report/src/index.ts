@@ -1,5 +1,16 @@
 import { createHash } from "node:crypto";
-import { redactSecrets, type Finding, type GateEvaluation, type Project, type ScanProfile, type ScanRun } from "@security-preflight/core";
+import {
+  applicationFindings,
+  findingScope,
+  platformFindings,
+  redactSecrets,
+  summarizeFindings,
+  type Finding,
+  type GateEvaluation,
+  type Project,
+  type ScanProfile,
+  type ScanRun
+} from "@security-preflight/core";
 
 export interface ReportInput {
   project: Project;
@@ -24,6 +35,8 @@ export interface CentralResultEnvelope {
   findings: Finding[];
   evidence: {
     findingCount: number;
+    applicationFindingCount: number;
+    platformReadinessGapCount: number;
     redacted: true;
     source: "local-report";
   };
@@ -34,9 +47,10 @@ export function generateJsonReport(input: ReportInput): string {
 }
 
 export function generateSarifReport(input: ReportInput): string {
+  const sarifFindings = applicationFindings(input.findings);
   const ruleMap = new Map<string, { id: string; name: string; shortDescription: { text: string }; help: { text: string }; properties: Record<string, unknown> }>();
 
-  for (const finding of input.findings) {
+  for (const finding of sarifFindings) {
     const ruleId = finding.cve ?? finding.cwe ?? finding.fingerprint.slice(0, 16);
     const id = `${finding.tool}:${ruleId}`;
 
@@ -48,7 +62,7 @@ export function generateSarifReport(input: ReportInput): string {
         help: { text: redactSecrets(finding.recommendation) },
         properties: {
           securitySeverity: sarifSecuritySeverity(finding.severity),
-          tags: [finding.type, finding.severity, finding.tool].filter(Boolean)
+          tags: [finding.type, finding.severity, finding.tool, findingScope(finding)].filter(Boolean)
         }
       });
     }
@@ -73,7 +87,7 @@ export function generateSarifReport(input: ReportInput): string {
             text: `${input.project.name} / ${input.profile.name}`
           }
         },
-        results: input.findings.map((finding) => {
+        results: sarifFindings.map((finding) => {
           const ruleId = `${finding.tool}:${finding.cve ?? finding.cwe ?? finding.fingerprint.slice(0, 16)}`;
           const location = finding.filePath
             ? {
@@ -109,6 +123,7 @@ export function generateSarifReport(input: ReportInput): string {
               severity: finding.severity,
               tool: finding.tool,
               type: finding.type,
+              scope: findingScope(finding),
               status: finding.status,
               endpoint: finding.endpoint,
               cwe: finding.cwe,
@@ -171,6 +186,8 @@ export function generateCentralResultEnvelope(input: ReportInput, generatedAt = 
     findings: redactedFindings,
     evidence: {
       findingCount: redactedFindings.length,
+      applicationFindingCount: applicationFindings(redactedFindings).length,
+      platformReadinessGapCount: platformFindings(redactedFindings).length,
       redacted: true,
       source: "local-report"
     }
@@ -178,15 +195,36 @@ export function generateCentralResultEnvelope(input: ReportInput, generatedAt = 
 }
 
 export function generateMarkdownReport(input: ReportInput): string {
-  const topFindings = input.findings
+  const appFindings = applicationFindings(input.findings);
+  const platformGaps = platformFindings(input.findings);
+  const appSummary = summarizeFindings(appFindings);
+  const platformSummary = summarizeFindings(platformGaps);
+  const topFindings = appFindings
     .slice(0, 10)
     .map((finding, index) =>
       [
         `### ${index + 1}. ${finding.title}`,
         "",
         `Severity: ${finding.severity.toUpperCase()}`,
+        `Scope: application`,
         `Tool: ${finding.tool}`,
         finding.filePath ? `File: \`${finding.filePath}${finding.line ? `:${finding.line}` : ""}\`` : null,
+        finding.endpoint ? `Endpoint: \`${finding.endpoint}\`` : null,
+        `Recommendation: ${finding.recommendation}`
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .join("\n\n");
+  const platformReadiness = platformGaps
+    .slice(0, 10)
+    .map((finding, index) =>
+      [
+        `### ${index + 1}. ${finding.title}`,
+        "",
+        `Severity: ${finding.severity.toUpperCase()}`,
+        `Scope: platform`,
+        `Tool: ${finding.tool}`,
         finding.endpoint ? `Endpoint: \`${finding.endpoint}\`` : null,
         `Recommendation: ${finding.recommendation}`
       ]
@@ -218,13 +256,27 @@ export function generateMarkdownReport(input: ReportInput): string {
 
 ## Summary
 
+Application findings are issues attributed to the checked project or target. Platform readiness gaps are SecurityPreflight scanner/runtime configuration gaps and do not mean that the checked application contains that vulnerability.
+
+### Application Findings
+
 | Severity | Count |
 |---|---:|
-| Critical | ${input.gate.summary.critical} |
-| High | ${input.gate.summary.high} |
-| Medium | ${input.gate.summary.medium} |
-| Low | ${input.gate.summary.low} |
-| Info | ${input.gate.summary.info} |
+| Critical | ${appSummary.critical} |
+| High | ${appSummary.high} |
+| Medium | ${appSummary.medium} |
+| Low | ${appSummary.low} |
+| Info | ${appSummary.info} |
+
+### Platform Readiness Gaps
+
+| Severity | Count |
+|---|---:|
+| Critical | ${platformSummary.critical} |
+| High | ${platformSummary.high} |
+| Medium | ${platformSummary.medium} |
+| Low | ${platformSummary.low} |
+| Info | ${platformSummary.info} |
 
 ## Release Gate
 
@@ -234,9 +286,13 @@ export function generateMarkdownReport(input: ReportInput): string {
 
 ${input.gate.blockingReasons.length > 0 ? input.gate.blockingReasons.map((reason) => `- ${reason}`).join("\n") : "- None"}
 
-## Top Findings
+## Platform Readiness Gaps
 
-${topFindings || "No findings."}
+${platformReadiness || "No platform readiness gaps."}
+
+## Top Application Findings
+
+${topFindings || "No application findings."}
 `;
 
   return redactSecrets(markdown);

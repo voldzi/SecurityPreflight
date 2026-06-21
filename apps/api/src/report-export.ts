@@ -64,6 +64,7 @@ export interface ScanRunExportDetail extends ScanRunExportSummary {
   findings: Array<{
     id: string;
     tool: string;
+    scope?: string;
     severity: string;
     title: string;
     filePath: string | null;
@@ -199,13 +200,17 @@ export function buildCodexRemediationExport(input: BuildCodexRemediationExportIn
 
 function buildCodexRemediationMarkdown(run: ScanRunExportDetail, locale: CodexRemediationLocale, generatedAt: Date): string {
   const labels = remediationLabels[locale];
-  const findings = [...run.findings].sort((left, right) => severityRank(right.severity) - severityRank(left.severity));
+  const findings = applicationExportFindings(run).sort((left, right) => severityRank(right.severity) - severityRank(left.severity));
+  const platformGaps = platformExportFindings(run).sort((left, right) => severityRank(right.severity) - severityRank(left.severity));
   const blockingReasons = run.gate.blockingReasons.length
     ? run.gate.blockingReasons.map((reason) => `- ${redactSecrets(reason)}`).join("\n")
     : `- ${labels.none}`;
   const findingBlocks = findings.length
     ? findings.map((finding, index) => buildFindingBlock(finding, index + 1, labels)).join("\n\n")
     : labels.noFindings;
+  const platformBlocks = platformGaps.length
+    ? platformGaps.map((finding, index) => buildFindingBlock(finding, index + 1, labels)).join("\n\n")
+    : labels.noPlatformGaps;
   const stepSummary = run.steps.length
     ? run.steps
         .slice(0, 40)
@@ -270,6 +275,12 @@ ${labels.promptTask}
 
 ${findingBlocks}
 
+## ${labels.platformReadiness}
+
+${labels.platformReadinessNote}
+
+${platformBlocks}
+
 ## ${labels.blockers}
 
 ${blockingReasons}
@@ -332,6 +343,14 @@ function buildFindingInstruction(finding: ScanRunExportDetail["findings"][number
   return labels.fixGeneral;
 }
 
+function applicationExportFindings(run: ScanRunExportDetail): ScanRunExportDetail["findings"] {
+  return run.findings.filter((finding) => finding.scope !== "platform");
+}
+
+function platformExportFindings(run: ScanRunExportDetail): ScanRunExportDetail["findings"] {
+  return run.findings.filter((finding) => finding.scope === "platform");
+}
+
 function severityRank(severity: string): number {
   switch (severity.toLowerCase()) {
     case "critical":
@@ -378,6 +397,9 @@ type RemediationLabels = {
   promptTask: string;
   priorityFindings: string;
   noFindings: string;
+  platformReadiness: string;
+  platformReadinessNote: string;
+  noPlatformGaps: string;
   blockers: string;
   validation: string;
   evidence: string;
@@ -429,7 +451,11 @@ const remediationLabels: Record<CodexRemediationLocale, RemediationLabels> = {
     ruleReport: "V závěru uveď, které nálezy byly opraveny, jak byly ověřeny a co zůstává rizikem.",
     promptTask: "Použij níže uvedené prioritní nálezy jako závazný backlog oprav.",
     priorityFindings: "Prioritní nálezy",
-    noFindings: "Žádné nálezy v redigovaném reportu.",
+    noFindings: "Žádné aplikační nálezy v redigovaném reportu.",
+    platformReadiness: "Mezery platformy SecurityPreflight",
+    platformReadinessNote:
+      "Tyto položky jsou problémy scanner/runtime konfigurace SecurityPreflight. Nepředávej je jako chyby kontrolované aplikace.",
+    noPlatformGaps: "Žádné platformové mezery.",
     blockers: "Blokery a gate důvody",
     validation: "Validační příkazy",
     evidence: "Evidence soubory",
@@ -479,7 +505,11 @@ const remediationLabels: Record<CodexRemediationLocale, RemediationLabels> = {
     ruleReport: "In the final response, state which findings were fixed, how they were verified, and what risk remains.",
     promptTask: "Use the prioritized findings below as the binding remediation backlog.",
     priorityFindings: "Priority findings",
-    noFindings: "No findings in the redacted report.",
+    noFindings: "No application findings in the redacted report.",
+    platformReadiness: "SecurityPreflight platform gaps",
+    platformReadinessNote:
+      "These items are SecurityPreflight scanner/runtime configuration issues. Do not hand them to the checked application as application defects.",
+    noPlatformGaps: "No platform gaps.",
     blockers: "Blockers and gate reasons",
     validation: "Validation commands",
     evidence: "Evidence files",
@@ -549,15 +579,30 @@ async function buildPdf(input: BuildScanRunReportExportInput): Promise<Buffer> {
     }
 
     doc.moveDown(1);
-    doc.fontSize(16).fillColor("#0f172a").text("Top findings");
-    const findings = run.findings.slice(0, 12);
+    doc.fontSize(16).fillColor("#0f172a").text("Top application findings");
+    const findings = applicationExportFindings(run).slice(0, 12);
     if (!findings.length) {
-      doc.fontSize(10).fillColor("#166534").text("No findings in the redacted report evidence.");
+      doc.fontSize(10).fillColor("#166534").text("No application findings in the redacted report evidence.");
     } else {
       for (const finding of findings) {
         doc.moveDown(0.4);
         doc.fontSize(11).fillColor("#0f172a").text(`${finding.severity.toUpperCase()} - ${redactSecrets(finding.title)}`);
         doc.fontSize(9).fillColor("#475569").text(redactSecrets([finding.tool, finding.filePath, finding.endpoint].filter(Boolean).join(" | ")));
+        doc.fontSize(9).fillColor("#334155").text(redactSecrets(finding.recommendation));
+      }
+    }
+
+    const platformGaps = platformExportFindings(run).slice(0, 8);
+    doc.moveDown(1);
+    doc.fontSize(16).fillColor("#0f172a").text("SecurityPreflight platform gaps");
+    if (!platformGaps.length) {
+      doc.fontSize(10).fillColor("#166534").text("No platform readiness gaps.");
+    } else {
+      doc.fontSize(9).fillColor("#64748b").text("These are scanner/runtime configuration gaps, not application vulnerabilities.");
+      for (const finding of platformGaps) {
+        doc.moveDown(0.4);
+        doc.fontSize(11).fillColor("#0f172a").text(`${finding.severity.toUpperCase()} - ${redactSecrets(finding.title)}`);
+        doc.fontSize(9).fillColor("#475569").text(redactSecrets([finding.tool, finding.endpoint].filter(Boolean).join(" | ")));
         doc.fontSize(9).fillColor("#334155").text(redactSecrets(finding.recommendation));
       }
     }
@@ -619,14 +664,32 @@ async function buildPptx(input: BuildScanRunReportExportInput): Promise<Buffer> 
 
   const findingsSlide = pptx.addSlide();
   findingsSlide.background = { color: "FFFFFF" };
-  addHeader(findingsSlide, "Top findings", `${run.findingCount} total`);
+  const appFindings = applicationExportFindings(run);
+  const platformGaps = platformExportFindings(run);
+  addHeader(findingsSlide, "Top application findings", `${appFindings.length} application`);
   findingsSlide.addText(
-    run.findings.length
-      ? run.findings
+    appFindings.length
+      ? appFindings
           .slice(0, 8)
           .map((finding) => `${finding.severity.toUpperCase()} - ${redactSecrets(finding.title)} (${redactSecrets(finding.tool)})`)
           .join("\n")
-      : "No findings in the redacted report evidence.",
+      : "No application findings in the redacted report evidence.",
+    { x: 0.65, y: 1.45, w: 11.8, h: 4.8, fontSize: 14, color: "0F172A", breakLine: false, fit: "shrink" }
+  );
+
+  const platformSlide = pptx.addSlide();
+  platformSlide.background = { color: "FFFFFF" };
+  addHeader(platformSlide, "SecurityPreflight platform gaps", `${platformGaps.length} platform`);
+  platformSlide.addText(
+    platformGaps.length
+      ? [
+          "Scanner/runtime configuration gaps. Do not hand these to the checked application as application vulnerabilities.",
+          "",
+          ...platformGaps
+            .slice(0, 8)
+            .map((finding) => `${finding.severity.toUpperCase()} - ${redactSecrets(finding.title)} (${redactSecrets(finding.tool)})`)
+        ].join("\n")
+      : "No platform readiness gaps.",
     { x: 0.65, y: 1.45, w: 11.8, h: 4.8, fontSize: 14, color: "0F172A", breakLine: false, fit: "shrink" }
   );
 

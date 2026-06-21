@@ -223,6 +223,14 @@ curl "http://localhost:8781/api/v1/scans/runs/scan_abc123/report?format=markdown
 
 Finding triage requires PostgreSQL persistence. Status values are `open`,
 `accepted`, `false-positive`, `fixed`, and `suppressed`.
+Each finding also carries `scope`:
+
+- `application` means the issue belongs to the checked project, repository, or
+  allowed web/API target.
+- `platform` means the issue is a SecurityPreflight scanner/runtime readiness
+  gap, such as missing Greenbone/OpenVAS, OpenSCAP, DefectDojo, external VPS, or
+  scanner-runner configuration. Platform findings are reported for audit
+  completeness but are not application vulnerabilities.
 
 ```bash
 curl -X PATCH \

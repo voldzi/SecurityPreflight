@@ -13,6 +13,7 @@ import {
   redactSecrets,
   type DataClassification,
   type Finding,
+  type FindingScope,
   type FindingType,
   type GateEvaluation,
   type ScanProfile,
@@ -1124,7 +1125,8 @@ async function executeStep(
             severity: "high",
             title: `Scanner step '${step.checkId}' was blocked by guardrails`,
             description: step.blockedReasons.join(" ") || "The scanner step has no executable command.",
-            recommendation: "Adjust the scan request or profile so guardrails allow this step."
+            recommendation: "Adjust the scan request or profile so guardrails allow this step.",
+            scope: "platform"
           })
         ],
         message: step.blockedReasons.join(" ") || "External scanner command is not available."
@@ -1142,7 +1144,8 @@ async function executeStep(
                 title: `Scanner step '${step.checkId}' was not executed`,
                 description:
                   "The execution adapter for external scanner commands is disabled. Production evidence requires this step to run in an isolated scanner runner.",
-                recommendation: "Enable an isolated scanner runner for this tool before relying on the scan result."
+                recommendation: "Enable an isolated scanner runner for this tool before relying on the scan result.",
+                scope: "platform"
               })
             ]
           : [];
@@ -1174,7 +1177,8 @@ async function executeStep(
               firstNonEmptyLine(commandResult.stdout) ||
               `Scanner exited with code ${commandResult.exitCode ?? "unknown"}.`,
             recommendation: "Inspect command evidence and rerun after fixing the scanner or project configuration.",
-            evidence: [commandResult.stderr, commandResult.stdout].filter(Boolean).join("\n")
+            evidence: [commandResult.stderr, commandResult.stdout].filter(Boolean).join("\n"),
+            scope: "platform"
           })
         : null;
     const allFindings = executionFinding ? [...findings, executionFinding] : findings;
@@ -1209,7 +1213,8 @@ async function executeStep(
           severity: "high",
           title: `Scanner step '${step.checkId}' failed`,
           description: message,
-          recommendation: "Inspect step evidence and rerun after fixing the scanner or project configuration."
+          recommendation: "Inspect step evidence and rerun after fixing the scanner or project configuration.",
+          scope: "platform"
         })
       ],
       message
@@ -1235,7 +1240,8 @@ async function writeBlockedStepEvidence(plan: ScanExecutionPlan, step: ScanExecu
             severity: "high",
             title: `Scanner step '${step.checkId}' was blocked by guardrails`,
             description: step.blockedReasons.join(" "),
-            recommendation: "Adjust the scan request or profile so guardrails allow this step."
+            recommendation: "Adjust the scan request or profile so guardrails allow this step.",
+            scope: "platform"
           })
         ]
       : [],
@@ -2665,7 +2671,8 @@ async function checkExternalRunnerReadiness(plan: ScanExecutionPlan, step: ScanE
           "SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL and SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY are required for signed external scanner result exchange.",
         endpoint: target.toString(),
         recommendation: "Provision the hardened scanner VPS, configure signed result return, and keep credentials outside Git.",
-        evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), configuredPublicKey: Boolean(publicKey) }))
+        evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), configuredPublicKey: Boolean(publicKey) })),
+        scope: "platform"
       })
     ];
   }
@@ -2688,7 +2695,8 @@ async function checkExternalRunnerReadiness(plan: ScanExecutionPlan, step: ScanE
       description: health.error ?? `External scanner health endpoint returned HTTP ${health.status ?? "unknown"}.`,
       endpoint: healthUrl,
       recommendation: "Verify the hardened scanner VPS health endpoint, network route, and authentication boundary before using remote scans.",
-      evidence: JSON.stringify(redactObject(health))
+      evidence: JSON.stringify(redactObject(health)),
+      scope: "platform"
     })
   ];
 }
@@ -2710,6 +2718,7 @@ async function checkDefectDojoReadiness(plan: ScanExecutionPlan, step: ScanExecu
       description: "DefectDojo URL, resolvable token reference, and product mapping are required before findings can be centrally triaged.",
       recommendation:
         "Configure SECURITY_PREFLIGHT_DEFECTDOJO_URL, SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF, and SECURITY_PREFLIGHT_DEFECTDOJO_PRODUCT in the deployment secret store.",
+      scope: "platform",
       evidence: JSON.stringify(
         redactObject({
           configuredBaseUrl: Boolean(baseUrl),
@@ -2747,7 +2756,8 @@ async function checkGreenboneReadiness(plan: ScanExecutionPlan, step: ScanExecut
           description: error instanceof Error ? error.message : String(error),
           endpoint: target.toString(),
           recommendation: "Attach a readable Greenbone XML report through SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH.",
-          evidence: JSON.stringify(redactObject({ reportPath }))
+          evidence: JSON.stringify(redactObject({ reportPath })),
+          scope: "platform"
         })
       ];
     }
@@ -2762,7 +2772,8 @@ async function checkGreenboneReadiness(plan: ScanExecutionPlan, step: ScanExecut
         endpoint: target.toString(),
         recommendation:
           "Run the approved Greenbone/OpenVAS task from the scanner network and set SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH to the exported XML report before relying on enterprise assurance evidence.",
-        evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), credentialResolved: credential.ok, credentialSource: credential.source }))
+        evidence: JSON.stringify(redactObject({ configuredEndpoint: Boolean(endpoint), credentialResolved: credential.ok, credentialSource: credential.source })),
+        scope: "platform"
       })
     ];
   }
@@ -2775,6 +2786,7 @@ async function checkGreenboneReadiness(plan: ScanExecutionPlan, step: ScanExecut
       endpoint: target.toString(),
       recommendation:
         "Configure SECURITY_PREFLIGHT_GREENBONE_URL, SECURITY_PREFLIGHT_GREENBONE_CREDENTIAL_REF, and SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH, then run the enterprise assurance profile from an approved scanner network.",
+      scope: "platform",
       evidence: JSON.stringify(
         redactObject({
           configuredEndpoint: Boolean(endpoint),
@@ -2806,7 +2818,8 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
           title: "OpenSCAP result evidence is not readable",
           description: error instanceof Error ? error.message : String(error),
           recommendation: "Attach a readable OpenSCAP XCCDF result XML through SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH.",
-          evidence: JSON.stringify(redactObject({ resultPath }))
+          evidence: JSON.stringify(redactObject({ resultPath })),
+          scope: "platform"
         })
       ];
     }
@@ -2822,7 +2835,8 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
           title: "OpenSCAP content path is not readable",
           description: `Configured OpenSCAP content path '${contentPath}' could not be read.`,
           recommendation: "Mount approved SCAP content into the scanner runtime and verify filesystem permissions.",
-          evidence: JSON.stringify(redactObject({ contentPath }))
+          evidence: JSON.stringify(redactObject({ contentPath })),
+          scope: "platform"
         })
       ];
     }
@@ -2835,7 +2849,8 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
           description: "OpenSCAP content is mounted, but no result XML is attached and local oscap evaluation is not fully enabled.",
           recommendation:
             "Set SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH to an approved result XML, or set SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true and SECURITY_PREFLIGHT_OPENSCAP_PROFILE to run oscap xccdf eval.",
-          evidence: JSON.stringify(redactObject({ contentPath, evalEnabled, configuredProfile: Boolean(profile) }))
+          evidence: JSON.stringify(redactObject({ contentPath, evalEnabled, configuredProfile: Boolean(profile) })),
+          scope: "platform"
         })
       ];
     }
@@ -2864,7 +2879,8 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
                   title: "OpenSCAP evaluation failed",
                   description: nodeError.message,
                   recommendation: "Inspect OpenSCAP command evidence and fix content/profile compatibility.",
-                  evidence: [bufferToString(nodeError.stderr), bufferToString(nodeError.stdout)].filter(Boolean).join("\n")
+                  evidence: [bufferToString(nodeError.stderr), bufferToString(nodeError.stdout)].filter(Boolean).join("\n"),
+                  scope: "platform"
                 })
               ]
             : [];
@@ -2876,7 +2892,8 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
             title: "OpenSCAP evaluation failed before writing result XML",
             description: nodeError.message,
             recommendation: "Inspect OpenSCAP installation, content path, profile id, and runtime permissions.",
-            evidence: JSON.stringify(redactObject({ command, stderr: bufferToString(nodeError.stderr), stdout: bufferToString(nodeError.stdout) }))
+            evidence: JSON.stringify(redactObject({ command, stderr: bufferToString(nodeError.stderr), stdout: bufferToString(nodeError.stdout) })),
+            scope: "platform"
           })
         ];
       }
@@ -2892,7 +2909,8 @@ async function checkOpenScapReadiness(plan: ScanExecutionPlan, step: ScanExecuti
       title: "OpenSCAP content is not configured",
       description: "OpenSCAP needs approved SCAP content before compliance evidence can be generated.",
       recommendation:
-        "Configure SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH plus SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH, or enable local oscap evaluation with SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true."
+        "Configure SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH plus SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH, or enable local oscap evaluation with SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true.",
+      scope: "platform"
     })
   ];
 }
@@ -3750,6 +3768,7 @@ function createExecutionFinding(
     cve?: string | null;
     owasp?: string | null;
     evidence?: string | null;
+    scope?: FindingScope;
   }
 ): Finding {
   const filePath = input.filePath ?? null;
@@ -3768,6 +3787,7 @@ function createExecutionFinding(
     scanRunId: plan.scanRunId,
     tool: step.tool,
     type: step.type,
+    scope: input.scope ?? "application",
     severity: input.severity,
     title: input.title,
     description: input.description,

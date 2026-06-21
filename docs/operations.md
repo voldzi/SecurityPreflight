@@ -172,6 +172,9 @@ Greenbone credentials in reports. OpenSCAP evidence can be imported from
 `SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true`,
 `SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH`, and
 `SECURITY_PREFLIGHT_OPENSCAP_PROFILE` to run `oscap xccdf eval` in the worker.
+If these integrations are not configured, the scan records `scope=platform`
+readiness gaps. They describe incomplete SecurityPreflight evidence coverage,
+not vulnerabilities in the checked project.
 
 The API can export completed scan evidence as STRATOS-style PDF or PPTX
 payloads through `POST /api/v1/reports/export`. Exports are generated from

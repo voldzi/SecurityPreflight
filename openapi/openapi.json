@@ -2662,6 +2662,7 @@
           "id",
           "tool",
           "type",
+          "scope",
           "severity",
           "title",
           "filePath",
@@ -2686,6 +2687,14 @@
           },
           "type": {
             "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "application",
+              "platform"
+            ],
+            "description": "Finding ownership scope. application findings belong to the checked project or target; platform findings are SecurityPreflight scanner/runtime readiness gaps."
           },
           "severity": {
             "type": "string"

@@ -37,6 +37,28 @@ describe("evaluateGate", () => {
 
     expect(evaluateGate([], profile, "public").result).toBe("pass");
   });
+
+  it("does not count platform readiness gaps as application severity summary", () => {
+    const profile = defaultScanProfiles.find((item) => item.name === "healthcare-reference")!;
+    const result = evaluateGate(
+      [
+        {
+          ...baseFinding,
+          id: "finding-platform-1",
+          type: "tooling",
+          scope: "platform",
+          severity: "high",
+          title: "Greenbone/OpenVAS integration is not configured"
+        }
+      ],
+      profile,
+      "health-data"
+    );
+
+    expect(result.result).toBe("warning");
+    expect(result.summary.high).toBe(0);
+    expect(result.blockingReasons[0]).toContain("PLATFORM readiness gap");
+  });
 });
 
 describe("createFindingFingerprint", () => {

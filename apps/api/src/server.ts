@@ -90,6 +90,7 @@ interface ScanRunDetailDto extends ScanRunSummaryDto {
     id: string;
     tool: string;
     type: string;
+    scope: string;
     severity: string;
     title: string;
     filePath: string | null;
@@ -1224,6 +1225,7 @@ async function getEvidenceScanRunDetail(scanRunId: string): Promise<ScanRunDetai
       id: stringValue(item.id) ?? "finding",
       tool: stringValue(item.tool) ?? "unknown",
       type: stringValue(item.type) ?? "unknown",
+      scope: stringValue(item.scope) ?? "application",
       severity: stringValue(item.severity) ?? "info",
       title: stringValue(item.title) ?? "Untitled finding",
       filePath: nullableString(item.filePath),
@@ -1352,6 +1354,7 @@ async function readScanRunSummary(scanRunId: string): Promise<ScanRunSummaryDto 
   const profile = recordValue(report.profile) ?? recordValue(envelope.profile) ?? {};
   const gate = recordValue(report.gate) ?? recordValue(execution.gate) ?? recordValue(envelope.gate) ?? {};
   const findings = arrayValue(report.findings ?? execution.findings ?? envelope.findings);
+  const applicationFindingCount = findings.filter((finding) => stringValue(asRecord(finding).scope) !== "platform").length;
   const startedAt = nullableString(scanRun.startedAt) ?? nullableString(execution.startedAt);
   const finishedAt = nullableString(scanRun.finishedAt) ?? nullableString(execution.finishedAt);
   const files = await listScanRunFiles(scanRunId);
@@ -1376,7 +1379,7 @@ async function readScanRunSummary(scanRunId: string): Promise<ScanRunSummaryDto 
     startedAt,
     finishedAt,
     durationMs: durationMs(startedAt, finishedAt),
-    findingCount: findings.length,
+    findingCount: applicationFindingCount,
     severitySummary: severitySummaryValue(gate.summary ?? scanRun.summary),
     evidence: {
       root: scanRunDirectory,

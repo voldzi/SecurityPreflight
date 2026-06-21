@@ -21,6 +21,7 @@ export type FindingType =
   | "documentation"
   | "configuration"
   | "tooling";
+export type FindingScope = "application" | "platform";
 export type ToolCategory =
   | "runtime"
   | "secret-scanning"
@@ -89,6 +90,7 @@ export interface Finding {
   scanRunId: string;
   tool: string;
   type: FindingType;
+  scope?: FindingScope;
   severity: Severity;
   title: string;
   description: string;
@@ -476,13 +478,27 @@ export function summarizeFindings(findings: Finding[]): SeveritySummary {
   }, emptySeveritySummary());
 }
 
+export function findingScope(finding: Pick<Finding, "scope">): FindingScope {
+  return finding.scope ?? "application";
+}
+
+export function applicationFindings(findings: Finding[]): Finding[] {
+  return findings.filter((finding) => findingScope(finding) === "application");
+}
+
+export function platformFindings(findings: Finding[]): Finding[] {
+  return findings.filter((finding) => findingScope(finding) === "platform");
+}
+
 export function evaluateGate(
   findings: Finding[],
   profile: Pick<ScanProfile, "name" | "failThreshold">,
   dataClassification: DataClassification = "internal"
 ): GateEvaluation {
-  const summary = summarizeFindings(findings);
-  const openFindings = findings.filter((finding) => finding.status === "open");
+  const scopedApplicationFindings = applicationFindings(findings);
+  const summary = summarizeFindings(scopedApplicationFindings);
+  const openFindings = scopedApplicationFindings.filter((finding) => finding.status === "open");
+  const openPlatformGaps = platformFindings(findings).filter((finding) => finding.status === "open");
   const blockingReasons: string[] = [];
 
   for (const finding of openFindings) {
@@ -525,10 +541,18 @@ export function evaluateGate(
 
   const warningThreshold = severityOrder[profile.failThreshold] > severityOrder.medium ? "medium" : "low";
   const hasWarnings = openFindings.some((finding) => severityOrder[finding.severity] >= severityOrder[warningThreshold]);
+  const hasPlatformReadinessGaps = openPlatformGaps.some((finding) => severityOrder[finding.severity] >= severityOrder.medium);
 
   return {
-    result: hasWarnings ? "warning" : "pass",
-    blockingReasons,
+    result: hasWarnings || hasPlatformReadinessGaps ? "warning" : "pass",
+    blockingReasons: hasPlatformReadinessGaps
+      ? [
+          ...blockingReasons,
+          ...openPlatformGaps
+            .filter((finding) => severityOrder[finding.severity] >= severityOrder.medium)
+            .map((finding) => `PLATFORM readiness gap: ${finding.title}`)
+        ]
+      : blockingReasons,
     summary
   };
 }

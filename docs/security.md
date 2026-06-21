@@ -196,6 +196,12 @@ local `oscap xccdf eval` run. DefectDojo export uses SARIF import and requires
 an explicit worker opt-in. Production credentials must remain in a secret store
 outside Git and reports.
 
+Missing Greenbone/OpenVAS, OpenSCAP, DefectDojo, external scanner, or runner
+configuration is classified as `scope=platform`. It is reported as a
+SecurityPreflight readiness gap and scan-completeness limitation, not as a
+vulnerability in the checked application. Normalized Greenbone/OpenSCAP results
+from approved evidence remain `scope=application`.
+
 The tool must not implement or enable brute-force attacks, denial-of-service
 tests, exploit chaining, authentication bypass attempts, data exfiltration, or
 scanning of third-party/public targets. Formal penetration testing remains a

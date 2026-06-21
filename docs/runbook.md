@@ -139,6 +139,9 @@ Never configure SecurityPreflight Docker IPAM with `192.168.x.x` LAN ranges.
   `defectdojo-delivery.json`. Upload requires
   `SECURITY_PREFLIGHT_DEFECTDOJO_EXPORT_ENABLED=true` and a resolvable token
   reference.
+- Treat missing Greenbone/OpenVAS, OpenSCAP, DefectDojo, external VPS, or
+  scanner-runner configuration as SecurityPreflight `scope=platform` readiness
+  gaps. Do not hand them to an application team as application vulnerabilities.
 - For central telemetry, inspect `central-result-envelope.json` and
   `central-telemetry-delivery.json`.
 - For the capability audit, call `GET /api/v1/capabilities` through the

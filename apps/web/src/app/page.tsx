@@ -225,6 +225,7 @@ interface ScanRunDetail extends ScanRunSummary {
     id: string;
     tool: string;
     type: string;
+    scope?: string;
     severity: string;
     title: string;
     filePath: string | null;
@@ -692,6 +693,10 @@ function findingLocation(finding: ScanRunDetail["findings"][number], fallback: s
   if (finding.endpoint) return finding.endpoint;
 
   return fallback;
+}
+
+function findingScopeLabel(finding: ScanRunDetail["findings"][number], locale: AppLocale): string {
+  return finding.scope === "platform" ? (locale === "cs" ? "Platforma" : "Platform") : locale === "cs" ? "Aplikace" : "Application";
 }
 
 function delay(ms: number): Promise<void> {
@@ -3488,6 +3493,7 @@ export default function DashboardPage() {
             badges: (
               <span className="security-inline-badges">
                 <Badge tone={statusTone(finding.severity)}>{finding.severity.toUpperCase()}</Badge>
+                <Badge tone={finding.scope === "platform" ? "warning" : "info"}>{findingScopeLabel(finding, locale)}</Badge>
                 <Badge tone={finding.triageStatus === "fixed" || finding.triageStatus === "false-positive" ? "good" : finding.triageStatus === "open" ? "danger" : "warning"}>
                   {copy.scanLog.triageLabel(finding.triageStatus)}
                 </Badge>
