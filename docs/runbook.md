@@ -46,7 +46,8 @@ symptoms, diagnosis, fix, verification.
   workspace.
 - For a repository or local project, choose `Directory`, register the mounted
   project path, and select the project from the target selector. The path must
-  be visible inside the API/worker container under `PROJECTS_ROOT_CONTAINER`;
+  be visible inside the API/worker container under `PROJECTS_ROOT_CONTAINER` or
+  another root listed in `PROJECTS_ROOTS_CONTAINER`;
   production Docker cannot scan an arbitrary desktop path unless it is mounted.
 - For a website or API, choose `Web/API`, enter an `http` or `https` URL, and
   use only targets owned by the operator or explicitly approved for testing.
@@ -89,6 +90,10 @@ docker compose --env-file .env -p securitypreflight \
 for network in security-preflight_default securitypreflight_default; do
   docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network"
 done
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  --profile build-support \
+  build scanner-runtime
 docker compose --env-file .env -p securitypreflight \
   -f infra/docker-compose.yml \
   -f infra/docker-compose.production.yml \

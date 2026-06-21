@@ -1552,7 +1552,7 @@
           },
           "path": {
             "type": "string",
-            "description": "Absolute container path to the project directory, normally inside PROJECTS_ROOT_CONTAINER."
+            "description": "Absolute container path to the project directory, normally inside PROJECTS_ROOT_CONTAINER or one of PROJECTS_ROOTS_CONTAINER."
           },
           "repositoryUrl": {
             "type": [
@@ -3794,7 +3794,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 2000,
-            "description": "Absolute container path inside PROJECTS_ROOT_CONTAINER."
+            "description": "Absolute container path inside PROJECTS_ROOT_CONTAINER or one of PROJECTS_ROOTS_CONTAINER."
           },
           "repositoryUrl": {
             "type": [
@@ -3850,7 +3850,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 2000,
-            "description": "Absolute container path inside PROJECTS_ROOT_CONTAINER."
+            "description": "Absolute container path inside PROJECTS_ROOT_CONTAINER or one of PROJECTS_ROOTS_CONTAINER."
           },
           "repositoryUrl": {
             "type": [

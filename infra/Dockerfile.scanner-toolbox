@@ -1,8 +1,5 @@
-FROM node:26-bookworm-slim
+FROM security-preflight/scanner-runtime:local
 
 WORKDIR /workspace
-
-COPY infra/install-scanners.sh /tmp/install-scanners.sh
-RUN bash /tmp/install-scanners.sh && rm /tmp/install-scanners.sh
 
 CMD ["sleep", "infinity"]

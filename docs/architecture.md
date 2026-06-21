@@ -68,7 +68,8 @@ flowchart LR
 
 1. A user registers a local project path through the UI or CLI.
 2. The API validates that the project path is absolute, mounted inside
-   `PROJECTS_ROOT_CONTAINER`, and points to a directory. It stores project
+   a configured project root such as `PROJECTS_ROOT_CONTAINER` or one of
+   `PROJECTS_ROOTS_CONTAINER`, and points to a directory. It stores project
    metadata in `REPORTS_PATH/projects.json` and infers the stack from bounded
    file-name inspection such as `package.json`, `Dockerfile`, `pyproject.toml`,
    or `Package.swift`.

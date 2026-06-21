@@ -209,6 +209,11 @@ the production Compose override so only the Web UI and API ports are published:
 ```bash
 docker compose --env-file .env -p securitypreflight \
   -f infra/docker-compose.yml \
+  --profile build-support \
+  build scanner-runtime
+
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
   -f infra/docker-compose.production.yml \
   up -d --build
 ```
@@ -234,6 +239,10 @@ docker compose --env-file .env -p securitypreflight \
 for network in security-preflight_default securitypreflight_default; do
   docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network"
 done
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  --profile build-support \
+  build scanner-runtime
 docker compose --env-file .env -p securitypreflight \
   -f infra/docker-compose.yml \
   -f infra/docker-compose.production.yml \
@@ -352,6 +361,11 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_EVIDENCE_SCAN_LIMIT` | no | `100` | Maximum report directories parsed by the filesystem evidence fallback when PostgreSQL is unavailable or evidence merge is enabled |
 | `PROJECTS_ROOT_HOST` | no | unset | Host directory containing projects that the Docker API and worker may read through a read-only mount |
 | `PROJECTS_ROOT_CONTAINER` | no | `/workspace/projects` | Container mount path for `PROJECTS_ROOT_HOST`; registered project paths must stay inside this root |
+| `PROJECTS_OPT_ROOT_HOST` | no | same as `PROJECTS_ROOT_HOST` | Optional second host directory mounted read-only for additional applications such as `/opt` |
+| `PROJECTS_OPT_ROOT_CONTAINER` | no | `/workspace/opt-projects` | Container mount path for `PROJECTS_OPT_ROOT_HOST` |
+| `PROJECTS_ROOTS_CONTAINER` | no | `PROJECTS_ROOT_CONTAINER` | Comma-separated container roots allowed for project registration and auto-discovery, for example `/workspace/projects,/workspace/opt-projects` |
+| `PROJECTS_AUTODISCOVERY_ENABLED` | no | `false` | When `true`, `/api/v1/projects` synchronizes mounted application directories containing known project markers into the project registry |
+| `PROJECTS_AUTODISCOVERY_DEPTH` | no | `1` | Maximum directory depth scanned under each configured project root for auto-discovery; production APSYD deployments use `2` for `/opt/apsyd/<app>` |
 | `SECURITY_PREFLIGHT_AUTH_MODE` | no | dev: `disabled`, production: `oidc` | API auth mode: `disabled`, `shared-token`, or `oidc` |
 | `SECURITY_PREFLIGHT_API_TOKEN` | no | unset | Shared-token mode bearer token; never commit |
 | `SECURITY_PREFLIGHT_CORS_ORIGINS` | yes for browser production | localhost origins | Comma-separated allowed browser origins for API CORS |

@@ -8,6 +8,7 @@ import { detectTechnologyStack, type DataClassification, type Project } from "@s
 const registrySchemaVersion = "security-preflight.projects.v1";
 const maxStackFiles = 1500;
 const maxStackDepth = 4;
+const defaultAutoDiscoveryDepth = 1;
 const ignoredStackDirs = new Set([
   ".cache",
   ".git",
@@ -17,8 +18,21 @@ const ignoredStackDirs = new Set([
   "build",
   "coverage",
   "dist",
+  "logs",
   "node_modules",
+  "releases",
   "target"
+]);
+const projectMarkerFiles = new Set([
+  ".git",
+  "Dockerfile",
+  "compose.yml",
+  "docker-compose.yml",
+  "go.mod",
+  "package.json",
+  "pom.xml",
+  "pyproject.toml",
+  "requirements.txt"
 ]);
 
 const projectSchema = z.object({
@@ -71,8 +85,9 @@ export class ProjectRegistryError extends Error {
 
 export async function listProjects(): Promise<Project[]> {
   const registry = await readRegistry();
+  const projects = await syncAutoDiscoveredProjects(registry.projects);
 
-  return registry.projects.sort((left, right) => left.name.localeCompare(right.name, "en"));
+  return projects.sort((left, right) => left.name.localeCompare(right.name, "en"));
 }
 
 export async function getProject(projectId: string): Promise<Project | null> {
@@ -213,15 +228,17 @@ async function validateRegisteredProjectPath(value: string): Promise<string> {
   }
 
   const normalizedPath = path.resolve(value);
-  const root = process.env.PROJECTS_ROOT_CONTAINER?.trim();
+  const roots = projectRootContainers();
 
-  if (root) {
-    const normalizedRoot = path.resolve(root);
-    const relative = path.relative(normalizedRoot, normalizedPath);
-    const insideRoot = relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  if (roots.length > 0) {
+    const insideRoot = roots.some((root) => isInsideRoot(normalizedPath, root.path));
 
     if (!insideRoot) {
-      throw new ProjectRegistryError(400, "PROJECT_PATH_OUTSIDE_ROOT", `Project path must be inside ${normalizedRoot}.`);
+      throw new ProjectRegistryError(
+        400,
+        "PROJECT_PATH_OUTSIDE_ROOT",
+        `Project path must be inside one of the configured roots: ${roots.map((root) => root.path).join(", ")}.`
+      );
     }
   }
 
@@ -242,6 +259,199 @@ async function validateRegisteredProjectPath(value: string): Promise<string> {
   }
 
   return normalizedPath;
+}
+
+async function syncAutoDiscoveredProjects(projects: Project[]): Promise<Project[]> {
+  if (process.env.PROJECTS_AUTODISCOVERY_ENABLED !== "true") {
+    return projects;
+  }
+
+  const discovered = await discoverMountedProjects();
+  if (discovered.length === 0) {
+    return projects;
+  }
+
+  const now = new Date().toISOString();
+  const nextProjects = [...projects];
+  let changed = false;
+
+  for (const candidate of discovered) {
+    const existingIndex = nextProjects.findIndex((project) => project.id === candidate.id || project.path === candidate.path);
+    const detected = await inspectProject(candidate.path);
+    const previous = existingIndex >= 0 ? nextProjects[existingIndex] : null;
+    const project: Project = {
+      id: previous?.id ?? candidate.id,
+      name: previous?.name ?? candidate.name,
+      path: candidate.path,
+      repositoryUrl: previous?.repositoryUrl ?? detected.repositoryUrl,
+      defaultBranch: previous?.defaultBranch ?? detected.defaultBranch,
+      technologyStack: detected.technologyStack,
+      dataClassification: previous?.dataClassification ?? candidate.dataClassification,
+      owner: previous?.owner ?? candidate.owner,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: previous?.updatedAt ?? now
+    };
+
+    if (existingIndex >= 0) {
+      if (JSON.stringify(nextProjects[existingIndex]) !== JSON.stringify(project)) {
+        nextProjects[existingIndex] = { ...project, updatedAt: now };
+        changed = true;
+      }
+    } else {
+      nextProjects.push(project);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await writeRegistry(nextProjects);
+  }
+
+  return nextProjects;
+}
+
+async function discoverMountedProjects(): Promise<Array<{ id: string; name: string; path: string; dataClassification: DataClassification; owner: string }>> {
+  const roots = projectRootContainers();
+  const depth = autoDiscoveryDepth();
+  const discovered: Array<{ id: string; name: string; path: string; dataClassification: DataClassification; owner: string }> = [];
+  const seenPaths = new Set<string>();
+
+  for (const root of roots) {
+    await discoverProjectsInRoot(root, depth, discovered, seenPaths);
+  }
+
+  return discovered.sort((left, right) => left.id.localeCompare(right.id, "en"));
+}
+
+async function discoverProjectsInRoot(
+  root: { label: string; path: string },
+  maxDepth: number,
+  discovered: Array<{ id: string; name: string; path: string; dataClassification: DataClassification; owner: string }>,
+  seenPaths: Set<string>
+): Promise<void> {
+  async function walk(current: string, depth: number): Promise<void> {
+    if (depth > maxDepth) return;
+
+    let entries: Dirent[];
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    if (depth > 0 && isProjectDirectory(entries)) {
+      const normalizedPath = path.resolve(current);
+      if (!seenPaths.has(normalizedPath)) {
+        seenPaths.add(normalizedPath);
+        const relative = path.relative(root.path, normalizedPath).split(path.sep).join("/");
+        const id = normalizeProjectId(`${root.label}_${slugifyPath(relative)}`);
+        discovered.push({
+          id,
+          name: projectNameFromPath(relative),
+          path: normalizedPath,
+          dataClassification: inferDataClassification(normalizedPath),
+          owner: inferOwner(normalizedPath)
+        });
+      }
+      return;
+    }
+
+    for (const entry of entries) {
+      if (entry.name.includes("\0")) continue;
+      if (!entry.isDirectory()) continue;
+      if (ignoredStackDirs.has(entry.name)) continue;
+      await walk(path.join(current, entry.name), depth + 1);
+    }
+  }
+
+  await walk(root.path, 0);
+}
+
+function projectRootContainers(): Array<{ label: string; path: string }> {
+  const configured = splitCsv(process.env.PROJECTS_ROOTS_CONTAINER);
+  const legacy = splitCsv(process.env.PROJECTS_ROOT_CONTAINER);
+  const roots = configured.length > 0 ? configured : legacy;
+  const seen = new Set<string>();
+
+  return roots
+    .map((rootPath) => path.resolve(rootPath))
+    .filter((rootPath) => {
+      if (seen.has(rootPath)) return false;
+      seen.add(rootPath);
+      return true;
+    })
+    .map((rootPath) => ({
+      label: rootLabel(rootPath),
+      path: rootPath
+    }));
+}
+
+function isInsideRoot(normalizedPath: string, normalizedRoot: string): boolean {
+  const relative = path.relative(normalizedRoot, normalizedPath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isProjectDirectory(entries: Dirent[]): boolean {
+  return entries.some((entry) => projectMarkerFiles.has(entry.name));
+}
+
+function autoDiscoveryDepth(): number {
+  const parsed = Number.parseInt(process.env.PROJECTS_AUTODISCOVERY_DEPTH ?? String(defaultAutoDiscoveryDepth), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return defaultAutoDiscoveryDepth;
+  }
+
+  return Math.min(Math.max(parsed, 1), 4);
+}
+
+function splitCsv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function rootLabel(rootPath: string): string {
+  const base = path.basename(rootPath);
+
+  if (base === "projects") return "srv";
+  if (base === "opt-projects") return "opt";
+
+  return slugify(base || "projects");
+}
+
+function projectNameFromPath(relativePath: string): string {
+  const parts = relativePath.split("/").filter(Boolean);
+  return parts.join(" / ");
+}
+
+function inferDataClassification(projectPath: string): DataClassification {
+  const normalized = projectPath.toLowerCase();
+  return normalized.includes("apsyd") ? "health-data" : "sensitive";
+}
+
+function inferOwner(projectPath: string): string {
+  const normalized = projectPath.toLowerCase();
+  return normalized.includes("apsyd") ? "APSYD" : "STRATOS";
+}
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function slugifyPath(value: string): string {
+  return (
+    value
+      .split("/")
+      .map((part) => slugify(part))
+      .filter(Boolean)
+      .join("_") || "project"
+  );
 }
 
 async function inspectProject(projectPath: string): Promise<{

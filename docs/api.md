@@ -134,8 +134,8 @@ curl http://localhost:8781/api/v1/projects
 curl http://localhost:8781/api/v1/projects/project_abc123
 ```
 
-Project paths must be absolute container paths and, when
-`PROJECTS_ROOT_CONTAINER` is set, must stay inside that mount. The API validates
+Project paths must be absolute container paths and, when configured roots such
+as `PROJECTS_ROOT_CONTAINER` or `PROJECTS_ROOTS_CONTAINER` are set, must stay inside one of those mounts. The API validates
 that the directory exists in the API container, detects the technology stack
 from bounded file-name inspection, and persists the durable registry in
 `REPORTS_PATH/projects.json`. Repository URLs are sanitized before persistence

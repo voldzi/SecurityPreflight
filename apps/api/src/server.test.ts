@@ -272,6 +272,81 @@ describe("api server", () => {
     }
   });
 
+  it("auto-discovers mounted projects across srv and opt roots", async () => {
+    const previousReportsPath = process.env.REPORTS_PATH;
+    const previousProjectsRoot = process.env.PROJECTS_ROOT_CONTAINER;
+    const previousProjectRoots = process.env.PROJECTS_ROOTS_CONTAINER;
+    const previousAutoDiscovery = process.env.PROJECTS_AUTODISCOVERY_ENABLED;
+    const previousAutoDiscoveryDepth = process.env.PROJECTS_AUTODISCOVERY_DEPTH;
+    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "security-preflight-autodiscovery-"));
+    const reportsPath = path.join(workspaceRoot, "reports");
+    const srvRoot = path.join(workspaceRoot, "projects");
+    const optRoot = path.join(workspaceRoot, "opt-projects");
+    const srvApp = path.join(srvRoot, "stratos-app");
+    const apsydApp = path.join(optRoot, "apsyd", "app-pr5-pr6");
+    const nextApsydApp = path.join(optRoot, "apsyd", "app-site-apsyd2-remote-main");
+
+    await mkdir(srvApp, { recursive: true });
+    await mkdir(apsydApp, { recursive: true });
+    await writeFile(path.join(srvApp, "package.json"), "{\"name\":\"stratos-app\"}\n", "utf8");
+    await writeFile(path.join(apsydApp, "Dockerfile"), "FROM node:26-bookworm-slim\n", "utf8");
+
+    process.env.REPORTS_PATH = reportsPath;
+    process.env.PROJECTS_ROOT_CONTAINER = srvRoot;
+    process.env.PROJECTS_ROOTS_CONTAINER = `${srvRoot},${optRoot}`;
+    process.env.PROJECTS_AUTODISCOVERY_ENABLED = "true";
+    process.env.PROJECTS_AUTODISCOVERY_DEPTH = "2";
+
+    try {
+      const server = createServer({ logger: false });
+      const first = await server.inject({ method: "GET", url: "/api/v1/projects" });
+
+      expect(first.statusCode).toBe(200);
+      expect(first.json().meta.total).toBe(2);
+      expect(first.json().data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "srv_stratos-app",
+            path: srvApp,
+            owner: "STRATOS",
+            dataClassification: "sensitive"
+          }),
+          expect.objectContaining({
+            id: "opt_apsyd_app-pr5-pr6",
+            path: apsydApp,
+            owner: "APSYD",
+            dataClassification: "health-data"
+          })
+        ])
+      );
+
+      await mkdir(nextApsydApp, { recursive: true });
+      await writeFile(path.join(nextApsydApp, "docker-compose.yml"), "services: {}\n", "utf8");
+
+      const second = await server.inject({ method: "GET", url: "/api/v1/projects" });
+
+      expect(second.statusCode).toBe(200);
+      expect(second.json().meta.total).toBe(3);
+      expect(second.json().data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "opt_apsyd_app-site-apsyd2-remote-main",
+            path: nextApsydApp,
+            owner: "APSYD",
+            dataClassification: "health-data"
+          })
+        ])
+      );
+    } finally {
+      restoreEnv("REPORTS_PATH", previousReportsPath);
+      restoreEnv("PROJECTS_ROOT_CONTAINER", previousProjectsRoot);
+      restoreEnv("PROJECTS_ROOTS_CONTAINER", previousProjectRoots);
+      restoreEnv("PROJECTS_AUTODISCOVERY_ENABLED", previousAutoDiscovery);
+      restoreEnv("PROJECTS_AUTODISCOVERY_DEPTH", previousAutoDiscoveryDepth);
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
   it("rejects project registration outside the configured project root", async () => {
     const previousReportsPath = process.env.REPORTS_PATH;
     const previousProjectsRoot = process.env.PROJECTS_ROOT_CONTAINER;

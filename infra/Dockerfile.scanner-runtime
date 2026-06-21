@@ -1,0 +1,8 @@
+FROM node:26-bookworm-slim
+
+WORKDIR /runtime
+RUN npm install -g pnpm@10.33.0
+
+COPY infra/install-scanners.sh /tmp/install-scanners.sh
+RUN bash /tmp/install-scanners.sh && rm /tmp/install-scanners.sh
+
