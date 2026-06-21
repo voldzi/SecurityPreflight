@@ -1225,7 +1225,7 @@ async function getEvidenceScanRunDetail(scanRunId: string): Promise<ScanRunDetai
       id: stringValue(item.id) ?? "finding",
       tool: stringValue(item.tool) ?? "unknown",
       type: stringValue(item.type) ?? "unknown",
-      scope: stringValue(item.scope) ?? "application",
+      scope: stringValue(item.scope) ?? inferFindingScope(item),
       severity: stringValue(item.severity) ?? "info",
       title: stringValue(item.title) ?? "Untitled finding",
       filePath: nullableString(item.filePath),
@@ -1354,7 +1354,10 @@ async function readScanRunSummary(scanRunId: string): Promise<ScanRunSummaryDto 
   const profile = recordValue(report.profile) ?? recordValue(envelope.profile) ?? {};
   const gate = recordValue(report.gate) ?? recordValue(execution.gate) ?? recordValue(envelope.gate) ?? {};
   const findings = arrayValue(report.findings ?? execution.findings ?? envelope.findings);
-  const applicationFindingCount = findings.filter((finding) => stringValue(asRecord(finding).scope) !== "platform").length;
+  const applicationFindingCount = findings.filter((finding) => {
+    const item = asRecord(finding);
+    return (stringValue(item.scope) ?? inferFindingScope(item)) !== "platform";
+  }).length;
   const startedAt = nullableString(scanRun.startedAt) ?? nullableString(execution.startedAt);
   const finishedAt = nullableString(scanRun.finishedAt) ?? nullableString(execution.finishedAt);
   const files = await listScanRunFiles(scanRunId);
@@ -1518,6 +1521,33 @@ function gateResultValue(value: unknown): GateResult | null {
 
 function findingStatusValue(value: unknown): FindingStatus | null {
   return value === "open" || value === "accepted" || value === "false-positive" || value === "fixed" || value === "suppressed" ? value : null;
+}
+
+function inferFindingScope(finding: Record<string, unknown>): string {
+  const haystack = [
+    stringValue(finding.tool),
+    stringValue(finding.type),
+    stringValue(finding.title),
+    stringValue(finding.recommendation)
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    stringValue(finding.type) === "tooling" ||
+    haystack.includes("greenbone/openvas integration is not configured") ||
+    haystack.includes("greenbone/openvas scan result is not attached") ||
+    haystack.includes("defectdojo export is not configured") ||
+    haystack.includes("openscap content is not configured") ||
+    haystack.includes("openscap evaluation evidence is not configured") ||
+    haystack.includes("external scanner vps is not configured") ||
+    haystack.includes("scanner step")
+  ) {
+    return "platform";
+  }
+
+  return "application";
 }
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {

@@ -1044,7 +1044,7 @@ function rowToFinding(row: FindingRow): PersistedFindingDto {
     id: row.finding_id,
     tool: row.tool,
     type: row.type,
-    scope: stringValue(jsonValue(row.raw_payload, "scope")) ?? "application",
+    scope: stringValue(jsonValue(row.raw_payload, "scope")) ?? inferPersistedFindingScope(row),
     severity: row.severity,
     title: row.title,
     filePath: row.file_path,
@@ -1164,6 +1164,25 @@ function sanitizeFindingPayload(finding: Finding): Record<string, unknown> {
     status: finding.status,
     fingerprint: finding.fingerprint
   };
+}
+
+function inferPersistedFindingScope(finding: Pick<FindingRow, "tool" | "type" | "title" | "recommendation">): string {
+  const haystack = `${finding.tool} ${finding.type} ${finding.title} ${finding.recommendation}`.toLowerCase();
+
+  if (
+    finding.type === "tooling" ||
+    haystack.includes("greenbone/openvas integration is not configured") ||
+    haystack.includes("greenbone/openvas scan result is not attached") ||
+    haystack.includes("defectdojo export is not configured") ||
+    haystack.includes("openscap content is not configured") ||
+    haystack.includes("openscap evaluation evidence is not configured") ||
+    haystack.includes("external scanner vps is not configured") ||
+    haystack.includes("scanner step")
+  ) {
+    return "platform";
+  }
+
+  return "application";
 }
 
 function isoOrNull(value: Date | string | null | undefined): string | null {
