@@ -668,6 +668,10 @@ export const uiText = {
       buildingPlan: "Sestavuji scan plán...",
       queueingScan: "Zařazuji scan job do fronty...",
       planBlocked: "Plán skenu byl vytvořen, ale guardraily blokují spuštění.",
+      planBlockedWithReasons: (reasons: string) => `Guardraily blokují zařazení skenu. ${reasons}`,
+      activeProfileNeedsWebTarget:
+        "Vybraný profil obsahuje aktivní síťové/DAST kroky. Pro spuštění skenu přepněte cíl na Web/API a zadejte povolenou URL, nebo použijte Dry run pro zobrazení guardrail blockerů.",
+      activeProfileNeedsWebTargetReason: "Aktivní síťové/DAST kroky vyžadují explicitní Web/API URL a allowlist hostu.",
       planReady: "Plán skenu je připraven a lze jej zařadit do fronty.",
       scanQueued: "Scan job byl zařazen do fronty. Worker zapíše evidenci do /reports.",
       scanActionFailed: "Akce skenu selhala.",
@@ -710,8 +714,8 @@ export const uiText = {
       codexPending: "Čeká na dokončenou reportovou evidenci."
     },
     runPanel: {
-      title: "Spustit sken",
-      aria: "Spustit sken",
+      title: "Stav skenu",
+      aria: "Stav skenu",
       scanProfile: "Scan profil",
       findProfile: "Najít profil",
       targetType: "Typ cíle",
@@ -1215,6 +1219,10 @@ export const uiText = {
       buildingPlan: "Building scan plan...",
       queueingScan: "Queueing scan job...",
       planBlocked: "Scan plan was created, but guardrails block execution.",
+      planBlockedWithReasons: (reasons: string) => `Guardrails block queueing this scan. ${reasons}`,
+      activeProfileNeedsWebTarget:
+        "The selected profile contains active network/DAST steps. Switch the target to Web/API and enter an allowlisted URL before running the scan, or use Dry run to inspect guardrail blockers.",
+      activeProfileNeedsWebTargetReason: "Active network/DAST steps require an explicit Web/API URL and host allowlist.",
       planReady: "Scan plan is ready and can be queued.",
       scanQueued: "Scan job was queued. Worker will write evidence under /reports.",
       scanActionFailed: "Scan action failed.",
@@ -1257,8 +1265,8 @@ export const uiText = {
       codexPending: "Waiting for completed report evidence."
     },
     runPanel: {
-      title: "Run scan",
-      aria: "Run scan",
+      title: "Scan status",
+      aria: "Scan status",
       scanProfile: "Scan profile",
       findProfile: "Find profile",
       targetType: "Target type",

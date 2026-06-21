@@ -174,6 +174,7 @@ interface ScanActionResult {
   message: string;
   scanRunId?: string;
   blocked?: boolean;
+  blockedReasons?: string[];
   gate?: string;
   stepCount?: number;
 }
@@ -408,7 +409,8 @@ class ApiRequestError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly code: string | null
+    readonly code: string | null,
+    readonly details: unknown[] | null = null
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -424,13 +426,41 @@ async function fetchJson<T>(url: string, init?: RequestInit, authToken?: string 
       ...init?.headers
     }
   });
-  const payload = (await response.json()) as T & { error?: { code?: string; message?: string } };
+  const payload = (await response.json()) as T & { error?: { code?: string; message?: string; details?: unknown[] } };
 
   if (!response.ok) {
-    throw new ApiRequestError(payload.error?.message ?? `Request failed with status ${response.status}`, response.status, payload.error?.code ?? null);
+    throw new ApiRequestError(
+      payload.error?.message ?? `Request failed with status ${response.status}`,
+      response.status,
+      payload.error?.code ?? null,
+      Array.isArray(payload.error?.details) ? payload.error.details : null
+    );
   }
 
   return payload;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function extractBlockedReasons(plan: unknown): string[] {
+  if (!isRecord(plan)) return [];
+
+  const directReasons = Array.isArray(plan.blockedReasons) ? plan.blockedReasons.filter((reason): reason is string => typeof reason === "string") : [];
+  const stepReasons = Array.isArray(plan.steps)
+    ? plan.steps.flatMap((step) => {
+        if (!isRecord(step) || !Array.isArray(step.blockedReasons)) return [];
+        return step.blockedReasons.filter((reason): reason is string => typeof reason === "string");
+      })
+    : [];
+
+  return [...new Set([...directReasons, ...stepReasons])];
+}
+
+function scanPlanFromApiError(error: ApiRequestError): Record<string, unknown> | null {
+  const plan = error.details?.find((detail) => isRecord(detail) && (detail.blocked === true || Array.isArray(detail.steps)));
+  return isRecord(plan) ? plan : null;
 }
 
 async function fetchOptionalJson<T>(url: string, init?: RequestInit, authToken?: string | null): Promise<T | null> {
@@ -699,6 +729,7 @@ export default function DashboardPage() {
     () => profiles.find((profile) => profile.id === effectiveProfileId),
     [effectiveProfileId, profiles]
   );
+  const queueRequiresWebTarget = scanTargetMode === "project" && selectedProfile?.allowActiveDast === true;
   const selectedProfileDescription = selectedProfile
     ? profileDescription(locale, selectedProfile.id, selectedProfile.description)
     : copy.messages.loadProfilesFallback;
@@ -1021,7 +1052,7 @@ export default function DashboardPage() {
         primaryAction: {
           id: "run",
           label: copy.command.queue,
-          disabled: !authReady,
+          disabled: !authReady || queueRequiresWebTarget,
           onSelect: () => void runScan("queue")
         }
       },
@@ -1091,6 +1122,7 @@ export default function DashboardPage() {
       criticalGaps,
       effectiveProfileId,
       latestRun,
+      queueRequiresWebTarget,
       scanTargetMode,
       selectWorkspaceView,
       webTargetUrl
@@ -2035,6 +2067,19 @@ export default function DashboardPage() {
       return;
     }
 
+    if (mode === "queue" && queueRequiresWebTarget) {
+      setScanResult({
+        mode: "plan",
+        status: "success",
+        message: copy.messages.activeProfileNeedsWebTarget,
+        blocked: true,
+        blockedReasons: [copy.messages.activeProfileNeedsWebTargetReason],
+        gate: "blocked",
+        stepCount: selectedProfile?.checks.length
+      });
+      return;
+    }
+
     const scanRunId = `scan_ui_${Date.now().toString(36)}`;
     setScanResult({
       mode,
@@ -2093,6 +2138,23 @@ export default function DashboardPage() {
       }
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
+
+      if (error instanceof ApiRequestError && error.code === "SCAN_PLAN_BLOCKED") {
+        const plan = scanPlanFromApiError(error);
+        const blockedReasons = extractBlockedReasons(plan);
+        setScanResult({
+          mode: "plan",
+          status: "success",
+          message: blockedReasons.length ? copy.messages.planBlockedWithReasons(blockedReasons.slice(0, 3).join(" ")) : copy.messages.planBlocked,
+          scanRunId,
+          blocked: true,
+          blockedReasons,
+          gate: "blocked",
+          stepCount: Array.isArray(plan?.steps) ? plan.steps.length : undefined
+        });
+        return;
+      }
+
       setScanResult({
         mode,
         status: "error",
@@ -2387,6 +2449,17 @@ export default function DashboardPage() {
     const liveProgressValue = progressValue(liveCompletedSteps, liveTotalSteps, activeProgress?.status ?? activeRunDetail?.status ?? scanResult.status);
     const liveStatus = activeProgress?.status ?? activeRunDetail?.status ?? scanResult.status;
     const scanIsActive = scanResult.status === "loading" || ["queued", "running"].includes(liveStatus.toLowerCase());
+    const scanQueueDisabled = scanResult.status === "loading" || !authReady || queueRequiresWebTarget;
+    const scanResultTone = queueRequiresWebTarget || scanResult.blocked ? "warning" : statusTone(scanResult.status);
+    const scanResultLabel = queueRequiresWebTarget
+      ? gateDisplayLabel("warning", locale)
+      : scanResult.blocked
+        ? actionGateDisplayLabel("blocked", locale)
+        : scanResult.status === "loading"
+          ? copy.runPanel.working
+          : statusDisplayLabel(scanResult.status, locale);
+    const scanResultMessage = queueRequiresWebTarget ? copy.messages.activeProfileNeedsWebTarget : scanResult.message;
+    const displayedBlockedReasons = queueRequiresWebTarget ? [copy.messages.activeProfileNeedsWebTargetReason] : (scanResult.blockedReasons ?? []);
     const liveStepItems = activeRunDetail?.steps.length
       ? activeRunDetail.steps.slice(0, 8).map((step) => ({
           id: step.stepId,
@@ -2545,7 +2618,7 @@ export default function DashboardPage() {
 
               <div className="security-scan-command-row">
                 <div className="security-actions">
-                  <Button variant="primary" disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("queue")}>
+                  <Button variant="primary" disabled={scanQueueDisabled} onClick={() => runScan("queue")}>
                     <Play size={14} />
                     {copy.runPanel.runScan}
                   </Button>
@@ -2558,11 +2631,18 @@ export default function DashboardPage() {
                     {copy.runPanel.openScanLog}
                   </Button>
                 </div>
-                <div className="security-result" data-tone={statusTone(scanResult.status)} role="status">
-                  <strong>{scanResult.status === "loading" ? copy.runPanel.working : statusDisplayLabel(scanResult.status, locale)}</strong>
-                  <p>{scanResult.message}</p>
+                <div className="security-result" data-tone={scanResultTone} role="status">
+                  <strong>{scanResultLabel}</strong>
+                  <p>{scanResultMessage}</p>
                   {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
                   {scanResult.stepCount != null ? <span>{copy.runPanel.plannedSteps(scanResult.stepCount)}</span> : null}
+                  {displayedBlockedReasons.length ? (
+                    <ul className="security-result-reasons">
+                      {displayedBlockedReasons.slice(0, 3).map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -3709,6 +3789,16 @@ export default function DashboardPage() {
   const runPanelCompletedSteps = runPanelProgress?.completedSteps ?? (runPanelDetail ? completedStepCount(runPanelDetail.steps) : scanResult.status === "success" ? runPanelTotalSteps : 0);
   const runPanelProgressValue = progressValue(runPanelCompletedSteps, runPanelTotalSteps, runPanelProgress?.status ?? runPanelDetail?.status ?? scanResult.status);
   const runPanelActive = scanResult.status === "loading" || ["queued", "running"].includes((runPanelProgress?.status ?? "").toLowerCase());
+  const runPanelResultTone = queueRequiresWebTarget || scanResult.blocked ? "warning" : statusTone(scanResult.status);
+  const runPanelResultLabel = queueRequiresWebTarget
+    ? gateDisplayLabel("warning", locale)
+    : scanResult.blocked
+      ? actionGateDisplayLabel("blocked", locale)
+      : scanResult.status === "loading"
+        ? copy.runPanel.working
+        : statusDisplayLabel(scanResult.status, locale);
+  const runPanelResultMessage = queueRequiresWebTarget ? copy.messages.activeProfileNeedsWebTarget : scanResult.message;
+  const runPanelBlockedReasons = queueRequiresWebTarget ? [copy.messages.activeProfileNeedsWebTargetReason] : (scanResult.blockedReasons ?? []);
 
   return (
     <AppShell
@@ -3808,28 +3898,18 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="security-actions">
-            <Button variant="primary" disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("queue")}>
-              <Play size={14} />
-              {copy.runPanel.runScan}
-            </Button>
-            <Button disabled={scanResult.status === "loading" || !authReady} onClick={() => runScan("plan")}>
-              <ClipboardList size={14} />
-              {copy.runPanel.dryRun}
-            </Button>
-            <IconButton label={copy.runPanel.openScanLog} title={copy.runPanel.scanLogPending} onClick={openScanLog}>
-              <TerminalSquare size={14} />
-            </IconButton>
-            <IconButton disabled={!latestRun || exportingCodex || !authReady} label={copy.execution.exportCodexLabel} title={copy.execution.exportCodexTitle} onClick={exportCodexRemediation}>
-              <Sparkles size={14} />
-            </IconButton>
-          </div>
-
-          <div className="security-result" data-tone={statusTone(scanResult.status)} role="status">
-            <strong>{scanResult.status === "loading" ? copy.runPanel.working : statusDisplayLabel(scanResult.status, locale)}</strong>
-            <p>{scanResult.message}</p>
+          <div className="security-result" data-tone={runPanelResultTone} role="status">
+            <strong>{runPanelResultLabel}</strong>
+            <p>{runPanelResultMessage}</p>
             {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
             {scanResult.stepCount != null ? <span>{copy.runPanel.plannedSteps(scanResult.stepCount)}</span> : null}
+            {runPanelBlockedReasons.length ? (
+              <ul className="security-result-reasons">
+                {runPanelBlockedReasons.slice(0, 3).map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
 
           <Button className="security-wide-button" onClick={() => setDetailOpen(true)}>

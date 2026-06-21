@@ -839,6 +839,16 @@ code,
   overflow-wrap: anywhere;
 }
 
+.security-result-reasons {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding-left: 16px;
+  color: var(--stratos-color-text);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .security-cell-stack {
   display: grid;
   gap: 2px;
