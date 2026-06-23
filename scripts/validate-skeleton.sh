@@ -48,6 +48,12 @@ for f in "${required_files[@]}"; do
 done
 require_dir docs/adr
 
+if [[ -x "$root/scripts/validate-docker-ipam.sh" ]]; then
+  "$root/scripts/validate-docker-ipam.sh" "$root" || failures=$((failures + 1))
+else
+  fail "scripts/validate-docker-ipam.sh is missing or not executable"
+fi
+
 # CLAUDE.md must equal AGENTS.md apart from its trailing Compact Instructions
 # section (blank lines ignored). Intentional platform-specific differences
 # require adapting this check via an ADR.

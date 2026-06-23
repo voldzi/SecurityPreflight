@@ -228,11 +228,12 @@ common LAN ranges:
 - default gateway: `10.246.250.1`
 - default network name: `security-preflight_default`
 
-Do not configure SecurityPreflight Docker IPAM with `192.168.x.x` ranges. Those
-ranges are reserved for local LANs on `docker.home.cz`; using them can hijack
-routes to real hosts such as Ollama on `192.168.200.2:11434`. If a previous
-deployment already created a conflicting network, stop the stack and remove the
-old Docker network before starting the updated compose file:
+Do not configure SecurityPreflight Docker IPAM with local LAN ranges. The
+forbidden ranges include `192.168.1.x`, `192.168.10.x`, `192.168.100.x`, and
+`192.168.200.x`; using them can hijack routes to real hosts such as Ollama on
+`192.168.200.2:11434`. If a previous deployment already created a conflicting
+network, stop the stack and remove the old Docker network before starting the
+updated compose file:
 
 ```bash
 docker compose --env-file .env -p securitypreflight \
@@ -252,12 +253,13 @@ docker compose --env-file .env -p securitypreflight \
   up -d --build
 ```
 
-After startup, verify that no Docker network uses the LAN subnet:
+After startup, verify that no Docker network uses one of the forbidden LAN
+subnets:
 
 ```bash
 docker network inspect $(docker network ls -q) \
   --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
-  | grep '192.168.200' || echo OK
+  | grep -E '192\.168\.(1|10|100|200)\.' || echo OK
 ```
 
 Set `APP_ENV=production`, `NEXT_PUBLIC_API_URL` to the browser-reachable API

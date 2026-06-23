@@ -73,7 +73,7 @@ symptoms, diagnosis, fix, verification.
 ```bash
 docker network inspect $(docker network ls -q) \
   --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
-  | grep '192.168.200' || echo OK
+  | grep -E '192\.168\.(1|10|100|200)\.' || echo OK
 
 ip route get 192.168.200.2
 ```
@@ -105,13 +105,14 @@ docker compose --env-file .env -p securitypreflight \
 ```bash
 docker network inspect $(docker network ls -q) \
   --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
-  | grep '192.168.200' || echo OK
+  | grep -E '192\.168\.(1|10|100|200)\.' || echo OK
 ip route get 192.168.200.2
 nc -vz -w 5 192.168.200.2 11434
 ```
 
 The route to `192.168.200.2` must not go through a Docker `br-*` interface.
-Never configure SecurityPreflight Docker IPAM with `192.168.x.x` LAN ranges.
+Never configure SecurityPreflight Docker IPAM with `192.168.1.x`,
+`192.168.10.x`, `192.168.100.x`, or `192.168.200.x` LAN ranges.
 
 ## Scan Evidence Is Missing or Skipped
 
