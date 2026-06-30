@@ -1586,6 +1586,7 @@
           "name",
           "path",
           "repositoryUrl",
+          "publicUrl",
           "defaultBranch",
           "technologyStack",
           "dataClassification",
@@ -1611,6 +1612,14 @@
               "null"
             ],
             "description": "Sanitized repository URL. Credentials are stripped before persistence."
+          },
+          "publicUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "Public or staging http(s) URL used as the default Web/API scan target for this project. Credentials and URL fragments are stripped before persistence."
           },
           "defaultBranch": {
             "type": [
@@ -3864,6 +3873,16 @@
             "minLength": 1,
             "maxLength": 2000
           },
+          "publicUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Public or staging http(s) URL to prefill Web/API scans for this project."
+          },
           "defaultBranch": {
             "type": [
               "string",
@@ -3919,6 +3938,16 @@
             ],
             "minLength": 1,
             "maxLength": 2000
+          },
+          "publicUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Public or staging http(s) URL to prefill Web/API scans for this project."
           },
           "defaultBranch": {
             "type": [

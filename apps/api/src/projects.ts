@@ -40,6 +40,7 @@ const projectSchema = z.object({
   name: z.string().min(1),
   path: z.string().min(1),
   repositoryUrl: z.string().nullable(),
+  publicUrl: z.string().url().nullable().default(null),
   defaultBranch: z.string().nullable(),
   technologyStack: z.array(z.string()),
   dataClassification: z.enum(["public", "internal", "confidential", "sensitive", "health-data"]),
@@ -58,6 +59,7 @@ export interface ProjectCreateInput {
   name: string;
   path: string;
   repositoryUrl?: string | null;
+  publicUrl?: string | null;
   defaultBranch?: string | null;
   dataClassification?: DataClassification;
   owner?: string | null;
@@ -67,6 +69,7 @@ export interface ProjectUpdateInput {
   name?: string;
   path?: string;
   repositoryUrl?: string | null;
+  publicUrl?: string | null;
   defaultBranch?: string | null;
   dataClassification?: DataClassification;
   owner?: string | null;
@@ -116,6 +119,7 @@ export async function createProject(input: ProjectCreateInput): Promise<Project>
     name: input.name.trim(),
     path: normalizedPath,
     repositoryUrl: sanitizeRepositoryUrl(input.repositoryUrl ?? detected.repositoryUrl),
+    publicUrl: sanitizePublicUrl(input.publicUrl),
     defaultBranch: normalizeNullableString(input.defaultBranch ?? detected.defaultBranch),
     technologyStack: detected.technologyStack,
     dataClassification: input.dataClassification ?? "internal",
@@ -151,6 +155,7 @@ export async function updateProject(projectId: string, input: ProjectUpdateInput
     name: input.name?.trim() ?? current.name,
     path: nextPath,
     repositoryUrl: sanitizeRepositoryUrl(input.repositoryUrl !== undefined ? input.repositoryUrl : (detected?.repositoryUrl ?? current.repositoryUrl)),
+    publicUrl: sanitizePublicUrl(input.publicUrl !== undefined ? input.publicUrl : current.publicUrl),
     defaultBranch: normalizeNullableString(input.defaultBranch !== undefined ? input.defaultBranch : (detected?.defaultBranch ?? current.defaultBranch)),
     technologyStack: detected?.technologyStack ?? current.technologyStack,
     dataClassification: input.dataClassification ?? current.dataClassification,
@@ -284,6 +289,7 @@ async function syncAutoDiscoveredProjects(projects: Project[]): Promise<Project[
       name: previous?.name ?? candidate.name,
       path: candidate.path,
       repositoryUrl: previous?.repositoryUrl ?? detected.repositoryUrl,
+      publicUrl: previous?.publicUrl ?? null,
       defaultBranch: previous?.defaultBranch ?? detected.defaultBranch,
       technologyStack: detected.technologyStack,
       dataClassification: previous?.dataClassification ?? candidate.dataClassification,
@@ -434,6 +440,27 @@ function inferDataClassification(projectPath: string): DataClassification {
 function inferOwner(projectPath: string): string {
   const normalized = projectPath.toLowerCase();
   return normalized.includes("apsyd") ? "APSYD" : "STRATOS";
+}
+
+function sanitizePublicUrl(value: string | null | undefined): string | null {
+  const normalized = normalizeNullableString(value);
+  if (!normalized) return null;
+
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new ProjectRegistryError(400, "INVALID_PROJECT_PUBLIC_URL", "Project public URL must use http or https.");
+    }
+    parsed.username = "";
+    parsed.password = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch (error) {
+    if (error instanceof ProjectRegistryError) {
+      throw error;
+    }
+    throw new ProjectRegistryError(400, "INVALID_PROJECT_PUBLIC_URL", "Project public URL must be a valid http or https URL.");
+  }
 }
 
 function slugify(value: string): string {

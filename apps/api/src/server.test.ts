@@ -274,6 +274,7 @@ describe("api server", () => {
         path: projectPath,
         dataClassification: "health-data",
         owner: "Security Team",
+        publicUrl: null,
         repositoryUrl: "https://example.com/voldzi/registered-app.git",
         defaultBranch: "main"
       });
@@ -304,13 +305,15 @@ describe("api server", () => {
         url: "/api/v1/projects/project_test",
         payload: {
           owner: "Platform Security",
-          dataClassification: "sensitive"
+          dataClassification: "sensitive",
+          publicUrl: "https://user:secret@app.example.test/path#fragment"
         }
       });
       expect(updated.statusCode).toBe(200);
       expect(updated.json().data).toMatchObject({
         owner: "Platform Security",
-        dataClassification: "sensitive"
+        dataClassification: "sensitive",
+        publicUrl: "https://app.example.test/path"
       });
 
       const deleted = await server.inject({ method: "DELETE", url: "/api/v1/projects/project_test" });

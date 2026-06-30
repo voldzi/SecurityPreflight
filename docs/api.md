@@ -135,6 +135,7 @@ curl -X POST http://localhost:8781/api/v1/projects \
   -d '{
     "name": "Hospital API",
     "path": "/workspace/projects/hospital-api",
+    "publicUrl": "https://hospital-api.example.test",
     "dataClassification": "health-data",
     "owner": "Platform Security"
   }'
@@ -148,7 +149,9 @@ as `PROJECTS_ROOT_CONTAINER` or `PROJECTS_ROOTS_CONTAINER` are set, must stay in
 that the directory exists in the API container, detects the technology stack
 from bounded file-name inspection, and persists the durable registry in
 `REPORTS_PATH/projects.json`. Repository URLs are sanitized before persistence
-so embedded credentials are stripped.
+so embedded credentials are stripped. A project can also store a `publicUrl`,
+which the UI uses to prefill Web/API scans for profiles that need a running
+web application or API target.
 
 ### Scan execution plan
 

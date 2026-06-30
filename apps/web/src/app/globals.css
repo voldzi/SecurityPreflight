@@ -1415,6 +1415,13 @@ code,
   outline-offset: 1px;
 }
 
+.security-url-memory {
+  margin: 0;
+  color: var(--stratos-color-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .security-akb-question span {
   color: var(--stratos-color-muted);
   font-size: 12px;

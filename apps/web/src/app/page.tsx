@@ -375,6 +375,7 @@ interface RegisteredProject {
   name: string;
   path: string;
   repositoryUrl: string | null;
+  publicUrl: string | null;
   defaultBranch: string | null;
   technologyStack: string[];
   dataClassification: "public" | "internal" | "confidential" | "sensitive" | "health-data";
@@ -525,7 +526,11 @@ function isAuthorizationFailure(error: unknown): boolean {
 
 function hostFromUrl(value: string): string | null {
   try {
-    return new URL(value).hostname.toLowerCase();
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return url.hostname.toLowerCase();
   } catch {
     return null;
   }
@@ -868,6 +873,7 @@ export default function DashboardPage() {
     [effectiveProfileId, profiles]
   );
   const queueRequiresWebTarget = scanTargetMode === "project" && selectedProfile?.allowActiveDast === true;
+  const selectedProjectPublicUrl = selectedProject?.publicUrl ?? "";
   const selectedProfileDescription = selectedProfile
     ? profileDescription(locale, selectedProfile.id, selectedProfile.description)
     : copy.messages.loadProfilesFallback;
@@ -1666,6 +1672,59 @@ export default function DashboardPage() {
   }, [authReady, authToken]);
 
   useEffect(() => {
+    if (!selectedProfile?.allowActiveDast || scanTargetMode === "web") {
+      return;
+    }
+
+    setScanTargetMode("web");
+    if (selectedProjectPublicUrl && !webTargetUrl.trim()) {
+      setWebTargetUrl(selectedProjectPublicUrl);
+    }
+    setScanResult((current) => ({
+      ...current,
+      mode: "plan",
+      status: "success",
+      message: selectedProjectPublicUrl ? copy.messages.activeProfileSwitchedToSavedWebTarget : copy.messages.activeProfileSwitchedToWebTarget,
+      blocked: !selectedProjectPublicUrl,
+      blockedReasons: selectedProjectPublicUrl ? [] : [copy.messages.activeProfileNeedsWebTargetReason],
+      gate: selectedProjectPublicUrl ? "ready" : "blocked",
+      stepCount: selectedProfile.checks.length
+    }));
+  }, [copy.messages, scanTargetMode, selectedProfile, selectedProjectPublicUrl, webTargetUrl]);
+
+  useEffect(() => {
+    if (scanTargetMode !== "web" || webTargetUrl.trim()) {
+      return;
+    }
+
+    if (selectedProjectPublicUrl) {
+      setWebTargetUrl(selectedProjectPublicUrl);
+    }
+  }, [scanTargetMode, selectedProjectPublicUrl, webTargetUrl]);
+
+  useEffect(() => {
+    if (scanTargetMode !== "web" || !selectedProfile?.allowActiveDast || !hostFromUrl(webTargetUrl.trim())) {
+      return;
+    }
+
+    setScanResult((current) => {
+      if (!current.blocked || !current.blockedReasons?.includes(copy.messages.activeProfileNeedsWebTargetReason)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        status: "success",
+        message: copy.messages.planReady,
+        blocked: false,
+        blockedReasons: [],
+        gate: "ready",
+        stepCount: selectedProfile.checks.length
+      };
+    });
+  }, [copy.messages, scanTargetMode, selectedProfile, webTargetUrl]);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -2246,6 +2305,10 @@ export default function DashboardPage() {
     });
 
     try {
+      if (scanTargetMode === "web" && selectedProject && trimmedWebTargetUrl && selectedProject.publicUrl !== trimmedWebTargetUrl) {
+        void saveProjectPublicUrl(selectedProject.id, trimmedWebTargetUrl);
+      }
+
       const requestBody = {
         scanRunId,
         profileId: effectiveProfileId,
@@ -2318,6 +2381,26 @@ export default function DashboardPage() {
         message: error instanceof Error ? error.message : copy.messages.scanActionFailed,
         scanRunId
       });
+    }
+  }
+
+  async function saveProjectPublicUrl(projectId: string, publicUrl: string) {
+    if (!authReady) {
+      return;
+    }
+
+    try {
+      const payload = await fetchJson<{ data: RegisteredProject }>(`${apiBaseUrl}/api/v1/projects/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ publicUrl })
+      }, authToken);
+
+      if (accessDeniedRef.current) return;
+      setProjects((current) => current.map((project) => (project.id === projectId ? payload.data : project)));
+      setProjectMessage(copy.projects.publicUrlSaved(payload.data.name));
+    } catch (error) {
+      if (handleApiAccessFailure(error)) return;
+      setProjectMessage(error instanceof Error ? error.message : copy.projects.publicUrlSaveFailed);
     }
   }
 
@@ -2564,6 +2647,7 @@ export default function DashboardPage() {
     const trimmedWebTarget = webTargetUrl.trim();
     const targetValue = scanTargetMode === "web" ? trimmedWebTarget || copy.runPanel.webTargetPlaceholder : activeScanProject.path;
     const targetReady = scanTargetMode === "project" ? Boolean(activeScanProject.path) : Boolean(hostFromUrl(trimmedWebTarget));
+    const selectedProfileNeedsWeb = selectedProfile?.allowActiveDast === true;
     const selectedProfileCheckCount = selectedProfile?.checks.length ?? 0;
     const planReady = scanResult.status === "success" && scanResult.mode === "plan" && !scanResult.blocked;
     const queuedOrRunning = Boolean(scanResult.scanRunId && (scanResult.mode === "queue" || scanResult.status === "loading"));
@@ -2607,7 +2691,7 @@ export default function DashboardPage() {
     const liveProgressValue = progressValue(liveCompletedSteps, liveTotalSteps, activeProgress?.status ?? activeRunDetail?.status ?? scanResult.status);
     const liveStatus = activeProgress?.status ?? activeRunDetail?.status ?? scanResult.status;
     const scanIsActive = scanResult.status === "loading" || ["queued", "running"].includes(liveStatus.toLowerCase());
-    const scanQueueDisabled = scanResult.status === "loading" || !authReady || queueRequiresWebTarget;
+    const scanQueueDisabled = scanResult.status === "loading" || !authReady || queueRequiresWebTarget || (selectedProfileNeedsWeb && scanTargetMode === "web" && !targetReady);
     const scanResultTone = queueRequiresWebTarget || scanResult.blocked ? "warning" : statusTone(scanResult.status);
     const scanResultLabel = queueRequiresWebTarget
       ? gateDisplayLabel("warning", locale)
@@ -2701,6 +2785,9 @@ export default function DashboardPage() {
                       aria-pressed={scanTargetMode === "web"}
                       onClick={() => {
                         setScanTargetMode("web");
+                        if (selectedProjectPublicUrl) {
+                          setWebTargetUrl(selectedProjectPublicUrl);
+                        }
                         setSelectedProfileId("web-perimeter-safe");
                       }}
                     >
@@ -2740,6 +2827,13 @@ export default function DashboardPage() {
                         inputMode="url"
                         autoComplete="url"
                       />
+                      {selectedProject ? (
+                        <p className="security-url-memory">
+                          {selectedProject.publicUrl
+                            ? copy.runPanel.savedWebTarget(selectedProject.publicUrl)
+                            : copy.runPanel.publicUrlWillBeSaved(selectedProject.name)}
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </section>
@@ -2754,7 +2848,17 @@ export default function DashboardPage() {
                     description={selectedProfileDescription}
                     labelAccessory={<Badge tone="info">{copy.newScan.profileChecks(selectedProfileCheckCount)}</Badge>}
                     value={effectiveProfileId}
-                    onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
+                    onChange={(event) => {
+                      const nextProfileId = event.currentTarget.value;
+                      setSelectedProfileId(nextProfileId);
+                      const nextProfile = profiles.find((profile) => profile.id === nextProfileId);
+                      if (nextProfile?.allowActiveDast) {
+                        setScanTargetMode("web");
+                        if (selectedProjectPublicUrl) {
+                          setWebTargetUrl(selectedProjectPublicUrl);
+                        }
+                      }
+                    }}
                     searchPlaceholder={copy.runPanel.findProfile}
                   >
                     {profileOptions.map((profile) => (
@@ -2807,6 +2911,9 @@ export default function DashboardPage() {
                 <div className="security-result" data-tone={scanResultTone} role="status">
                   <strong>{scanResultLabel}</strong>
                   <p>{scanResultMessage}</p>
+                  {selectedProfileNeedsWeb && scanTargetMode === "web" && !targetReady ? (
+                    <p>{copy.runPanel.nextStepAddPublicUrl}</p>
+                  ) : null}
                   {scanResult.scanRunId ? <code>{scanResult.scanRunId}</code> : null}
                   {scanResult.stepCount != null ? <span>{copy.runPanel.plannedSteps(scanResult.stepCount)}</span> : null}
                   {displayedBlockedReasons.length ? (

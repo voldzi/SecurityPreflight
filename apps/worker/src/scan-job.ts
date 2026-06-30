@@ -125,6 +125,7 @@ async function writeReports(
     name: plan.project.name,
     path: plan.project.path,
     repositoryUrl: null,
+    publicUrl: plan.policy.activeDastTarget,
     defaultBranch: null,
     technologyStack: [],
     dataClassification: plan.project.dataClassification ?? "internal",

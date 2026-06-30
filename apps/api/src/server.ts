@@ -160,6 +160,7 @@ const projectCreateRequestSchema = z.object({
   name: z.string().min(1).max(160),
   path: z.string().min(1).max(2000),
   repositoryUrl: z.string().min(1).max(2000).nullable().optional(),
+  publicUrl: z.string().url().max(2000).nullable().optional(),
   defaultBranch: z.string().min(1).max(160).nullable().optional(),
   dataClassification: dataClassificationSchema.default("internal"),
   owner: z.string().min(1).max(160).nullable().optional()

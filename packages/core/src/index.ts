@@ -52,6 +52,7 @@ export interface Project {
   name: string;
   path: string;
   repositoryUrl: string | null;
+  publicUrl: string | null;
   defaultBranch: string | null;
   technologyStack: string[];
   dataClassification: DataClassification;
