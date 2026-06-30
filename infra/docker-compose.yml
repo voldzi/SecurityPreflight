@@ -27,8 +27,6 @@ services:
         NEXT_PUBLIC_AKB_URL: ${NEXT_PUBLIC_AKB_URL:-https://stratos.zeleznalady.cz/akb}
         NEXT_PUBLIC_ARCHFLOW_URL: ${NEXT_PUBLIC_ARCHFLOW_URL:-}
         NEXT_PUBLIC_PROCESSFORGE_URL: ${NEXT_PUBLIC_PROCESSFORGE_URL:-}
-      secrets:
-        - npmrc
     environment:
       APP_ENV: ${APP_ENV:-development}
       WEB_PORT: "8780"
@@ -230,7 +228,3 @@ networks:
       config:
         - subnet: ${SECURITY_PREFLIGHT_DOCKER_SUBNET:-10.246.250.0/24}
           gateway: ${SECURITY_PREFLIGHT_DOCKER_GATEWAY:-10.246.250.1}
-
-secrets:
-  npmrc:
-    file: ${HOME}/.npmrc

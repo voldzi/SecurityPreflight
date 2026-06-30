@@ -112,11 +112,11 @@ flowchart LR
   healthcare-required toolchain.
 - Optional network access: vulnerability database updates for dependency
   scanners and explicitly allowed local/staging DAST targets.
-- STRATOS UI alignment: the Web UI consumes `@voldzi/stratos-ui` through GitHub
-  Packages and composes the dashboard from shared STRATOS shell, navigation,
-  global topbar, command center, table, badge, metric, list, and form
-  primitives. Package credentials must be supplied through local or CI registry
-  configuration, never committed.
+- STRATOS UI alignment: the Web UI consumes `@voldzi/stratos-ui` from the public
+  npm registry and composes the dashboard from shared STRATOS shell,
+  navigation, global topbar, command center, table, badge, metric, list, and
+  form primitives. SecurityPreflight does not use a repository `.npmrc` or
+  GitHub Packages registry override for this package.
 - Localization: the Web UI is bilingual Czech/English. Czech is the default
   language, the topbar exposes a CS/EN switch aligned with other STRATOS apps,
   and the language preference is stored only in browser `localStorage`. Scanner

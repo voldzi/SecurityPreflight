@@ -14,15 +14,15 @@ STRATOS workspace under `packages/stratos-ui`.
 STRATOS documentation defines external consumption through the package
 registry. External applications must not depend on the STRATOS workspace with a
 local `file:` dependency because that couples Docker build contexts, developer
-paths, and release boundaries. Registry access requires a read-only package
-token supplied outside Git and outside committed Docker or environment files.
+paths, and release boundaries. SecurityPreflight consumes the published package
+from the public npm registry.
 
 ## Decision
 
 SecurityPreflight consumes `@voldzi/stratos-ui` as a direct Web UI dependency
-through GitHub Packages. The Web application imports the shared STRATOS
-stylesheet once from the Next.js root layout and composes the dashboard from
-stable shared primitives.
+from npm. The Web application imports the shared STRATOS stylesheet once from
+the Next.js root layout and composes the dashboard from stable shared
+primitives.
 
 Current implementation uses STRATOS components and layout patterns:
 
@@ -38,11 +38,10 @@ Current implementation uses STRATOS components and layout patterns:
 
 The package integration must:
 
-- consume `@voldzi/stratos-ui` from GitHub Packages or another approved
-  registry, not from a local `file:` path;
-- keep package credentials out of Git, shell history, Dockerfiles, and reports;
-- pass package credentials to Docker builds through build secrets such as a
-  user-local `.npmrc`;
+- consume `@voldzi/stratos-ui` from the public npm registry, not from a local
+  `file:` path;
+- keep repository, CI, and Docker builds free of `@voldzi` GitHub Packages
+  registry overrides;
 - keep peer dependencies compatible, especially React and `lucide-react`;
 - import the shared package styles once from the Web application root;
 - wrap STRATOS primitives with thin SecurityPreflight domain components rather
@@ -51,7 +50,6 @@ The package integration must:
 ## Consequences
 
 SecurityPreflight gets a STRATOS-aligned interface without path-based coupling
-to the STRATOS monorepo. Local and CI environments must provide read-only
-GitHub Packages access for `@voldzi/stratos-ui` during Web dependency
-installation. UI changes should prefer shared STRATOS primitives before adding
-new local component classes.
+to the STRATOS monorepo. Local, CI, and Docker builds resolve the shared UI
+package from npm without package credentials. UI changes should prefer shared
+STRATOS primitives before adding new local component classes.

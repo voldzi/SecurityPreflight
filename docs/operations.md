@@ -17,23 +17,10 @@ pnpm install
 bash scripts/validate-skeleton.sh
 ```
 
-The Web UI depends on the restricted GitHub Packages package
-`@voldzi/stratos-ui`. Configure a read-only package token outside Git, for
-example in the user-local `~/.npmrc`:
-
-```ini
-@voldzi:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_PACKAGES_READ_TOKEN}
-```
-
-The repository `.npmrc` contains only the registry mapping and must not contain
-tokens.
-
-GitHub Actions configures the same registry through `actions/setup-node` and
-uses `PACKAGES_READ_TOKEN` when present, otherwise the workflow `GITHUB_TOKEN`
-with `packages: read`. If the package is not linked to this repository, grant
-repository access to the package or add a read-only `PACKAGES_READ_TOKEN`
-secret.
+The Web UI depends on `@voldzi/stratos-ui` from the public npm registry. Do not
+add a repository `.npmrc` or a user-local `@voldzi:registry=https://npm.pkg.github.com`
+override for SecurityPreflight builds; that mapping makes CI and Docker builds
+resolve the package from GitHub Packages instead of npm.
 
 ### Run
 
@@ -53,10 +40,8 @@ docker compose -f infra/docker-compose.yml up -d
 docker compose -f infra/docker-compose.yml down
 ```
 
-The Web image uses the local `~/.npmrc` as a Docker BuildKit secret during
-dependency installation so the `@voldzi/stratos-ui` token is not copied into the
-image or committed files. If the token file is stored elsewhere, set `HOME` or
-run the Web build with an equivalent BuildKit `npmrc` secret.
+The Web image installs dependencies directly from the lockfile and public npm
+registry. It does not require a BuildKit `npmrc` secret for STRATOS UI.
 
 CLI wrapper examples:
 

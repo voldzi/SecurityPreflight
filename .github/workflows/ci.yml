@@ -12,7 +12,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: read
 
 jobs:
   skeleton:
@@ -25,8 +24,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 26
-          registry-url: https://npm.pkg.github.com
-          scope: "@voldzi"
 
       - name: Enable pnpm
         run: corepack enable
@@ -36,8 +33,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Typecheck
         run: pnpm typecheck
