@@ -22,6 +22,7 @@ Project name:
   - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`
   - then read only the selected files or ranges directly
 - CLI fallback is still compliant retrieval-first behavior. Mention it once if relevant; do not repeat it as a blocker when retrieval succeeded.
+- Treat MCP transport errors such as `Transport closed` as MCP tools being unavailable for the current session. Use the documented CLI fallback (or `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`); do not reindex or rebuild Chroma solely for a transport closure if CLI search works.
 - If the index may be stale after meaningful repository changes, use `reindex_repo` when MCP tools are available, otherwise run:
   - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" reindex --root .`
 - If this repository ships a repo-local Chroma override such as `.chroma-dev.yaml`, use the standard wrapper command above and let the tool auto-load the local indexing scope.
