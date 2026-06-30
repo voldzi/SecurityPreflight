@@ -1388,6 +1388,33 @@ code,
   min-width: 0;
 }
 
+.security-url-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.security-url-field .stratos-field-label-row {
+  justify-content: flex-start;
+}
+
+.security-url-field input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--stratos-color-border);
+  border-radius: var(--stratos-radius-md);
+  background: var(--stratos-color-surface);
+  color: var(--stratos-color-text);
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.security-url-field input:focus {
+  outline: 2px solid color-mix(in srgb, var(--stratos-color-primary) 45%, transparent);
+  outline-offset: 1px;
+}
+
 .security-akb-question span {
   color: var(--stratos-color-muted);
   font-size: 12px;

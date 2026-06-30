@@ -41,7 +41,9 @@ import {
   DataGridShell,
   DataTable,
   DetailSurface,
+  FieldLabelWithHelp,
   GlobalTopbar,
+  HelpHint,
   IconButton,
   MetricCard,
   ProgressBar,
@@ -2561,6 +2563,7 @@ export default function DashboardPage() {
     const trimmedWebTarget = webTargetUrl.trim();
     const targetValue = scanTargetMode === "web" ? trimmedWebTarget || copy.runPanel.webTargetPlaceholder : activeScanProject.path;
     const targetReady = scanTargetMode === "project" ? Boolean(activeScanProject.path) : Boolean(hostFromUrl(trimmedWebTarget));
+    const selectedProfileCheckCount = selectedProfile?.checks.length ?? 0;
     const planReady = scanResult.status === "success" && scanResult.mode === "plan" && !scanResult.blocked;
     const queuedOrRunning = Boolean(scanResult.scanRunId && (scanResult.mode === "queue" || scanResult.status === "loading"));
     const codexReady = Boolean(latestRun);
@@ -2577,7 +2580,7 @@ export default function DashboardPage() {
         id: "profile",
         title: copy.newScan.stepProfile,
         leading: <ClipboardList size={15} />,
-        badges: <Badge tone="info">{copy.newScan.profileChecks(selectedProfile?.checks.length ?? 0)}</Badge>,
+        badges: <Badge tone="info">{copy.newScan.profileChecks(selectedProfileCheckCount)}</Badge>,
         meta: selectedProfile ? profileName(locale, selectedProfile.id, selectedProfile.name) : copy.execution.loadProfile
       },
       {
@@ -2704,6 +2707,7 @@ export default function DashboardPage() {
                   {scanTargetMode === "project" ? (
                     <SelectField
                       label={copy.projects.selectProject}
+                      labelAccessory={<HelpHint label={copy.projects.selectProject} text={copy.runPanel.directoryTargetHelp} />}
                       value={selectedProject?.id ?? ""}
                       onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
                       searchPlaceholder={copy.projects.selectProject}
@@ -2716,18 +2720,23 @@ export default function DashboardPage() {
                       ))}
                     </SelectField>
                   ) : (
-                    <label className="security-akb-question">
-                      <span>{copy.runPanel.webTargetUrl}</span>
+                    <div className="security-url-field">
+                      <FieldLabelWithHelp
+                        htmlFor="security-web-target-url"
+                        label={copy.runPanel.webTargetUrl}
+                        helpLabel={copy.runPanel.webTargetUrl}
+                        helpText={copy.runPanel.webTargetHelp}
+                      />
                       <input
+                        id="security-web-target-url"
                         value={webTargetUrl}
                         onChange={(event) => setWebTargetUrl(event.currentTarget.value)}
                         placeholder={copy.runPanel.webTargetPlaceholder}
                         inputMode="url"
                         autoComplete="url"
                       />
-                    </label>
+                    </div>
                   )}
-                  <p className="security-run-description">{scanTargetMode === "web" ? copy.runPanel.webTargetHelp : copy.runPanel.directoryTargetHelp}</p>
                 </section>
 
                 <section className="security-scan-composer-section">
@@ -2737,6 +2746,8 @@ export default function DashboardPage() {
                   </div>
                   <SelectField
                     label={copy.runPanel.scanProfile}
+                    description={selectedProfileDescription}
+                    labelAccessory={<Badge tone="info">{copy.newScan.profileChecks(selectedProfileCheckCount)}</Badge>}
                     value={effectiveProfileId}
                     onChange={(event) => setSelectedProfileId(event.currentTarget.value)}
                     searchPlaceholder={copy.runPanel.findProfile}
@@ -2747,7 +2758,6 @@ export default function DashboardPage() {
                       </option>
                     ))}
                   </SelectField>
-                  <p className="security-run-description">{selectedProfileDescription}</p>
                 </section>
               </div>
 
@@ -2758,7 +2768,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <span>{copy.runPanel.checks}</span>
-                  <strong>{selectedProfile?.checks.length ?? 0}</strong>
+                  <strong>{selectedProfileCheckCount}</strong>
                 </div>
                 <div>
                   <span>{copy.projects.dataClassification}</span>
