@@ -88,6 +88,7 @@ import {
   type CapabilityStatus
 } from "./i18n";
 import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type OidcClientConfig } from "./oidc";
+import { ScanProgressPanel } from "./components/ScanProgressPanel";
 
 type WorkspaceView = "new-scan" | "dashboard" | "capabilities" | "execution" | "telemetry";
 type RailPanel = "security" | "evidence";
@@ -2622,14 +2623,18 @@ export default function DashboardPage() {
           id: step.stepId,
           title: step.checkId,
           status: step.status,
-          findingCount: step.findingCount
+          statusLabel: statusDisplayLabel(step.status, locale),
+          findingLabel: step.findingCount ? copy.execution.findingsCount(step.findingCount) : undefined
         }))
       : (selectedProfile?.checks ?? []).slice(0, 8).map((check, index) => ({
           id: `${check}-${index}`,
           title: check,
           status: scanIsActive && index === 0 ? "running" : "pending",
-          findingCount: 0
+          statusLabel: statusDisplayLabel(scanIsActive && index === 0 ? "running" : "pending", locale)
         }));
+    const akbInlineMeta = akbLoading
+      ? copy.messages.askingAkb
+      : akbAnswer?.answer ?? akbMessage;
 
     return (
       <div className="security-view-stack">
@@ -2816,75 +2821,43 @@ export default function DashboardPage() {
             </div>
           </DataGridShell>
 
-          <DataGridShell
-            title={<strong>{copy.newScan.liveProgress}</strong>}
-            toolbar={<Badge tone={scanIsActive ? "warning" : activeRunDetail ? statusTone(activeRunDetail.gateResult) : "neutral"}>{scanIsActive ? copy.newScan.runningNow : copy.newScan.lastRun}</Badge>}
-            className="security-grid-shell"
-          >
-            <div className={`security-live-scan${scanIsActive ? " is-running" : ""}`}>
-              <div className="security-live-orb" aria-hidden="true">
-                <Activity size={28} />
-              </div>
-              <div className="security-live-copy">
-                <span>{activeRunId ?? copy.newScan.noRun}</span>
-                <strong>{copy.scanLog.completedSteps(liveCompletedSteps, liveTotalSteps)}</strong>
-                <ProgressBar value={liveProgressValue} tone={liveProgressValue === 100 ? "good" : "warning"} label={copy.scanLog.progress} />
-              </div>
-              <div className="security-live-steps">
-                {liveStepItems.map((step, index) => (
-                  <div key={step.id} className="security-live-step" data-status={step.status.toLowerCase()}>
-                    <span>{index + 1}</span>
-                    <strong>{step.title}</strong>
-                    <small>{step.findingCount ? copy.execution.findingsCount(step.findingCount) : statusDisplayLabel(step.status, locale)}</small>
-                  </div>
-                ))}
-              </div>
-              <div className="security-live-handoff" aria-label={copy.newScan.latestOutcome}>
-                <div className="security-live-handoff-card">
-                  <span>
-                    <FileWarning size={14} aria-hidden="true" />
-                    {copy.scanLog.persistedFindings}
-                  </span>
-                  <strong>{copy.execution.findingsCount(latestRun?.findingCount ?? 0)}</strong>
-                  <p>{latestRun ? profileName(locale, latestRun.profile.id, latestRun.profile.name) : copy.execution.selectScanForDetail}</p>
-                </div>
-                <div className="security-live-handoff-card">
-                  <span>
-                    <Archive size={14} aria-hidden="true" />
-                    {copy.newScan.evidence}
-                  </span>
-                  <strong>{String(latestEvidenceCount)}</strong>
-                  <p>{latestRun?.evidence.root ?? "/reports"}</p>
-                </div>
-                <div className="security-live-handoff-card">
-                  <span>
-                    <ScrollText size={14} aria-hidden="true" />
-                    {copy.newScan.redactedMarkdown}
-                  </span>
-                  <strong>{codexReady ? translateStatus(locale, "ready") : translateStatus(locale, "empty")}</strong>
-                  <p>{exportingCodex ? copy.messages.generatingCodex : codexMessage}</p>
-                </div>
-                <div className="security-live-handoff-card">
-                  <span>
-                    <Bot size={14} aria-hidden="true" />
-                    {copy.telemetry.akbIntegration}
-                  </span>
-                  <strong>{akbStatus?.configured ? translateStatus(locale, "configured") : translateStatus(locale, "not configured")}</strong>
-                  <p>{copy.telemetry.storageMeta}</p>
-                </div>
-              </div>
-              <div className="security-live-actions">
-                <Button disabled={!latestRun} onClick={() => selectWorkspaceView("execution")} size="compact">
-                  <Archive size={14} />
-                  {copy.scanLog.openExecution}
-                </Button>
-                <Button variant="primary" disabled={!latestRun || exportingCodex || !authReady} onClick={exportCodexRemediation} size="compact">
-                  <Sparkles size={14} />
-                  {copy.newScan.exportCodex}
-                </Button>
-              </div>
-            </div>
-          </DataGridShell>
+          <ScanProgressPanel
+            title={copy.newScan.liveProgress}
+            badgeTone={scanIsActive ? "warning" : activeRunDetail ? statusTone(activeRunDetail.gateResult) : "neutral"}
+            badgeLabel={scanIsActive ? copy.newScan.runningNow : copy.newScan.lastRun}
+            scanIsActive={scanIsActive}
+            activeRunId={activeRunId ?? copy.newScan.noRun}
+            completedLabel={copy.scanLog.completedSteps(liveCompletedSteps, liveTotalSteps)}
+            progressValue={liveProgressValue}
+            progressTone={liveProgressValue === 100 ? "good" : "warning"}
+            progressLabel={copy.scanLog.progress}
+            steps={liveStepItems}
+            latestOutcomeLabel={copy.newScan.latestOutcome}
+            findingsTitle={copy.scanLog.persistedFindings}
+            findingsValue={copy.execution.findingsCount(latestRun?.findingCount ?? 0)}
+            findingsMeta={latestRun ? profileName(locale, latestRun.profile.id, latestRun.profile.name) : copy.execution.selectScanForDetail}
+            evidenceTitle={copy.newScan.evidence}
+            evidenceValue={String(latestEvidenceCount)}
+            evidenceMeta={latestRun?.evidence.root ?? "/reports"}
+            codexTitle={copy.newScan.redactedMarkdown}
+            codexValue={codexReady ? translateStatus(locale, "ready") : translateStatus(locale, "empty")}
+            codexMeta={exportingCodex ? copy.messages.generatingCodex : codexMessage}
+            akbTitle={copy.telemetry.akbIntegration}
+            akbValue={akbStatus?.configured ? translateStatus(locale, "configured") : translateStatus(locale, "not configured")}
+            akbMeta={akbInlineMeta}
+            openExecutionLabel={copy.scanLog.openExecution}
+            exportCodexLabel={copy.newScan.exportCodex}
+            askAkbLabel={copy.telemetry.askAkb}
+            askAkbBusyLabel={copy.telemetry.askingAkb}
+            canOpenExecution={Boolean(latestRun)}
+            canExportCodex={Boolean(latestRun) && authReady}
+            canAskAkb={Boolean(latestRun) && authReady && Boolean(akbStatus?.configured)}
+            exportingCodex={exportingCodex}
+            askingAkb={akbLoading}
+            onOpenExecution={() => selectWorkspaceView("execution")}
+            onExportCodex={exportCodexRemediation}
+            onAskAkb={askAkb}
+          />
         </div>
 
         <section className={`security-register-drawer${projectRegistryOpen ? " is-open" : ""}`}>
