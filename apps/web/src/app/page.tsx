@@ -41,12 +41,14 @@ import {
   DataGridShell,
   DataTable,
   DetailSurface,
+  ErrorState,
   FieldLabelWithHelp,
   GlobalTopbar,
   HelpHint,
   IconButton,
   MetricCard,
   ProgressBar,
+  ProjectPicker,
   RagBadge,
   SearchBox,
   SelectField,
@@ -62,6 +64,7 @@ import {
   type CommandCenterItem,
   type DataTableColumn,
   type DetailSurfaceMode,
+  type ProjectPickerProject,
   type RagStatus,
   type SettingsContentSection,
   type SettingsNavItem,
@@ -543,6 +546,31 @@ function statusTone(status: string): BadgeTone {
   return "neutral";
 }
 
+function userFacingErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const rawMessage = error.message.trim();
+  if (!rawMessage) {
+    return fallback;
+  }
+
+  if (error instanceof ApiRequestError) {
+    const technicalStatus = error.statusCode === 401 || error.statusCode === 403 || error.statusCode >= 500;
+    const technicalCode = /auth|jwt|oidc|token|bearer|json|payload/i.test(error.code ?? "");
+    if (technicalStatus || technicalCode) {
+      return fallback;
+    }
+  }
+
+  if (/(jwt|oidc|bearer|token|authorization|unauthori[sz]ed|forbidden|401|403|json|payload|unexpected token|syntaxerror)/i.test(rawMessage)) {
+    return fallback;
+  }
+
+  return rawMessage;
+}
+
 function statusRag(status: string): RagStatus {
   if (["Ready", "READY", "PASS", "pass", "completed", "available", "container", "success", "queued"].includes(status)) return "GREEN";
   if (["Partial", "WARNING", "warning", "MEDIUM", "idle", "loading", "running"].includes(status)) return "AMBER";
@@ -894,6 +922,25 @@ export default function DashboardPage() {
         updatedAt: formatDateTime(project.updatedAt, locale)
       })),
     [copy.projects, locale, projects]
+  );
+  const projectPickerProjects = useMemo<ProjectPickerProject[]>(
+    () =>
+      projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        code: project.owner ?? null,
+        detail: project.path,
+        group: copy.projects.classifications[project.dataClassification],
+        initials: project.name
+          .split(/[\s/-]+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase())
+          .join(""),
+        status: project.publicUrl ? copy.projects.publicUrl : copy.runPanel.directoryTarget,
+        tone: project.dataClassification === "health-data" ? "danger" : project.dataClassification === "sensitive" ? "warning" : "neutral"
+      })),
+    [copy.projects, copy.runPanel.directoryTarget, projects]
   );
   const healthcareDoctor = doctor
     ? {
@@ -1588,7 +1635,7 @@ export default function DashboardPage() {
           }
         }
       } catch (error) {
-        setAuthMessage(error instanceof Error ? error.message : copy.auth.oidcFailed);
+        setAuthMessage(userFacingErrorMessage(error, copy.auth.oidcFailed));
       } finally {
         await refreshAuthStatus();
       }
@@ -1607,7 +1654,7 @@ export default function DashboardPage() {
     setAuthMessage(copy.auth.oidcStarting);
     void startOidcLogin(oidcClient).catch((error) => {
       window.sessionStorage.removeItem(oidcAutoLoginStartedKey);
-      setAuthMessage(error instanceof Error ? error.message : copy.auth.oidcFailed);
+      setAuthMessage(userFacingErrorMessage(error, copy.auth.oidcFailed));
     });
   }, [accessDenied, authStatus, authToken, oidcClient, copy.auth]);
 
@@ -1635,7 +1682,7 @@ export default function DashboardPage() {
         setScanResult({
           mode: "plan",
           status: "error",
-          message: error instanceof Error ? error.message : copy.messages.loadProfilesFailed
+          message: userFacingErrorMessage(error, copy.messages.loadProfilesFailed)
         });
       }
     }
@@ -1758,7 +1805,7 @@ export default function DashboardPage() {
       }
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
-      setProjectMessage(error instanceof Error ? error.message : copy.projects.loadFailed);
+      setProjectMessage(userFacingErrorMessage(error, copy.projects.loadFailed));
     } finally {
       setLoadingProjects(false);
     }
@@ -1798,7 +1845,7 @@ export default function DashboardPage() {
       setProjectMessage(copy.projects.projectRegistered(payload.data.name));
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
-      setProjectMessage(error instanceof Error ? error.message : copy.projects.registrationFailed);
+      setProjectMessage(userFacingErrorMessage(error, copy.projects.registrationFailed));
     } finally {
       setRegisteringProject(false);
     }
@@ -1817,7 +1864,7 @@ export default function DashboardPage() {
       );
     } catch (error) {
       setAuthStatus(null);
-      setAuthMessage(error instanceof Error ? error.message : copy.auth.statusUnavailable);
+      setAuthMessage(userFacingErrorMessage(error, copy.auth.statusUnavailable));
     }
   }
 
@@ -1880,7 +1927,7 @@ export default function DashboardPage() {
   function activateAccessDenied(error: unknown) {
     clearWorkspaceData();
     setAccessDeniedMode(true);
-    setAuthMessage(error instanceof ApiRequestError ? error.message : copy.auth.accessDeniedBody);
+    setAuthMessage(userFacingErrorMessage(error, copy.auth.accessDeniedBody));
     setProjectMessage(copy.auth.accessDeniedBody);
     setExportMessage(copy.auth.accessDeniedBody);
     setAkbMessage(copy.auth.accessDeniedBody);
@@ -1976,7 +2023,7 @@ export default function DashboardPage() {
       setScanResult({
         mode: "plan",
         status: "error",
-        message: error instanceof Error ? error.message : copy.messages.loadRunsFailed
+        message: userFacingErrorMessage(error, copy.messages.loadRunsFailed)
       });
     } finally {
       setLoadingRuns(false);
@@ -2002,7 +2049,7 @@ export default function DashboardPage() {
             ? {
                 ...current,
                 status: "error",
-                message: error instanceof Error ? error.message : copy.messages.loadEvidenceFailed
+                message: userFacingErrorMessage(error, copy.messages.loadEvidenceFailed)
               }
             : current
         );
@@ -2071,7 +2118,7 @@ export default function DashboardPage() {
       setScanResult({
         mode: "plan",
         status: "error",
-        message: error instanceof Error ? error.message : copy.messages.doctorFailed
+        message: userFacingErrorMessage(error, copy.messages.doctorFailed)
       });
     } finally {
       setLoadingDoctor(false);
@@ -2086,7 +2133,7 @@ export default function DashboardPage() {
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
       setAkbStatus(null);
-      setAkbMessage(error instanceof Error ? error.message : copy.messages.akbStatusUnavailable);
+      setAkbMessage(userFacingErrorMessage(error, copy.messages.akbStatusUnavailable));
     }
   }
 
@@ -2130,7 +2177,7 @@ export default function DashboardPage() {
       setExportMessage(copy.messages.exportGenerated(format, payload.data.fileName));
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
-      setExportMessage(error instanceof Error ? error.message : copy.messages.exportFailed(format));
+      setExportMessage(userFacingErrorMessage(error, copy.messages.exportFailed(format)));
     } finally {
       setExportingFormat(null);
     }
@@ -2168,7 +2215,7 @@ export default function DashboardPage() {
       setCodexMessage(copy.messages.codexGenerated(payload.data.fileName));
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
-      setCodexMessage(error instanceof Error ? error.message : copy.messages.codexFailed);
+      setCodexMessage(userFacingErrorMessage(error, copy.messages.codexFailed));
     } finally {
       setExportingCodex(false);
     }
@@ -2205,7 +2252,7 @@ export default function DashboardPage() {
       setAkbMessage(payload.data.noAnswer ? copy.messages.akbNoAnswer : copy.messages.akbCited);
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
-      setAkbMessage(error instanceof Error ? error.message : copy.messages.akbFailed);
+      setAkbMessage(userFacingErrorMessage(error, copy.messages.akbFailed));
     } finally {
       setAkbLoading(false);
     }
@@ -2254,7 +2301,7 @@ export default function DashboardPage() {
       setScanResult((current) => ({
         ...current,
         status: "error",
-        message: error instanceof Error ? error.message : copy.messages.triageFailed
+        message: userFacingErrorMessage(error, copy.messages.triageFailed)
       }));
     } finally {
       setTriagingFindingId(null);
@@ -2378,7 +2425,7 @@ export default function DashboardPage() {
       setScanResult({
         mode,
         status: "error",
-        message: error instanceof Error ? error.message : copy.messages.scanActionFailed,
+        message: userFacingErrorMessage(error, copy.messages.scanActionFailed),
         scanRunId
       });
     }
@@ -2400,7 +2447,7 @@ export default function DashboardPage() {
       setProjectMessage(copy.projects.publicUrlSaved(payload.data.name));
     } catch (error) {
       if (handleApiAccessFailure(error)) return;
-      setProjectMessage(error instanceof Error ? error.message : copy.projects.publicUrlSaveFailed);
+      setProjectMessage(userFacingErrorMessage(error, copy.projects.publicUrlSaveFailed));
     }
   }
 
@@ -2797,20 +2844,22 @@ export default function DashboardPage() {
                   </div>
 
                   {scanTargetMode === "project" ? (
-                    <SelectField
+                    <ProjectPicker
                       label={copy.projects.selectProject}
-                      labelAccessory={<HelpHint label={copy.projects.selectProject} text={copy.runPanel.directoryTargetHelp} />}
-                      value={selectedProject?.id ?? ""}
-                      onChange={(event) => setSelectedProjectId(event.currentTarget.value)}
-                      searchPlaceholder={copy.projects.selectProject}
-                    >
-                      {!projects.length ? <option value="">{copy.projects.noSelectedProject}</option> : null}
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </SelectField>
+                      labels={{
+                        title: copy.projects.selectProject,
+                        search: copy.projects.selectProject,
+                        placeholder: copy.projects.noSelectedProject,
+                        empty: copy.projects.noSelectedProject,
+                        close: copy.detail.close
+                      }}
+                      projects={projectPickerProjects}
+                      selectedProjectId={selectedProject?.id ?? null}
+                      disabled={!projects.length}
+                      onProjectSelect={(projectId) => setSelectedProjectId(projectId)}
+                      footer={<HelpHint label={copy.projects.selectProject} text={copy.runPanel.directoryTargetHelp} />}
+                      popoverPlacement="bottom-start"
+                    />
                   ) : (
                     <div className="security-url-field">
                       <FieldLabelWithHelp
@@ -3993,8 +4042,12 @@ export default function DashboardPage() {
             </div>
             <div className="security-access-copy">
               <Badge tone="danger">{copy.auth.accessDenied}</Badge>
-              <h1>{copy.auth.accessDeniedTitle}</h1>
-              <p>{copy.auth.accessDeniedBody}</p>
+              <ErrorState
+                title={copy.auth.accessDeniedTitle}
+                error={null}
+                fallbackMessage={copy.auth.accessDeniedBody}
+                className="security-access-error-state"
+              />
               <p>{copy.auth.accessDeniedHint}</p>
             </div>
           </section>

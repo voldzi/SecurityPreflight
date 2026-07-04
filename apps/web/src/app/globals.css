@@ -190,19 +190,31 @@ code,
   min-width: 0;
 }
 
-.security-access-copy h1 {
+.security-access-copy p {
   max-width: 560px;
   margin: 0;
-  color: var(--stratos-color-text);
+  color: var(--stratos-color-muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.security-access-error-state {
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.security-access-error-state h2 {
+  max-width: 560px;
   font-size: clamp(30px, 4vw, 54px);
   line-height: 1.02;
   letter-spacing: 0;
 }
 
-.security-access-copy p {
+.security-access-error-state p {
   max-width: 560px;
-  margin: 0;
-  color: var(--stratos-color-muted);
   font-size: 15px;
   line-height: 1.6;
 }
