@@ -18,6 +18,7 @@ for current-state documentation only. Historical materials belong in
 | `runbook.md` | Concrete steps for operational incident scenarios |
 | `adr/` | Architecture decision records |
 | `archive/` | Historical and superseded documents |
+| `reports/access-information-v2-impact-2026-07-12.md` | G2/G3 implementation impact and acceptance evidence |
 
 The machine-readable API contract lives in `openapi/openapi.json`
 (JSON-first standard).

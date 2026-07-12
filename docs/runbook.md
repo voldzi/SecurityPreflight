@@ -22,7 +22,12 @@ symptoms, diagnosis, fix, verification.
 ## Database Is Unavailable
 
 - `/ready` should return 503.
-- Confirm the PostgreSQL service is running.
+- Confirm the PostgreSQL service is running or, in production on
+  `docker.home.cz`, that `DATABASE_URL` points to the HAProxy endpoint
+  `haproxy.home.cz:5000` with runtime-only credentials.
+- Check `SECURITY_PREFLIGHT_DB_ENABLED` and `SECURITY_PREFLIGHT_DB_REQUIRED`.
+  If DB is disabled, scan report evidence still works but finding triage and
+  live progress persistence return a controlled API error.
 - Check `DATABASE_URL` against `docs/operations.md` and `.env.example`.
 - Restart only the database service when possible, then recheck `/ready`.
 
@@ -34,6 +39,154 @@ symptoms, diagnosis, fix, verification.
   access disabled or retry when network access is available.
 - If a DAST target is unavailable, verify it is a permitted localhost or
   allowlisted staging host before retrying.
+
+## Run a UI Scan and Hand Off to Codex
+
+- Open the SecurityPreflight Web UI and use the `New scan` / `Nová kontrola`
+  workspace.
+- For a repository or local project, choose `Directory`, register the mounted
+  project path, and select the project from the target selector. The path must
+  be visible inside the API/worker container under `PROJECTS_ROOT_CONTAINER` or
+  another root listed in `PROJECTS_ROOTS_CONTAINER`;
+  production Docker cannot scan an arbitrary desktop path unless it is mounted.
+- For a website or API, choose `Web/API`, enter an `http` or `https` URL, and
+  use only targets owned by the operator or explicitly approved for testing.
+  The backend derives an allowlist from the host and applies DAST guardrails.
+- Select a scan profile. Use `Dry run` first for new targets to inspect
+  blocked guardrails and planned steps without running scanners.
+- Run the scan, open the scan log, and confirm that report evidence exists
+  under `REPORTS_PATH/<scanRunId>/`.
+- Use PDF/PPTX exports for human review. Use the Codex remediation export for
+  a redacted Markdown package containing the prompt, prioritized findings,
+  gate blockers, evidence file names, validation commands, and safety limits.
+- Attach the Codex remediation package to a Codex task together with the
+  affected repository. Do not attach raw scanner stdout, secrets, production
+  `.env` files, or private evidence outside approved storage.
+
+## Docker Network Collides With LAN
+
+- Symptoms: after starting SecurityPreflight, a real LAN host becomes
+  unreachable from `docker.home.cz`; for example `nc -vz -w 5 192.168.200.2
+  11434` returns `no route to host`.
+- Diagnosis: inspect Docker IPAM and host routing:
+
+```bash
+docker network inspect $(docker network ls -q) \
+  --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
+  | grep -E '192\.168\.(1|10|100|200)\.' || echo OK
+
+ip route get 192.168.200.2
+```
+
+- Fix: SecurityPreflight must use the explicit non-LAN Compose subnet
+  `10.246.250.0/24`. Stop the stack, remove the previously created conflicting
+  network, and restart:
+
+```bash
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.production.yml \
+  down
+for network in security-preflight_default securitypreflight_default; do
+  docker network inspect "$network" >/dev/null 2>&1 && docker network rm "$network"
+done
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  --profile build-support \
+  build scanner-runtime
+docker compose --env-file .env -p securitypreflight \
+  -f infra/docker-compose.yml \
+  -f infra/docker-compose.production.yml \
+  up -d --build
+```
+
+- Verification:
+
+```bash
+docker network inspect $(docker network ls -q) \
+  --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}' \
+  | grep -E '192\.168\.(1|10|100|200)\.' || echo OK
+ip route get 192.168.200.2
+nc -vz -w 5 192.168.200.2 11434
+```
+
+The route to `192.168.200.2` must not go through a Docker `br-*` interface.
+Never configure SecurityPreflight Docker IPAM with `192.168.1.x`,
+`192.168.10.x`, `192.168.100.x`, or `192.168.200.x` LAN ranges.
+
+## Scan Evidence Is Missing or Skipped
+
+- Check `REPORTS_PATH/<scanRunId>/execution-result.json`.
+- Confirm the worker is running and consuming the `security-preflight-scans`
+  queue.
+- Internal check evidence should have one JSON file per step.
+- External scanner steps write raw scanner evidence plus
+  `<check>.command.json` and `<check>.execution.json` metadata.
+- If an external scanner step is skipped, confirm `SCANNER_RUNNER_ENABLED` is
+  not `false` and the scanner binary is present in the worker or selected
+  scanner-toolbox image.
+- For remote scanner runs, confirm `SCANNER_RUNNER_MODE=remote`,
+  `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_URL`, and
+  `SECURITY_PREFLIGHT_EXTERNAL_SCANNER_PUBLIC_KEY`. If signatures are enforced,
+  the remote response must include a detached signature over the payload.
+- For Greenbone/OpenVAS, attach the approved XML or JSON report through
+  `SECURITY_PREFLIGHT_GREENBONE_REPORT_PATH`; endpoint credentials alone are
+  not enough to produce normalized vulnerability evidence.
+- For OpenSCAP, attach `SECURITY_PREFLIGHT_OPENSCAP_RESULTS_PATH` or explicitly
+  enable local evaluation with `SECURITY_PREFLIGHT_OPENSCAP_EVAL_ENABLED=true`,
+  `SECURITY_PREFLIGHT_OPENSCAP_CONTENT_PATH`, and
+  `SECURITY_PREFLIGHT_OPENSCAP_PROFILE`.
+- For DefectDojo, inspect `defectdojo.sarif.json` and
+  `defectdojo-delivery.json`. Upload requires
+  `SECURITY_PREFLIGHT_DEFECTDOJO_EXPORT_ENABLED=true` and a resolvable token
+  reference.
+- Treat missing Greenbone/OpenVAS, OpenSCAP, DefectDojo, external VPS, or
+  scanner-runner configuration as SecurityPreflight `scope=platform` readiness
+  gaps. Do not hand them to an application team as application vulnerabilities.
+- For central telemetry, inspect `central-result-envelope.json` and
+  `central-telemetry-delivery.json`.
+- For the capability audit, call `GET /api/v1/capabilities` through the
+  authenticated API boundary. In production, AKB readiness expects the API
+  container to be attached to `SECURITY_PREFLIGHT_AKB_DOCKER_NETWORK`
+  (`akl_app_zone` by default) and `SECURITY_PREFLIGHT_AKB_RAG_BASE_URL` to end
+  in `/api/v1`.
+- Do not treat a skipped external scanner step as a production pass.
+
+## Coordinated epoch reset
+
+`pnpm reset:epoch` is always a dry-run and lists the three owner volumes for
+PostgreSQL, Redis/scan queue and report storage. Destructive execution is only
+permitted inside the approved G7 window:
+
+```bash
+SECURITY_PREFLIGHT_DATA_EPOCH=stratos-epoch-2026-01 \
+SECURITY_PREFLIGHT_RESET_APPROVED_WINDOW=G7 \
+SECURITY_PREFLIGHT_RESET_CONFIRM=RESET_SECURITY_PREFLIGHT_stratos-epoch-2026-01 \
+pnpm reset:epoch -- --execute
+```
+
+The script validates Docker Compose ownership for every existing volume before
+stopping services or deleting data. It contains no database or service
+credentials. Do not execute it during G2-G6. G5 must run two isolated rehearsal
+cycles and G6 must restore PostgreSQL, Redis and reports independently from
+their rehearsal backups.
+
+## G4 policy compatibility
+
+Run against the isolated STRATOS G4 environment, never production:
+
+```bash
+SECURITY_PREFLIGHT_G4_INTEGRATION_TEST=true \
+SECURITY_PREFLIGHT_POLICY_REGISTRY_URL=https://g4.example/api/v1/policy/bindings \
+SECURITY_PREFLIGHT_POLICY_DECISION_URL=https://g4.example/api/v1/policy/decisions \
+STRATOS_POLICY_SERVICE_TOKEN='<runtime secret>' \
+pnpm --filter @security-preflight/api exec vitest run src/policy-registry.integration.test.ts
+```
+
+The test registers an isolated binding and verifies ALLOW, unknown id, stale
+hash and unknown obligation. User-specific project-scope and inactive-access
+fixtures must be executed by the STRATOS G4 orchestrator because those identity
+states are owned by central Access Governance.
 
 ## High Latency
 

@@ -20,7 +20,9 @@
       "get": {
         "summary": "Health check",
         "operationId": "getHealth",
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -50,7 +52,9 @@
       "get": {
         "summary": "Readiness check",
         "operationId": "getReadiness",
-        "tags": ["System"],
+        "tags": [
+          "System"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -85,25 +89,1489 @@
           }
         }
       }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "summary": "List registered projects",
+        "operationId": "listProjects",
+        "tags": [
+          "Projects"
+        ],
+        "responses": {
+          "200": {
+            "description": "Registered projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid projects request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Register a local project",
+        "operationId": "createProject",
+        "tags": [
+          "Projects"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registered project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project registration request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Project ID or path already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scan-profiles": {
+      "get": {
+        "summary": "List built-in scan profiles",
+        "operationId": "listScanProfiles",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Available scan profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanProfileListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan profile request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/plan": {
+      "post": {
+        "summary": "Build a guarded scan execution plan without running scanners",
+        "operationId": "createScanExecutionPlan",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Execution plan. Guardrail failures are represented by blocked=true and blockedReasons.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanExecutionPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan plan request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Requested scan profile was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/queue": {
+      "post": {
+        "summary": "Queue an unblocked scan execution plan",
+        "operationId": "queueScanExecution",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Scan plan accepted and queued for worker execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanQueueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan queue request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Requested scan profile was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Scan plan is blocked by guardrails and cannot be queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs": {
+      "get": {
+        "summary": "List scan runs with local report evidence",
+        "operationId": "listScanRuns",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Scan runs discovered under the configured reports path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan run list request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs/{scanRunId}": {
+      "get": {
+        "summary": "Get scan run detail and redacted evidence manifest",
+        "operationId": "getScanRunDetail",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scan run detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan run ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs/{scanRunId}/progress": {
+      "get": {
+        "summary": "Get persisted scan run progress",
+        "operationId": "getScanRunProgress",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scan run progress from PostgreSQL persistence or report evidence fallback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunProgressResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan run ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run progress was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs/{scanRunId}/findings/{findingId}/triage": {
+      "patch": {
+        "summary": "Update persisted finding triage state",
+        "operationId": "updateFindingTriage",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          },
+          {
+            "name": "findingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 240,
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingTriageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated finding triage state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingTriageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid finding triage request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Persisted finding was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL persistence is required but unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scans/runs/{scanRunId}/report": {
+      "get": {
+        "summary": "Get a redacted scan report artifact",
+        "operationId": "getScanRunReport",
+        "tags": [
+          "Scans"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "scanRunId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "json"
+              ],
+              "default": "markdown"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid scan report request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan report evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/toolchain/doctor": {
+      "get": {
+        "summary": "Check local scanner and runtime tool availability",
+        "operationId": "getToolchainDoctor",
+        "tags": [
+          "Toolchain"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Toolchain diagnostic result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolchainDoctorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid toolchain doctor request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/toolchain/requirements": {
+      "get": {
+        "summary": "List required scanner and evidence tooling",
+        "operationId": "listToolchainRequirements",
+        "tags": [
+          "Toolchain"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Required scanner and evidence tooling",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolRequirementListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid toolchain requirements request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/results/ingest": {
+      "post": {
+        "summary": "Accept a redacted SecurityPreflight result envelope for central storage",
+        "operationId": "ingestResultEnvelope",
+        "tags": [
+          "Results"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CentralResultEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Result envelope accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultIngestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid result envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/export": {
+      "post": {
+        "summary": "Export a scan run report as PDF or PPTX",
+        "operationId": "exportScanRunReport",
+        "tags": [
+          "Reports"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Base64 encoded report export payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportExportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid report export request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/codex-remediation": {
+      "post": {
+        "summary": "Export a scan run Codex remediation package as redacted Markdown",
+        "operationId": "exportCodexRemediationPackage",
+        "tags": [
+          "Reports"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodexRemediationExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Base64 encoded Codex remediation Markdown payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodexRemediationExportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Codex remediation export request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/akb/status": {
+      "get": {
+        "summary": "Check AKB integration configuration and boundaries",
+        "operationId": "getAkbIntegrationStatus",
+        "tags": [
+          "AKB"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "AKB integration status without secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid AKB status request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/akb/ai/ask": {
+      "post": {
+        "summary": "Ask AKB a cited question scoped to a scan run",
+        "operationId": "askAkbAboutScanRun",
+        "tags": [
+          "AKB"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AkbAskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "AKB cited answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbAskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid AKB AI request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Scan run evidence was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "AKB request failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AKB is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/status": {
+      "get": {
+        "summary": "Get API authentication status",
+        "operationId": "getAuthStatus",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Authentication status without secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid authentication status request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/capabilities": {
+      "get": {
+        "summary": "Get measured SecurityPreflight capability readiness",
+        "operationId": "getCapabilityAudit",
+        "tags": [
+          "Capabilities"
+        ],
+        "responses": {
+          "200": {
+            "description": "Measured capability readiness without secrets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityAuditResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid capability audit request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}": {
+      "parameters": [
+        {
+          "name": "projectId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{1,119}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Get a registered project",
+        "operationId": "getProject",
+        "tags": [
+          "Projects"
+        ],
+        "responses": {
+          "200": {
+            "description": "Registered project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Registered project was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a registered project",
+        "operationId": "updateProject",
+        "tags": [
+          "Projects"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project update request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Registered project was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Project path already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a registered project",
+        "operationId": "deleteProject",
+        "tags": [
+          "Projects"
+        ],
+        "responses": {
+          "204": {
+            "description": "Project deleted"
+          },
+          "400": {
+            "description": "Invalid project ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or bearer token invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated identity does not have the required role",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Registered project was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
       "HealthResponse": {
         "type": "object",
-        "required": ["status", "service", "version", "timestamp"],
+        "required": [
+          "status",
+          "service",
+          "version",
+          "timestamp"
+        ],
         "properties": {
           "status": {
             "type": "string",
-            "examples": ["ok"]
+            "examples": [
+              "ok"
+            ]
           },
           "service": {
             "type": "string",
-            "examples": ["security-preflight"]
+            "examples": [
+              "security-preflight"
+            ]
           },
           "version": {
             "type": "string",
-            "examples": ["1.0.0"]
+            "examples": [
+              "1.0.0"
+            ]
           },
           "timestamp": {
             "type": "string",
@@ -111,44 +1579,2742 @@
           }
         }
       },
-      "ErrorResponse": {
+      "Project": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "id",
+          "name",
+          "path",
+          "repositoryUrl",
+          "publicUrl",
+          "defaultBranch",
+          "technologyStack",
+          "dataClassification",
+          "policyBinding",
+          "owner",
+          "createdAt",
+          "updatedAt"
+        ],
         "properties": {
-          "error": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{1,119}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute container path to the project directory, normally inside PROJECTS_ROOT_CONTAINER or one of PROJECTS_ROOTS_CONTAINER."
+          },
+          "repositoryUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized repository URL. Credentials are stripped before persistence."
+          },
+          "publicUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "Public or staging http(s) URL used as the default Web/API scan target for this project. Credentials and URL fragments are stripped before persistence."
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "technologyStack": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataClassification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "sensitive",
+              "health-data"
+            ]
+          },
+          "policyBinding": {
+            "$ref": "#/components/schemas/InformationPolicyBindingV2",
+            "description": "Authoritative binding returned by the STRATOS Policy Registry before project persistence."
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "meta": {
             "type": "object",
-            "required": ["code", "message", "requestId"],
+            "required": [
+              "total"
+            ],
             "properties": {
-              "code": {
-                "type": "string",
-                "examples": ["VALIDATION_ERROR"]
+              "total": {
+                "type": "integer",
+                "minimum": 0
               },
-              "message": {
+              "registryPath": {
                 "type": "string",
-                "examples": ["Invalid request data."]
-              },
-              "details": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "additionalProperties": true
-                }
-              },
-              "requestId": {
-                "type": "string",
-                "examples": ["req_abc123"]
+                "description": "Container path to the durable local project registry file."
               }
             }
           }
         }
+      },
+      "ScanProfile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "checks",
+          "failThreshold",
+          "allowActiveDast",
+          "allowProductionTargets",
+          "timeoutSeconds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failThreshold": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "allowActiveDast": {
+            "type": "boolean"
+          },
+          "allowProductionTargets": {
+            "type": "boolean"
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "ScanProfileListResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanProfile"
+            }
+          }
+        }
+      },
+      "ScanPlanRequest": {
+        "type": "object",
+        "required": [
+          "project"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string",
+            "default": "fast-local"
+          },
+          "reportsRoot": {
+            "type": "string",
+            "default": "/reports"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ScanPlanProject"
+          },
+          "dast": {
+            "$ref": "#/components/schemas/DastPolicyRequest"
+          }
+        }
+      },
+      "ScanPlanProject": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute host path to the project directory."
+          },
+          "dataClassification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "sensitive",
+              "health-data"
+            ],
+            "default": "internal"
+          }
+        }
+      },
+      "DastPolicyRequest": {
+        "type": "object",
+        "properties": {
+          "targetUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "allowedHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "localhost",
+              "127.0.0.1",
+              "host.docker.internal"
+            ]
+          },
+          "excludedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowActiveScan": {
+            "type": "boolean",
+            "default": false
+          },
+          "allowProductionTargets": {
+            "type": "boolean",
+            "default": false
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "ScanExecutionPlan": {
+        "type": "object",
+        "required": [
+          "id",
+          "scanRunId",
+          "createdAt",
+          "project",
+          "profile",
+          "blocked",
+          "blockedReasons",
+          "evidenceRoot",
+          "policy",
+          "steps"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scanRunId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ScanPlanProject"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ScanExecutionPlanProfile"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "blockedReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidenceRoot": {
+            "type": "string"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ScanPlanPolicy"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanExecutionStep"
+            }
+          }
+        }
+      },
+      "ScanExecutionPlanProfile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "failThreshold",
+          "timeoutSeconds",
+          "allowActiveDast",
+          "allowProductionTargets"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "failThreshold": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "allowActiveDast": {
+            "type": "boolean"
+          },
+          "allowProductionTargets": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanQueueResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QueuedScan"
+          }
+        }
+      },
+      "QueuedScan": {
+        "type": "object",
+        "required": [
+          "jobId",
+          "scanRunId",
+          "status",
+          "plan"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "scanRunId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued"
+            ]
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ScanExecutionPlan"
+          }
+        }
+      },
+      "ScanPlanPolicy": {
+        "type": "object",
+        "required": [
+          "defaultNetworkMode",
+          "allowedDastHosts",
+          "activeDastTarget"
+        ],
+        "properties": {
+          "defaultNetworkMode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "restricted"
+            ]
+          },
+          "allowedDastHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "activeDastTarget": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          }
+        }
+      },
+      "ScanExecutionStep": {
+        "type": "object",
+        "required": [
+          "id",
+          "checkId",
+          "tool",
+          "type",
+          "status",
+          "executionMode",
+          "command",
+          "timeoutSeconds",
+          "networkMode",
+          "evidencePaths",
+          "projectMount",
+          "guardrails",
+          "blockedReasons"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "sast",
+              "sca",
+              "secret",
+              "container",
+              "iac",
+              "dast",
+              "openapi",
+              "documentation",
+              "configuration",
+              "tooling"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "blocked"
+            ]
+          },
+          "executionMode": {
+            "type": "string",
+            "enum": [
+              "container",
+              "internal"
+            ]
+          },
+          "command": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "networkMode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "restricted"
+            ]
+          },
+          "evidencePaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "projectMount": {
+            "$ref": "#/components/schemas/ScanProjectMount"
+          },
+          "guardrails": {
+            "$ref": "#/components/schemas/ScanStepGuardrails"
+          },
+          "blockedReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ScanProjectMount": {
+        "type": "object",
+        "required": [
+          "sourcePath",
+          "targetPath",
+          "readOnly"
+        ],
+        "properties": {
+          "sourcePath": {
+            "type": "string"
+          },
+          "targetPath": {
+            "type": "string"
+          },
+          "readOnly": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanStepGuardrails": {
+        "type": "object",
+        "required": [
+          "dropCapabilities",
+          "privileged",
+          "dockerSocket",
+          "activeDast"
+        ],
+        "properties": {
+          "dropCapabilities": {
+            "type": "boolean"
+          },
+          "privileged": {
+            "type": "boolean"
+          },
+          "dockerSocket": {
+            "type": "boolean"
+          },
+          "activeDast": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanRunListResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanRunSummary"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "required": [
+              "total",
+              "reportsPath"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reportsPath": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ScanRunDetailResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScanRunDetail"
+          }
+        }
+      },
+      "ScanRunProgressResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScanRunProgress"
+          }
+        }
+      },
+      "ScanRunReportResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "scanRunId",
+              "format",
+              "fileName",
+              "contentType",
+              "content"
+            ],
+            "properties": {
+              "scanRunId": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "json"
+                ]
+              },
+              "fileName": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "content": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "ScanRunSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "gateResult",
+          "project",
+          "profile",
+          "startedAt",
+          "finishedAt",
+          "durationMs",
+          "findingCount",
+          "severitySummary",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "gateResult": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "warning",
+              "fail",
+              "error",
+              "unknown"
+            ]
+          },
+          "project": {
+            "$ref": "#/components/schemas/ScanRunProject"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ScanRunProfile"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "findingCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "severitySummary": {
+            "$ref": "#/components/schemas/SeveritySummary"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ScanRunEvidence"
+          }
+        }
+      },
+      "ScanRunDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScanRunSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "gate",
+              "findings",
+              "steps"
+            ],
+            "properties": {
+              "gate": {
+                "$ref": "#/components/schemas/ScanRunGate"
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ScanRunFinding"
+                }
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ScanRunStep"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "ScanRunProgress": {
+        "type": "object",
+        "required": [
+          "scanRunId",
+          "status",
+          "gateResult",
+          "totalSteps",
+          "completedSteps",
+          "failedSteps",
+          "blockedSteps",
+          "findingCount",
+          "startedAt",
+          "finishedAt",
+          "updatedAt",
+          "events"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "gateResult": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "warning",
+              "fail",
+              "error",
+              "unknown"
+            ]
+          },
+          "totalSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completedSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failedSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blockedSteps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "findingCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScanRunProgressEvent"
+            }
+          }
+        }
+      },
+      "ScanRunProgressEvent": {
+        "type": "object",
+        "required": [
+          "type",
+          "message",
+          "createdAt"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ScanRunProject": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "dataClassification"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "dataClassification": {
+            "type": "string"
+          }
+        }
+      },
+      "ScanRunProfile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "SeveritySummary": {
+        "type": "object",
+        "required": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "properties": {
+          "critical": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "high": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "medium": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "low": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "info": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ScanRunEvidence": {
+        "type": "object",
+        "required": [
+          "root",
+          "files",
+          "hasExecutionResult",
+          "hasJsonReport",
+          "hasMarkdownReport",
+          "hasCentralEnvelope",
+          "hasSarifReport",
+          "hasCentralTelemetryDelivery",
+          "hasDefectDojoDelivery"
+        ],
+        "properties": {
+          "root": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hasExecutionResult": {
+            "type": "boolean"
+          },
+          "hasJsonReport": {
+            "type": "boolean"
+          },
+          "hasMarkdownReport": {
+            "type": "boolean"
+          },
+          "hasCentralEnvelope": {
+            "type": "boolean"
+          },
+          "hasSarifReport": {
+            "type": "boolean"
+          },
+          "hasCentralTelemetryDelivery": {
+            "type": "boolean"
+          },
+          "hasDefectDojoDelivery": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ScanRunGate": {
+        "type": "object",
+        "required": [
+          "result",
+          "blockingReasons"
+        ],
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "warning",
+              "fail",
+              "error",
+              "unknown"
+            ]
+          },
+          "blockingReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "FindingStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "accepted",
+          "false-positive",
+          "fixed",
+          "suppressed"
+        ]
+      },
+      "FindingTriageRequest": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/FindingStatus"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4000
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 240
+          },
+          "dueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "FindingTriageResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ScanRunFinding"
+          }
+        }
+      },
+      "ScanRunFinding": {
+        "type": "object",
+        "required": [
+          "id",
+          "tool",
+          "type",
+          "scope",
+          "severity",
+          "title",
+          "filePath",
+          "line",
+          "endpoint",
+          "status",
+          "recommendation",
+          "triageStatus",
+          "triageNote",
+          "triageOwner",
+          "triageDueAt",
+          "triageExpiresAt",
+          "triageUpdatedAt",
+          "triageUpdatedBy"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "application",
+              "platform"
+            ],
+            "description": "Finding ownership scope. application findings belong to the checked project or target; platform findings are SecurityPreflight scanner/runtime readiness gaps."
+          },
+          "severity": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "triageStatus": {
+            "$ref": "#/components/schemas/FindingStatus"
+          },
+          "triageNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triageOwner": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triageDueAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "triageExpiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "triageUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "triageUpdatedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ScanRunStep": {
+        "type": "object",
+        "required": [
+          "stepId",
+          "checkId",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "evidenceFile",
+          "findingCount",
+          "message"
+        ],
+        "properties": {
+          "stepId": {
+            "type": "string"
+          },
+          "checkId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "evidenceFile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "findingCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ToolchainDoctorResponse": {
+        "type": "object",
+        "required": [
+          "checkedAt",
+          "tools",
+          "summary"
+        ],
+        "properties": {
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCheck"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "available",
+              "missing",
+              "error",
+              "healthcareAvailable",
+              "healthcareMissing",
+              "healthcareError",
+              "optionalAvailable",
+              "optionalMissing",
+              "optionalError"
+            ],
+            "properties": {
+              "available": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "error": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "healthcareAvailable": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "healthcareMissing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "healthcareError": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "optionalAvailable": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "optionalMissing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "optionalError": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "ToolCheck": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "requiredForHealthcare",
+          "command",
+          "status",
+          "version",
+          "message"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "secret-scanning",
+              "sast",
+              "sca",
+              "sbom",
+              "license",
+              "container",
+              "iac",
+              "openapi",
+              "dast",
+              "attestation",
+              "telemetry"
+            ]
+          },
+          "requiredForHealthcare": {
+            "type": "boolean"
+          },
+          "command": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "missing",
+              "error"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ToolRequirementListResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolRequirement"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "required": [
+              "total",
+              "healthcareRequired"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "healthcareRequired": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "ToolRequirement": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "category",
+          "requiredForHealthcare",
+          "command",
+          "args",
+          "checks",
+          "purpose"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "secret-scanning",
+              "sast",
+              "sca",
+              "sbom",
+              "license",
+              "container",
+              "iac",
+              "openapi",
+              "dast",
+              "attestation",
+              "telemetry"
+            ]
+          },
+          "requiredForHealthcare": {
+            "type": "boolean"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      },
+      "CentralResultEnvelope": {
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "generatedAt",
+          "producer",
+          "project",
+          "scanRun",
+          "profile",
+          "gate",
+          "findings",
+          "evidence",
+          "policyBinding",
+          "integrationEnvelope"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "const": "security-preflight.result.v1"
+          },
+          "envelopeId": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "producer": {
+            "type": "object",
+            "required": [
+              "name",
+              "version"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            }
+          },
+          "project": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "dataClassification"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "dataClassification": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "internal",
+                  "confidential",
+                  "sensitive",
+                  "health-data"
+                ]
+              }
+            }
+          },
+          "scanRun": {
+            "type": "object",
+            "required": [
+              "id",
+              "status",
+              "gateResult"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "running",
+                  "completed",
+                  "failed",
+                  "cancelled"
+                ]
+              },
+              "gateResult": {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "warning",
+                  "fail",
+                  "error"
+                ]
+              }
+            }
+          },
+          "profile": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "checks"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "gate": {
+            "type": "object",
+            "required": [
+              "result",
+              "blockingReasons"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "result": {
+                "type": "string",
+                "enum": [
+                  "pass",
+                  "warning",
+                  "fail",
+                  "error"
+                ]
+              },
+              "blockingReasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "required": [
+              "findingCount",
+              "redacted"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "findingCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "redacted": {
+                "type": "boolean",
+                "const": true
+              }
+            }
+          },
+          "policyBinding": {
+            "$ref": "#/components/schemas/InformationPolicyBindingV2"
+          },
+          "integrationEnvelope": {
+            "$ref": "#/components/schemas/StratosIntegrationEnvelopeV1"
+          }
+        }
+      },
+      "InformationPolicyBindingV2": {
+        "type": "object",
+        "required": ["policyBindingId", "organizationId", "policyHash", "policyVersion", "handlingClass", "legalClassification", "tlp", "pap", "obligations", "contentCategories", "audience"],
+        "properties": {
+          "policyBindingId": { "type": "string" },
+          "organizationId": { "type": "string", "const": "org_stratos" },
+          "policyHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "policyVersion": { "type": "string", "const": "information-policy-2.0.0" },
+          "handlingClass": { "type": "string", "enum": ["PUBLIC", "INTERNAL", "RESTRICTED"] },
+          "legalClassification": { "type": "string", "const": "NONE" },
+          "tlp": { "type": ["string", "null"], "enum": ["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR", null] },
+          "pap": { "type": ["string", "null"], "enum": ["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR", null] },
+          "obligations": { "type": "array", "items": { "type": "string" } },
+          "contentCategories": { "type": "array", "items": { "type": "string" } },
+          "audience": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "StratosIntegrationEnvelopeV1": {
+        "type": "object",
+        "required": ["schemaVersion", "organizationId", "sourceSystem", "externalRef", "actor", "correlationId", "idempotencyKey", "policyBindingId", "policyVersion", "policyHash", "classification", "payload"],
+        "properties": {
+          "schemaVersion": { "type": "string", "const": "stratos-integration-envelope-1" },
+          "organizationId": { "type": "string", "const": "org_stratos" },
+          "sourceSystem": { "type": "string", "const": "SECURITY_PREFLIGHT" },
+          "externalRef": { "type": "string" },
+          "actor": { "type": "object", "required": ["type", "subjectId"], "properties": { "type": { "type": "string", "const": "service" }, "subjectId": { "type": "string" } } },
+          "correlationId": { "type": "string" },
+          "idempotencyKey": { "type": "string" },
+          "policyBindingId": { "type": "string" },
+          "policyVersion": { "type": "string", "const": "information-policy-2.0.0" },
+          "policyHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "classification": { "type": "object", "required": ["handlingClass", "legalClassification", "tlp", "pap"], "properties": { "handlingClass": { "type": "string" }, "legalClassification": { "type": "string", "const": "NONE" }, "tlp": { "type": ["string", "null"] }, "pap": { "type": ["string", "null"] } } },
+          "payload": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "ResultIngestResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "status",
+              "envelopeId",
+              "scanRunId",
+              "receivedAt"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "accepted"
+                ]
+              },
+              "envelopeId": {
+                "type": "string"
+              },
+              "scanRunId": {
+                "type": "string"
+              },
+              "receivedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "requestId"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "examples": [
+                  "VALIDATION_ERROR"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "examples": [
+                  "Invalid request data."
+                ]
+              },
+              "details": {
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                ]
+              },
+              "requestId": {
+                "type": "string",
+                "examples": [
+                  "req_abc123"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "ReportExportRequest": {
+        "type": "object",
+        "required": [
+          "scanRunId"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "PDF",
+              "PPTX",
+              "pdf",
+              "pptx"
+            ],
+            "default": "PDF"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "cs",
+              "en"
+            ],
+            "default": "cs"
+          },
+          "template": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      },
+      "ReportExportResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReportExport"
+          }
+        }
+      },
+      "ReportExport": {
+        "type": "object",
+        "required": [
+          "reportType",
+          "format",
+          "fileName",
+          "mimeType",
+          "encoding",
+          "content",
+          "contentHash",
+          "generatedAt",
+          "parametersJson"
+        ],
+        "properties": {
+          "reportType": {
+            "type": "string",
+            "enum": [
+              "SECURITY_PREFLIGHT_SCAN"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "PDF",
+              "PPTX"
+            ]
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "base64"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "parametersJson": {
+            "type": "object",
+            "required": [
+              "scanRunId",
+              "projectId",
+              "profileId",
+              "gateResult",
+              "findingCount",
+              "evidenceFiles"
+            ],
+            "properties": {
+              "scanRunId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "gateResult": {
+                "type": "string"
+              },
+              "findingCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "evidenceFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "template": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "AkbStatusResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AkbStatus"
+          }
+        }
+      },
+      "AkbStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "ragConfigured",
+          "publicBaseUrl",
+          "authMode",
+          "syncRequired",
+          "boundaries"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "ragConfigured": {
+            "type": "boolean"
+          },
+          "publicBaseUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "authMode": {
+            "type": "string",
+            "enum": [
+              "caller-bearer",
+              "oidc-client-credentials",
+              "service-token",
+              "none"
+            ]
+          },
+          "syncRequired": {
+            "type": "boolean"
+          },
+          "boundaries": {
+            "type": "object",
+            "required": [
+              "storesPrompts",
+              "storesResponses",
+              "storesChunks",
+              "requiresCitations"
+            ],
+            "properties": {
+              "storesPrompts": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "storesResponses": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "storesChunks": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ]
+              },
+              "requiresCitations": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ]
+              }
+            }
+          }
+        }
+      },
+      "AkbAskRequest": {
+        "type": "object",
+        "required": [
+          "scanRunId",
+          "question"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 2000
+          },
+          "answerMode": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "responseLanguage": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 12
+          },
+          "maxChunks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "subject": {
+            "$ref": "#/components/schemas/AkbSubject"
+          }
+        }
+      },
+      "AkbSubject": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "userId": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "roles": {
+            "type": "array",
+            "maxItems": 30,
+            "items": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          "classificationClearance": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "maxLength": 120
+            }
+          }
+        }
+      },
+      "AkbAskResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AkbAnswer"
+          }
+        }
+      },
+      "AkbAnswer": {
+        "type": "object",
+        "required": [
+          "provider",
+          "scanRunId",
+          "answer",
+          "confidence",
+          "noAnswer",
+          "citations",
+          "warnings",
+          "missingInformation",
+          "usedSourceIds",
+          "correlationId"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "AKB"
+            ]
+          },
+          "scanRunId": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "noAnswer": {
+            "type": "boolean"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AkbCitation"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingInformation": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "usedSourceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        }
+      },
+      "AkbCitation": {
+        "type": "object",
+        "required": [
+          "chunkId",
+          "documentId",
+          "documentVersionId",
+          "title",
+          "page",
+          "sectionPath",
+          "openUrl"
+        ],
+        "properties": {
+          "chunkId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "documentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "documentVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "sectionPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "openUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AuthStatusResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AuthStatus"
+          }
+        }
+      },
+      "AuthStatus": {
+        "type": "object",
+        "required": [
+          "mode",
+          "required",
+          "configured",
+          "issuer",
+          "audience",
+          "clientId",
+          "requiredRoles",
+          "operatorRoles",
+          "publicOidc"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "shared-token",
+              "oidc"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "audience": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requiredRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "operatorRoles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "publicOidc": {
+            "$ref": "#/components/schemas/PublicOidcStatus"
+          }
+        }
+      },
+      "PublicOidcStatus": {
+        "type": "object",
+        "required": [
+          "configured",
+          "issuer",
+          "clientId",
+          "scopes"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "issuer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectCreateRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "path"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{1,119}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Absolute container path inside PROJECTS_ROOT_CONTAINER or one of PROJECTS_ROOTS_CONTAINER."
+          },
+          "repositoryUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "publicUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Public or staging http(s) URL to prefill Web/API scans for this project."
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "dataClassification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "sensitive",
+              "health-data"
+            ],
+            "default": "internal"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 160
+          }
+        }
+      },
+      "ProjectUpdateRequest": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{1,119}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Absolute container path inside PROJECTS_ROOT_CONTAINER or one of PROJECTS_ROOTS_CONTAINER."
+          },
+          "repositoryUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "publicUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Public or staging http(s) URL to prefill Web/API scans for this project."
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "dataClassification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "sensitive",
+              "health-data"
+            ],
+            "default": "internal"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 160
+          }
+        }
+      },
+      "ProjectResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Project"
+          }
+        }
+      },
+      "CodexRemediationExportRequest": {
+        "type": "object",
+        "required": [
+          "scanRunId"
+        ],
+        "properties": {
+          "scanRunId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "cs",
+              "en"
+            ],
+            "default": "cs"
+          }
+        }
+      },
+      "CodexRemediationExportResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CodexRemediationExport"
+          }
+        }
+      },
+      "CodexRemediationExport": {
+        "type": "object",
+        "required": [
+          "reportType",
+          "format",
+          "fileName",
+          "mimeType",
+          "encoding",
+          "content",
+          "contentHash",
+          "generatedAt",
+          "parametersJson"
+        ],
+        "properties": {
+          "reportType": {
+            "type": "string",
+            "enum": [
+              "SECURITY_PREFLIGHT_CODEX_REMEDIATION"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "MARKDOWN"
+            ]
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "text/markdown; charset=utf-8"
+            ]
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "base64"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "parametersJson": {
+            "type": "object",
+            "required": [
+              "scanRunId",
+              "projectId",
+              "profileId",
+              "gateResult",
+              "findingCount",
+              "evidenceFiles",
+              "locale"
+            ],
+            "properties": {
+              "scanRunId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "profileId": {
+                "type": "string"
+              },
+              "gateResult": {
+                "type": "string"
+              },
+              "findingCount": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "evidenceFiles": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "locale": {
+                "type": "string",
+                "enum": [
+                  "cs",
+                  "en"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "CapabilityAuditResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CapabilityAudit"
+          }
+        }
+      },
+      "CapabilityAudit": {
+        "type": "object",
+        "required": [
+          "generatedAt",
+          "maturityScore",
+          "criticalGaps",
+          "rows"
+        ],
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "maturityScore": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "criticalGaps": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityAuditRow"
+            }
+          }
+        }
+      },
+      "CapabilityAuditRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "priority",
+          "evidence",
+          "gaps"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Ready",
+              "Partial",
+              "Gap"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P0",
+              "P1"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityAuditSignal"
+            }
+          },
+          "gaps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityAuditSignal"
+            }
+          }
+        }
+      },
+      "CapabilityAuditSignal": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        }
       }
     },
-    "securitySchemes": {}
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT or shared API token"
+      }
+    }
   },
   "tags": [
     {
       "name": "System",
       "description": "System endpoints used for health, readiness and diagnostics."
+    },
+    {
+      "name": "Projects",
+      "description": "Local project registration and metadata."
+    },
+    {
+      "name": "Scans",
+      "description": "Scan profiles and scan run orchestration."
+    },
+    {
+      "name": "Results",
+      "description": "Central result envelope exchange for evidence storage."
+    },
+    {
+      "name": "Toolchain",
+      "description": "Local scanner and runtime diagnostics."
+    },
+    {
+      "name": "Authentication",
+      "description": "SecurityPreflight API authentication and authorization status"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
     }
   ]
 }

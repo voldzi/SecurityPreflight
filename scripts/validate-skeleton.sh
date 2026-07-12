@@ -48,6 +48,12 @@ for f in "${required_files[@]}"; do
 done
 require_dir docs/adr
 
+if [[ -x "$root/scripts/validate-docker-ipam.sh" ]]; then
+  "$root/scripts/validate-docker-ipam.sh" "$root" || failures=$((failures + 1))
+else
+  fail "scripts/validate-docker-ipam.sh is missing or not executable"
+fi
+
 # CLAUDE.md must equal AGENTS.md apart from its trailing Compact Instructions
 # section (blank lines ignored). Intentional platform-specific differences
 # require adapting this check via an ADR.
@@ -60,6 +66,12 @@ if [[ -f "$root/AGENTS.md" && -f "$root/CLAUDE.md" ]]; then
   else
     fail "AGENTS.md and CLAUDE.md differ beyond the Compact Instructions section"
   fi
+fi
+
+if grep -Eq 'security-preflight\.(viewer|operator|admin)|stratos_security_admin|stratos_superadmin' "$root/infra/keycloak/ensure-security-preflight-client.sh"; then
+  fail "Keycloak provisioning contains deprecated SecurityPreflight/STRATOS realm roles"
+else
+  ok "Keycloak provisioning does not create deprecated realm roles"
 fi
 
 no_api_marker="does not provide a REST API"

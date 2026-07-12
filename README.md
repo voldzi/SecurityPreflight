@@ -14,30 +14,87 @@ CODEX and Claude Code, following the central application standards
 - Security and configuration preflight checks.
 - Deployment readiness checks for local, CI, and production-oriented workflows.
 - Evidence-oriented reporting for issues, risks, and remediation status.
+- STRATOS-style report exports as redacted PDF and PPTX payloads.
+- Redacted Codex remediation package export with prioritized findings,
+  validation commands, and safety boundaries for follow-up fixes.
+- Czech and English Web UI with a STRATOS topbar language switch; the selected
+  locale is stored only in browser `localStorage`.
+- Server-side AKB bridge for cited, scan-run-scoped AI questions without
+  storing prompts, answers, chunks, embeddings, or document text locally.
+- Production API boundary with STRATOS OIDC/JWKS bearer validation, coarse RBAC,
+  shared-token transition mode, explicit CORS allowlist, and UI bearer handoff.
+- STRATOS Keycloak client provisioning for realm `stratos`, public client
+  `security-preflight-web`, and `security-preflight.*` RBAC roles.
+- Guarded scan execution planning with read-only mounts, evidence paths, and
+  explicit controlled DAST allowlists.
+- Healthcare reference profile with SBOM, SCA, SAST, IaC, OpenAPI, privacy,
+  audit, encryption, retention, and central result envelope coverage.
 - Chroma-assisted development through the local `chromadb` tooling repository.
 
 ## Technology Stack
 
 - Monorepo: pnpm workspaces with `apps/` and `packages/`.
-- Web UI: Next.js, React, TypeScript, Tailwind CSS, shadcn/ui.
+- Web UI: Next.js, React, TypeScript, Tailwind CSS, and `@voldzi/stratos-ui`.
 - API: Node.js, TypeScript, Fastify, Zod, OpenAPI JSON-first.
 - Worker: Node.js, TypeScript, Redis-backed queue, scanner orchestration.
 - Data: PostgreSQL for scan history, Redis for queue and scan state.
 - Runtime: Docker Desktop with Docker Compose.
-- Scanner execution: MVP uses a constrained scanner-toolbox container model
+- Scanner execution: worker/container runner for Gitleaks, Semgrep, Trivy,
+  Syft, Grype, OSV Scanner, Checkov, Redocly, and controlled ZAP planning,
   without mounting the Docker socket by default.
 
 ## Run Locally
 
-The application implementation has not been scaffolded yet. The always
-available repository validation command is:
+Install dependencies:
 
 ```bash
-bash scripts/validate-skeleton.sh
+pnpm install
 ```
 
-After the application stack is scaffolded, the canonical local runtime will be
-Docker Desktop and Docker Compose with the Web UI on `http://localhost:8780`.
+Run the local Web UI and API during development:
+
+```bash
+pnpm dev:web
+pnpm dev:api
+```
+
+The Web UI runs on `http://localhost:8780`; the API runs on
+`http://localhost:8781`.
+
+Run the Docker Desktop stack:
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
+```
+
+Provision the STRATOS Keycloak client on the production host when deploying:
+
+```bash
+./infra/keycloak/provision-production-keycloak-client.sh
+```
+
+The public STRATOS route is `https://stratos.zeleznalady.cz/sp`. The nginx
+include proposal for the publishing host is
+`infra/nginx/stratos-security-preflight.conf`.
+
+Preview a scan execution plan without running scanners:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan --project . --profile fast-local --dry-run
+```
+
+Queue a supported scan through the API and worker:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan --project . --profile documentation-compliance
+```
+
+Preview the healthcare reference profile:
+
+```bash
+pnpm --filter @security-preflight/cli preflight scan --project . --profile healthcare-reference --dry-run
+```
+
 Basic configuration is described in `docs/operations.md`; `.env.example` lists
 every environment variable.
 
@@ -46,10 +103,8 @@ every environment variable.
 1. Review `AGENTS.md` and `CLAUDE.md`.
 2. Review the initial architecture in `docs/architecture.md` and
    `docs/adr/0001-initial-architecture.md`.
-3. Scaffold the pnpm workspace, Docker Compose stack, API, worker, Web UI, and
-   CLI according to the architecture.
-4. Add the real build, run, test, lint, and typecheck commands here and in the
-   agent instruction files once they exist.
+3. Install dependencies with `pnpm install`.
+4. Run `pnpm validate`.
 5. Start local Chroma on the development workstation if it is not already
    running, then reindex this repository:
 
@@ -73,11 +128,11 @@ The machine-readable API contract, when the app provides a REST API, is
 ## Validation
 
 ```bash
-bash scripts/validate-skeleton.sh
+pnpm validate
 ```
 
-CI (`.github/workflows/ci.yml`) runs the skeleton validation, OpenAPI lint,
-and a secret scan; add stack-specific jobs as the application grows.
+CI (`.github/workflows/ci.yml`) runs skeleton validation, dependency install,
+typecheck, tests, build, OpenAPI lint, and a secret scan.
 
 ## Retrieval Workflow
 

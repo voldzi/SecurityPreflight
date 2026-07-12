@@ -20,7 +20,8 @@ payloads.
 
 MVP metrics should cover scan duration, queue wait time, scanner duration,
 scanner exit status, timeout count, finding counts by severity, gate results,
-report generation duration, and API request latency.
+report generation duration, PDF/PPTX export duration, AKB request duration,
+AKB error/no-answer counts, and API request latency.
 
 ## Tracing
 
@@ -28,6 +29,28 @@ OpenTelemetry is the preferred tracing standard. MVP can start with request IDs
 and structured logs, then add OpenTelemetry spans for API requests, queue jobs,
 scanner execution, parsing, normalization, gate evaluation, and report
 generation.
+
+AKB calls must propagate the API request ID as `correlation_id`. Logs may record
+AKB request status, duration, no-answer state, citation count, and error code,
+but must not log full prompts, RAG answers, tokens, document text, or citation
+source context.
+
+## Result Telemetry
+
+SecurityPreflight emits a redacted `security-preflight.result.v1` central result
+envelope for completed scan jobs. The envelope is written next to local reports
+as `central-result-envelope.json` and can be accepted by
+`POST /api/v1/results/ingest` for central evidence storage.
+
+When delivery is explicitly enabled, the worker writes
+`central-telemetry-delivery.json` with the central ingest status and
+`defectdojo-delivery.json` with the DefectDojo SARIF import status. These files
+record endpoint, HTTP status, generated timestamp, and redacted response
+metadata only.
+
+Result telemetry is evidence exchange, not behavioral tracking. It must not
+include secrets, production `.env` values, private keys, request payloads, or
+raw scanner output.
 
 ## Observability Stack
 
@@ -57,4 +80,8 @@ checks.
 ## Dashboards
 
 The Web UI dashboard shows local scan health: recent scans, gate results,
-critical/high finding counts, scanner availability, and failed jobs.
+critical/high finding counts, scanner availability, failed jobs, and report
+evidence discovered under `REPORTS_PATH`. The Execution view includes a
+read-only evidence manifest, hover-only report export actions, and step summary
+for the latest loaded scan run. The Telemetry view shows central envelope and
+AKB integration status.

@@ -10,34 +10,77 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   skeleton:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Enable pnpm
+        run: corepack enable
 
       - name: Validate skeleton
         run: bash scripts/validate-skeleton.sh
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
       - name: Lint OpenAPI
         if: ${{ hashFiles('openapi/openapi.json') != '' }}
-        run: npx --yes @redocly/cli@latest lint openapi/openapi.json
+        run: pnpm lint:openapi
+
+      - name: SecurityPreflight CLI dry-run
+        env:
+          APP_ENV: development
+          APP_HOST: 127.0.0.1
+          APP_PORT: 8781
+          SECURITY_PREFLIGHT_AUTH_MODE: disabled
+          REPORTS_PATH: ${{ runner.temp }}/security-preflight-reports
+          PROJECTS_ROOT_CONTAINER: ${{ github.workspace }}
+          PREFLIGHT_API_URL: http://127.0.0.1:8781
+        run: |
+          pnpm --filter @security-preflight/api start > "${RUNNER_TEMP}/security-preflight-api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "${api_pid}" 2>/dev/null || true; cat "${RUNNER_TEMP}/security-preflight-api.log"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8781/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8781/health >/dev/null
+          pnpm --filter @security-preflight/cli preflight scan --project . --profile healthcare-reference --dry-run
+          pnpm --filter @security-preflight/cli preflight scan --project . --profile web-perimeter-safe --dast-target http://127.0.0.1:8781 --allow-active-dast --allow-host 127.0.0.1 --dry-run
+          pnpm --filter @security-preflight/cli preflight scan --project . --profile openapi-runtime-safe --dast-target http://127.0.0.1:8781 --allow-active-dast --allow-host 127.0.0.1 --dry-run
+          pnpm --filter @security-preflight/cli preflight scan --project . --profile external-vps-safe --dast-target http://127.0.0.1:8781 --allow-active-dast --allow-host 127.0.0.1 --dry-run
 
   secret-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # TODO: add stack-specific jobs once the application stack is chosen:
-  # install, lint, type-check, test, build, dependency scan, and docker
-  # build when the project uses containers. See ci-cd-standards.md in the
-  # chromadb tooling repository (docs/standards/).

@@ -1,0 +1,5 @@
+FROM security-preflight/scanner-runtime:local
+
+WORKDIR /workspace
+
+CMD ["sleep", "infinity"]
