@@ -171,6 +171,23 @@ credentials. Do not execute it during G2-G6. G5 must run two isolated rehearsal
 cycles and G6 must restore PostgreSQL, Redis and reports independently from
 their rehearsal backups.
 
+## G4 policy compatibility
+
+Run against the isolated STRATOS G4 environment, never production:
+
+```bash
+SECURITY_PREFLIGHT_G4_INTEGRATION_TEST=true \
+SECURITY_PREFLIGHT_POLICY_REGISTRY_URL=https://g4.example/api/v1/policy/bindings \
+SECURITY_PREFLIGHT_POLICY_DECISION_URL=https://g4.example/api/v1/policy/decisions \
+STRATOS_POLICY_SERVICE_TOKEN='<runtime secret>' \
+pnpm --filter @security-preflight/api exec vitest run src/policy-registry.integration.test.ts
+```
+
+The test registers an isolated binding and verifies ALLOW, unknown id, stale
+hash and unknown obligation. User-specific project-scope and inactive-access
+fixtures must be executed by the STRATOS G4 orchestrator because those identity
+states are owned by central Access Governance.
+
 ## High Latency
 
 - Identify whether latency is API request handling, queue wait time, scanner

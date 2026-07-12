@@ -41,25 +41,19 @@ the STRATOS capability/scope policy decision endpoint. SecurityPreflight uses
 `security-preflight:access`, `submit_scan`, `read_scan`, `external_operation`,
 `export`, `read_audit`, and `manage_access`. A missing policy service, unknown
 capability, scope mismatch, unknown binding, or malformed decision fails closed.
-Legacy `SECURITY_PREFLIGHT_REQUIRED_ROLES` and
-`SECURITY_PREFLIGHT_OPERATOR_ROLES` remain in auth status during migration but
-are not authorization primitives. Defaults include
-`security-preflight.viewer`, `security-preflight.operator`,
-`security-preflight.admin`, `stratos_security_admin`, `stratos_superadmin`, and
-`superadmin` as appropriate.
+`SECURITY_PREFLIGHT_REQUIRED_ROLES` and `SECURITY_PREFLIGHT_OPERATOR_ROLES`
+are identity diagnostics only and default to the approved `stratos_user` and
+`stratos_admin` baseline. They are not authorization primitives.
 
-Project-level ownership, exception approver roles, and per-project
-authorization are still planned. Until they exist, healthcare deployments must
-scope access at the STRATOS/Keycloak role level and network boundary:
+Project authorization is evaluated against STRATOS organization/project scopes.
 
 Information Policy V2 maps the five local data classifications to a canonical
 binding with `legalClassification=NONE`. Scan reports, SARIF and central result
 envelopes inherit the binding. External AI, central delivery and DefectDojo
 export require capability, project scope, an ALLOW decision and PAP for cyber
 information/evidence. Policy outage and unknown obligations deny the operation.
-`security-preflight.viewer` for read-only review, `security-preflight.operator`
-for scan execution and report export, and `security-preflight.admin` or
-`stratos_security_admin` for administration.
+Project creation and classification changes register an authoritative binding
+before local persistence. Scans and exports use the returned id and hash.
 
 ## Secret Management
 

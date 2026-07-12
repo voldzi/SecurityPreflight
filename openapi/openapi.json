@@ -1590,6 +1590,7 @@
           "defaultBranch",
           "technologyStack",
           "dataClassification",
+          "policyBinding",
           "owner",
           "createdAt",
           "updatedAt"
@@ -1642,6 +1643,10 @@
               "sensitive",
               "health-data"
             ]
+          },
+          "policyBinding": {
+            "$ref": "#/components/schemas/InformationPolicyBindingV2",
+            "description": "Authoritative binding returned by the STRATOS Policy Registry before project persistence."
           },
           "owner": {
             "type": [
@@ -3245,9 +3250,11 @@
       },
       "InformationPolicyBindingV2": {
         "type": "object",
-        "required": ["policyBindingId", "policyVersion", "handlingClass", "legalClassification", "tlp", "pap", "obligations", "contentCategories", "audience"],
+        "required": ["policyBindingId", "organizationId", "policyHash", "policyVersion", "handlingClass", "legalClassification", "tlp", "pap", "obligations", "contentCategories", "audience"],
         "properties": {
           "policyBindingId": { "type": "string" },
+          "organizationId": { "type": "string", "const": "org_stratos" },
+          "policyHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
           "policyVersion": { "type": "string", "const": "information-policy-2.0.0" },
           "handlingClass": { "type": "string", "enum": ["PUBLIC", "INTERNAL", "RESTRICTED"] },
           "legalClassification": { "type": "string", "const": "NONE" },

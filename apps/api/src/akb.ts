@@ -122,7 +122,7 @@ export async function askAkb(input: AkbAskInput): Promise<AkbAskResult> {
   const subject = {
     tenant_id: input.subject?.tenantId ?? process.env.SECURITY_PREFLIGHT_TENANT_ID ?? process.env.STRATOS_TENANT_ID ?? "default",
     user_id: input.subject?.userId ?? "security-preflight-user",
-    roles: input.subject?.roles ?? ["security-preflight.viewer"],
+    roles: input.subject?.roles ?? ["stratos_user"],
     classification_clearance:
       input.subject?.classificationClearance ?? clearanceForClassification(input.run.project.dataClassification)
   };

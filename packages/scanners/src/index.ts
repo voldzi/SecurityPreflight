@@ -9,6 +9,8 @@ import { promisify } from "node:util";
 import {
   createFindingFingerprint,
   evaluateGate,
+  informationPolicyBindingForClassification,
+  informationPolicyBindingHash,
   requiredScannerTools,
   redactSecrets,
   type DataClassification,
@@ -16,6 +18,7 @@ import {
   type FindingScope,
   type FindingType,
   type GateEvaluation,
+  type InformationPolicyBinding,
   type ScanProfile,
   type ToolRequirement,
   type Severity
@@ -129,6 +132,7 @@ export interface ScanProjectInput {
   name: string;
   path: string;
   dataClassification?: DataClassification;
+  policyBinding?: InformationPolicyBinding;
 }
 
 export interface DastPolicyInput {
@@ -754,7 +758,8 @@ export function buildScanExecutionPlan(input: BuildScanExecutionPlanInput): Scan
     project: {
       ...input.project,
       path: projectPath,
-      dataClassification: input.project.dataClassification ?? "internal"
+      dataClassification: input.project.dataClassification ?? "internal",
+      policyBinding: input.project.policyBinding ?? localPolicyBinding(input.project.id, input.project.dataClassification ?? "internal")
     },
     profile: {
       id: input.profile.id,
@@ -774,6 +779,11 @@ export function buildScanExecutionPlan(input: BuildScanExecutionPlanInput): Scan
     },
     steps
   };
+}
+
+function localPolicyBinding(projectId: string, classification: DataClassification): InformationPolicyBinding {
+  const binding = { ...informationPolicyBindingForClassification(classification), policyBindingId: `local_${projectId}_${classification}`, organizationId: "org_stratos" };
+  return { ...binding, policyHash: informationPolicyBindingHash(binding) };
 }
 
 function buildExecutionStep(input: {

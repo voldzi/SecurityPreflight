@@ -22,13 +22,10 @@ and otherwise derived from the standard Keycloak certs endpoint.
 
 The repository owns an idempotent provisioning script at
 `infra/keycloak/ensure-security-preflight-client.sh`. It creates or updates the
-public client, adds a client audience mapper, and ensures realm roles:
-
-- `security-preflight.viewer`
-- `security-preflight.operator`
-- `security-preflight.admin`
-- `stratos_security_admin`
-- `stratos_superadmin`
+public client, adds a client audience mapper, and verifies the centrally owned
+realm-role baseline `stratos_user` and `stratos_admin`. It never creates or
+deletes realm roles. Application authorization belongs to STRATOS Access
+Governance capabilities and scopes.
 
 The script may update the deployment `.env` with public OIDC values. It does
 not create or store a web client secret.
@@ -39,7 +36,6 @@ password.
 
 ## Consequences
 
-SecurityPreflight shares STRATOS login, role assignment, and operational
-identity lifecycle. Production deployments can be configured reproducibly from
+SecurityPreflight shares STRATOS login and identity lifecycle. Production deployments can be configured reproducibly from
 the repository without putting credentials in Git. User-to-project authorization
-and durable audit events remain separate hardening work.
+and durable audit events are enforced through Access Governance.

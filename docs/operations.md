@@ -272,8 +272,9 @@ SecurityPreflight follows the STRATOS Keycloak pattern:
 - public issuer: `https://login.zeleznalady.cz/realms/stratos`
 - Web client: `security-preflight-web`
 - public Web URL: `https://stratos.zeleznalady.cz/sp`
-- realm roles: `security-preflight.viewer`, `security-preflight.operator`,
-  `security-preflight.admin`, `stratos_security_admin`, `stratos_superadmin`
+- centrally managed realm roles: `stratos_user`, `stratos_admin`
+- application permissions: STRATOS Access Governance capabilities and scopes;
+  the SecurityPreflight script does not create realm roles
 - valid Web redirect URIs: `https://stratos.zeleznalady.cz/sp/` and
   `https://stratos.zeleznalady.cz/sp/*`
 
@@ -366,6 +367,7 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_REQUIRED_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize API data |
 | `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize mutations or exports |
 | `SECURITY_PREFLIGHT_POLICY_DECISION_URL` | production | unset | STRATOS Information Policy V2 decision endpoint; protected OIDC operations fail closed when unavailable |
+| `SECURITY_PREFLIGHT_POLICY_REGISTRY_URL` | production | derived from decision URL | STRATOS `POST /api/v1/policy/bindings` endpoint used before a project or classification is persisted |
 | `STRATOS_POLICY_SERVICE_TOKEN` | production | unset | Secret service credential supplied at runtime for delegated policy decisions; never commit it |
 | `SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS` | no | `3000` | Timeout for a synchronous capability/scope/policy decision |
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |

@@ -27,6 +27,8 @@ export const INTEGRATION_ENVELOPE_VERSION = "stratos-integration-envelope-1" as 
 export const STRATOS_ORGANIZATION_ID = "org_stratos" as const;
 export interface InformationPolicyBinding {
   policyBindingId?: string;
+  organizationId?: string;
+  policyHash?: string;
   policyVersion: string;
   handlingClass: string;
   legalClassification: "NONE";
@@ -47,7 +49,7 @@ export function informationPolicyBindingForClassification(classification: string
   };
   const mapped = values[classification];
   if (!mapped) throw new Error(`Unknown SecurityPreflight data classification: ${classification}`);
-  return { ...mapped, policyVersion: INFORMATION_POLICY_VERSION, legalClassification: "NONE", contentCategories: ["security-evidence"], audience: { organizationIds: [STRATOS_ORGANIZATION_ID] } };
+  return { ...mapped, policyVersion: INFORMATION_POLICY_VERSION, legalClassification: "NONE", contentCategories: ["SECURITY", "CYBER_THREAT"], audience: { organizationId: STRATOS_ORGANIZATION_ID, scopeType: "project" } };
 }
 
 export function informationPolicyBindingHash(binding: InformationPolicyBinding): string {
@@ -88,6 +90,7 @@ export interface Project {
   defaultBranch: string | null;
   technologyStack: string[];
   dataClassification: DataClassification;
+  policyBinding?: InformationPolicyBinding;
   owner: string | null;
   createdAt: string;
   updatedAt: string;

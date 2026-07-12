@@ -282,6 +282,8 @@ describe("api server", () => {
         defaultBranch: "main"
       });
       expect(created.json().data.technologyStack).toEqual(expect.arrayContaining(["Docker", "Next.js", "Node.js"]));
+      expect(created.json().data.policyBinding).toMatchObject({ policyBindingId: "pb_security_preflight_project_test_health-data", organizationId: "org_stratos", policyVersion: "information-policy-2.0.0" });
+      expect(created.json().data.policyBinding.policyHash).toMatch(/^sha256:[a-f0-9]{64}$/);
 
       const duplicate = await server.inject({
         method: "POST",
@@ -318,6 +320,8 @@ describe("api server", () => {
         dataClassification: "sensitive",
         publicUrl: "https://app.example.test/path"
       });
+      expect(updated.json().data.policyBinding.policyBindingId).toBe("pb_security_preflight_project_test_sensitive");
+      expect(updated.json().data.policyBinding.policyHash).not.toBe(created.json().data.policyBinding.policyHash);
 
       const deleted = await server.inject({ method: "DELETE", url: "/api/v1/projects/project_test" });
       expect(deleted.statusCode).toBe(204);
@@ -824,7 +828,7 @@ describe("api server", () => {
       expect(headers.authorization).toBe("Bearer test-service-token");
       expect(headers.accept).toBe("application/json");
       expect(headers["X-AKL-Subject"]).toBe("security-preflight-user");
-      expect(headers["X-AKL-Roles"]).toBe("security-preflight.viewer");
+      expect(headers["X-AKL-Roles"]).toBe("stratos_user");
 
       return new Response(
         JSON.stringify({

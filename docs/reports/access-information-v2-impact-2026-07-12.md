@@ -16,6 +16,8 @@ performed.
   obligation.
 - Local classifications map only to canonical V2 bindings with
   `legalClassification=NONE`.
+- Project creation and classification updates first register the binding in the
+  STRATOS Policy Registry; the returned id/hash are persisted and inherited.
 - External AI, telemetry and vulnerability evidence exports require an ALLOW
   decision and PAP when the payload contains cyber information, IOC or evidence.
 - JSON, SARIF and central scan artefacts inherit the binding. The central result
@@ -26,8 +28,9 @@ performed.
 
 ## Compatibility and operations
 
-`@voldzi/stratos-ui` is pinned to `0.3.32`. Legacy role lists remain visible in
-auth status only for migration diagnostics and no longer grant API operations.
+`@voldzi/stratos-ui` is pinned to `0.3.32`. Keycloak provisioning validates only
+the centrally managed `stratos_user`/`stratos_admin` baseline and creates no
+application roles.
 Before G4, configure the policy decision endpoint and runtime-only service token
 for both API and worker. A missing configuration intentionally denies governed
 OIDC and external worker operations.

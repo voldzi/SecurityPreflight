@@ -5,7 +5,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { Queue } from "bullmq";
-import { defaultScanProfiles, informationPolicyBindingForClassification, informationPolicyBindingHash, requiredScannerTools, type FindingStatus, type GateResult, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
+import { defaultScanProfiles, informationPolicyBindingForClassification, informationPolicyBindingHash, requiredScannerTools, type FindingStatus, type GateResult, type InformationPolicyBinding, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
 import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
 import {
   getPersistedScanRunDetail,
@@ -59,6 +59,7 @@ interface ScanRunSummaryDto {
     id: string;
     name: string;
     dataClassification: string;
+    policyBinding?: InformationPolicyBinding;
   };
   profile: {
     id: string;
@@ -221,6 +222,8 @@ const scanPlanRequestSchema = z.object({
 
 const policyBindingSchema = z.object({
   policyBindingId: z.string().min(1),
+  organizationId: z.literal("org_stratos"),
+  policyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   policyVersion: z.literal("information-policy-2.0.0"),
   handlingClass: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED"]),
   legalClassification: z.literal("NONE"),
@@ -882,17 +885,18 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   }));
 
   server.post("/api/v1/scans/plan", async (request, reply) => {
-    const result = buildPlanFromRequest(request.body, request.id);
+    const result = await buildPlanFromRequest(request.body, request.id);
 
     if ("error" in result) {
       return reply.status(result.statusCode).send(result.error);
     }
 
+    if (!(await enforcePlanPolicy(request, reply, result.plan))) return;
     return result.plan;
   });
 
   server.post("/api/v1/scans/queue", async (request, reply) => {
-    const result = buildPlanFromRequest(request.body, request.id);
+    const result = await buildPlanFromRequest(request.body, request.id);
 
     if ("error" in result) {
       return reply.status(result.statusCode).send(result.error);
@@ -909,8 +913,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       });
     }
 
+    if (!(await enforcePlanPolicy(request, reply, result.plan))) return;
+
     if (planUsesExternalOperation(result.plan)) {
-      const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId: "security-preflight:external_operation", operation: "external_operation", scope: { type: "project", id: result.plan.project.id }, policyBinding: policyBindingForClassification(result.plan.project.dataClassification ?? "internal"), cyberInformation: true });
+      const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId: "security-preflight:external_operation", operation: "external_operation", scope: { type: "project", id: result.plan.project.id }, policyBinding: result.plan.project.policyBinding, cyberInformation: true });
       request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId: "security-preflight:external_operation", scope: { type: "project", id: result.plan.project.id }, subject: request.authContext?.subject ?? "local-runtime" }, "external scan policy decision");
       if (decision.decision !== "ALLOW") return reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The external scan is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
     }
@@ -968,7 +974,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       && parsed.data.policyBinding.legalClassification === "NONE"
       && parsed.data.policyBinding.tlp === expectedBinding.tlp
       && parsed.data.policyBinding.pap === expectedBinding.pap
-      && informationPolicyBindingHash(parsed.data.policyBinding) === parsed.data.integrationEnvelope.policyHash
+      && parsed.data.policyBinding.policyHash === parsed.data.integrationEnvelope.policyHash
+      && informationPolicyBindingHash(parsed.data.policyBinding) === parsed.data.policyBinding.policyHash
       && parsed.data.integrationEnvelope.policyVersion === parsed.data.policyBinding.policyVersion
       && parsed.data.integrationEnvelope.classification.handlingClass === parsed.data.policyBinding.handlingClass
       && parsed.data.integrationEnvelope.classification.legalClassification === "NONE";
@@ -1005,32 +1012,45 @@ function governedOperation(request: { method: string; url: string; body?: unknow
   capabilityId: string;
   operation: string;
   scope: { type: string; id: string };
-  policyBinding: PolicyBinding;
+  policyBinding?: PolicyBinding;
   cyberInformation: boolean;
 } | null {
   const route = request.url.split("?")[0] ?? request.url;
   const body = asRecord(request.body);
   const project = recordValue(body.project) ?? {};
-  const classification = stringValue(project.dataClassification)
-    ?? stringValue(recordValue(body.classification)?.dataClassification)
-    ?? "internal";
-  const policyBinding = policyBindingForClassification(classification);
   const projectId = stringValue(project.id) ?? stringValue(body.projectId);
   const scope = projectId ? { type: "project", id: projectId } : { type: "organization", id: "org_stratos" };
 
   if (route === "/api/v1/auth/status") return null;
   if (route === "/api/v1/akb/ai/ask" || route.startsWith("/api/v1/reports/")) return null;
-  if (route === "/api/v1/results/ingest") return { capabilityId: "security-preflight:external_operation", operation: "external_operation", scope, policyBinding, cyberInformation: true };
-  if (route === "/api/v1/scans/queue" || route === "/api/v1/scans/plan") return { capabilityId: "security-preflight:submit_scan", operation: request.method === "POST" ? "create" : "read", scope, policyBinding, cyberInformation: false };
-  if (route.includes("/triage")) return { capabilityId: "security-preflight:submit_scan", operation: "update", scope, policyBinding, cyberInformation: false };
-  if (route.startsWith("/api/v1/projects") && request.method !== "GET") return { capabilityId: "security-preflight:manage_access", operation: "manage", scope, policyBinding, cyberInformation: false };
-  if (route === "/api/v1/capabilities" || route === "/api/v1/toolchain/doctor") return { capabilityId: "security-preflight:read_audit", operation: "read", scope, policyBinding, cyberInformation: false };
-  return { capabilityId: "security-preflight:read_scan", operation: "read", scope, policyBinding, cyberInformation: false };
+  if (route === "/api/v1/results/ingest") return { capabilityId: "security-preflight:external_operation", operation: "external_operation", scope, policyBinding: policyBindingValue(body.policyBinding), cyberInformation: true };
+  if (route === "/api/v1/scans/queue" || route === "/api/v1/scans/plan") return null;
+  if (route.includes("/triage")) return { capabilityId: "security-preflight:submit_scan", operation: "access", scope, cyberInformation: false };
+  if (route.startsWith("/api/v1/projects") && request.method !== "GET") return { capabilityId: "security-preflight:manage_access", operation: "access", scope: projectScopeFromRoute(route) ?? scope, cyberInformation: false };
+  if (route === "/api/v1/capabilities" || route === "/api/v1/toolchain/doctor") return { capabilityId: "security-preflight:read_audit", operation: "access", scope, cyberInformation: false };
+  return { capabilityId: "security-preflight:read_scan", operation: "access", scope: projectScopeFromRoute(route) ?? scope, cyberInformation: false };
+}
+
+function projectScopeFromRoute(route: string): { type: string; id: string } | null {
+  const match = route.match(/^\/api\/v1\/projects\/([^/]+)/);
+  return match?.[1] ? { type: "project", id: decodeURIComponent(match[1]) } : null;
 }
 
 function planUsesExternalOperation(plan: ScanExecutionPlan): boolean {
   if (plan.policy.activeDastTarget) return true;
   return plan.steps.some((step) => ["external-runner:vps", "zap:baseline", "zap:api-scan", "nuclei:safe", "dns:records", "tls:certificate", "tls:configuration", "ports:common", "http:security-headers", "endpoint:admin", "endpoint:debug", "api:discovery", "waf:behavior", "openapi:runtime-safe"].includes(step.checkId));
+}
+
+async function enforcePlanPolicy(request: FastifyRequest, reply: FastifyReply, plan: ScanExecutionPlan): Promise<boolean> {
+  const binding = plan.project.policyBinding;
+  if (!binding?.policyBindingId || !binding.policyHash) {
+    await reply.status(409).send({ error: { code: "POLICY_BINDING_REQUIRED", message: "The project does not have a registered Information Policy binding.", requestId: request.id } });
+    return false;
+  }
+  const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId: "security-preflight:submit_scan", operation: "create", scope: { type: "project", id: plan.project.id }, policyBinding: binding, cyberInformation: false });
+  if (decision.decision === "ALLOW") return true;
+  await reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The scan operation is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
+  return false;
 }
 
 async function enforceRunPolicy(
@@ -1040,7 +1060,11 @@ async function enforceRunPolicy(
   capabilityId: "security-preflight:external_operation" | "security-preflight:export",
   operation: "external_ai" | "export"
 ): Promise<boolean> {
-  const policyBinding = policyBindingForClassification(run.project.dataClassification);
+  const policyBinding = run.project.policyBinding;
+  if (!policyBinding?.policyBindingId || !policyBinding.policyHash) {
+    await reply.status(409).send({ error: { code: "POLICY_BINDING_REQUIRED", message: "The scan artefact does not contain a registered Information Policy binding.", requestId: request.id } });
+    return false;
+  }
   const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId, operation, scope: { type: "project", id: run.project.id }, policyBinding, cyberInformation: true });
   request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId, scope: { type: "project", id: run.project.id }, subject: request.authContext?.subject ?? "local-runtime" }, "scan-run policy decision");
   if (decision.decision === "ALLOW") return true;
@@ -1502,7 +1526,8 @@ async function readScanRunSummary(scanRunId: string): Promise<ScanRunSummaryDto 
     project: {
       id: stringValue(project.id) ?? "unknown",
       name: stringValue(project.name) ?? "Unknown project",
-      dataClassification: stringValue(project.dataClassification) ?? "internal"
+      dataClassification: stringValue(project.dataClassification) ?? "internal",
+      policyBinding: policyBindingValue(project.policyBinding)
     },
     profile: {
       id: stringValue(profile.id) ?? stringValue(scanRun.profileId) ?? "unknown",
@@ -1616,6 +1641,12 @@ function recordValue(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
+function policyBindingValue(value: unknown): InformationPolicyBinding | undefined {
+  const record = recordValue(value);
+  if (!record || !stringValue(record.policyBindingId) || !stringValue(record.policyHash)) return undefined;
+  return record as unknown as InformationPolicyBinding;
+}
+
 function arrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
@@ -1702,7 +1733,7 @@ function csv(value: string | undefined): string[] {
   );
 }
 
-function buildPlanFromRequest(body: unknown, requestId: string):
+async function buildPlanFromRequest(body: unknown, requestId: string): Promise<
   | { plan: ScanExecutionPlan }
   | {
       statusCode: number;
@@ -1714,7 +1745,7 @@ function buildPlanFromRequest(body: unknown, requestId: string):
           requestId: string;
         };
       };
-    } {
+    } > {
   const parsed = scanPlanRequestSchema.safeParse(body);
 
   if (!parsed.success) {
@@ -1746,13 +1777,29 @@ function buildPlanFromRequest(body: unknown, requestId: string):
     };
   }
 
+  const registeredProject = await getProject(parsed.data.project.id);
+  if (!registeredProject && !localGovernanceMode()) return { statusCode: 404, error: { error: { code: "PROJECT_NOT_FOUND", message: "Registered project was not found.", requestId } } };
+  if (!registeredProject) {
+    return { plan: buildScanExecutionPlan({ scanRunId: parsed.data.scanRunId, project: parsed.data.project, profile, dast: parsed.data.dast, reportsRoot: parsed.data.reportsRoot ?? process.env.REPORTS_PATH ?? "/reports" }) };
+  }
+  if (registeredProject.path !== parsed.data.project.path || registeredProject.dataClassification !== parsed.data.project.dataClassification) {
+    return { statusCode: 409, error: { error: { code: "PROJECT_POLICY_MISMATCH", message: "The scan target does not match the registered project and classification.", requestId } } };
+  }
+  if (!registeredProject.policyBinding?.policyBindingId || !registeredProject.policyBinding.policyHash) {
+    return { statusCode: 409, error: { error: { code: "POLICY_BINDING_REQUIRED", message: "Register the project Information Policy binding before planning a scan.", requestId } } };
+  }
+
   return {
     plan: buildScanExecutionPlan({
       scanRunId: parsed.data.scanRunId,
-      project: parsed.data.project,
+      project: { ...parsed.data.project, policyBinding: registeredProject.policyBinding },
       profile,
       dast: parsed.data.dast,
       reportsRoot: parsed.data.reportsRoot ?? process.env.REPORTS_PATH ?? "/reports"
     })
   };
+}
+
+function localGovernanceMode(): boolean {
+  return process.env.SECURITY_PREFLIGHT_AUTH_MODE === "disabled" || (process.env.APP_ENV !== "production" && !process.env.SECURITY_PREFLIGHT_AUTH_MODE);
 }

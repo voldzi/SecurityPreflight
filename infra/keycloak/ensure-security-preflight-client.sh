@@ -111,11 +111,11 @@ $("$KCADM" get clients -r "$REALM" -q "clientId=$client_id" --fields id,clientId
 EOF
 }
 
-ensure_realm_role() {
+require_realm_role() {
   role="$1"
-  description="$2"
   if ! "$KCADM" get "roles/$role" -r "$REALM" >/dev/null 2>&1; then
-    "$KCADM" create roles -r "$REALM" -s "name=$role" -s "description=$description" >/dev/null
+    echo "ERROR: Required centrally managed realm role '$role' is missing." >&2
+    exit 1
   fi
 }
 
@@ -133,11 +133,8 @@ ensure_audience_mapper() {
     -s 'config."access.token.claim"=true' >/dev/null
 }
 
-ensure_realm_role "security-preflight.viewer" "SecurityPreflight read-only reviewer"
-ensure_realm_role "security-preflight.operator" "SecurityPreflight scan and report operator"
-ensure_realm_role "security-preflight.admin" "SecurityPreflight administrator"
-ensure_realm_role "stratos_security_admin" "STRATOS security administrator"
-ensure_realm_role "stratos_superadmin" "STRATOS super administrator"
+require_realm_role "stratos_user"
+require_realm_role "stratos_admin"
 
 web_uuid="$(csv_id_for_client "$SECURITY_PREFLIGHT_WEB_CLIENT_ID")"
 if [ -z "$web_uuid" ]; then
@@ -236,4 +233,4 @@ PY
 fi
 
 unset KEYCLOAK_ADMIN_PASSWORD
-printf "\nSecurityPreflight Keycloak client and roles are ready in realm %s.\n" "$REALM"
+printf "\nSecurityPreflight Keycloak client is ready and the STRATOS role baseline is present in realm %s.\n" "$REALM"

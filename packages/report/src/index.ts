@@ -182,7 +182,7 @@ export function generateCentralResultEnvelope(input: ReportInput, generatedAt = 
   });
   const envelopeId = `spr_${createHash("sha256").update(material).digest("hex").slice(0, 24)}`;
   const policyBinding = reportPolicyBinding(input);
-  const policyHash = informationPolicyBindingHash(policyBinding);
+  const policyHash = policyBinding.policyHash ?? informationPolicyBindingHash(policyBinding);
 
   return {
     schemaVersion: "security-preflight.result.v1",
@@ -238,7 +238,11 @@ export function generateCentralResultEnvelope(input: ReportInput, generatedAt = 
 }
 
 function reportPolicyBinding(input: ReportInput): InformationPolicyBinding {
-  return { ...informationPolicyBindingForClassification(input.project.dataClassification), policyBindingId: `pb_security_preflight_${input.project.id}` };
+  const binding = input.project.policyBinding;
+  if (binding?.policyBindingId && binding.policyHash) return binding;
+  if (process.env.APP_ENV === "production") throw new Error("Registered Information Policy binding is required for production reports.");
+  const local = { ...informationPolicyBindingForClassification(input.project.dataClassification), policyBindingId: `local_${input.project.id}_${input.project.dataClassification}`, organizationId: STRATOS_ORGANIZATION_ID };
+  return { ...local, policyHash: informationPolicyBindingHash(local) };
 }
 
 

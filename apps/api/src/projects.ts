@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 import { z } from "zod";
 import { detectTechnologyStack, type DataClassification, type Project } from "@security-preflight/core";
+import { PolicyRegistryError, registerProjectPolicyBinding } from "./policy-registry.js";
 
 const registrySchemaVersion = "security-preflight.projects.v1";
 const maxStackFiles = 1500;
@@ -44,6 +45,19 @@ const projectSchema = z.object({
   defaultBranch: z.string().nullable(),
   technologyStack: z.array(z.string()),
   dataClassification: z.enum(["public", "internal", "confidential", "sensitive", "health-data"]),
+  policyBinding: z.object({
+    policyBindingId: z.string().min(1),
+    organizationId: z.literal("org_stratos"),
+    policyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    policyVersion: z.literal("information-policy-2.0.0"),
+    handlingClass: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED"]),
+    legalClassification: z.literal("NONE"),
+    tlp: z.string().nullable(),
+    pap: z.string().nullable(),
+    obligations: z.array(z.string()),
+    contentCategories: z.array(z.string()),
+    audience: z.record(z.unknown())
+  }).optional(),
   owner: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
@@ -88,15 +102,22 @@ export class ProjectRegistryError extends Error {
 
 export async function listProjects(): Promise<Project[]> {
   const registry = await readRegistry();
-  const projects = await syncAutoDiscoveredProjects(registry.projects);
+  const migrated = await ensureProjectBindings(registry.projects);
+  const projects = await syncAutoDiscoveredProjects(migrated);
 
   return projects.sort((left, right) => left.name.localeCompare(right.name, "en"));
 }
 
 export async function getProject(projectId: string): Promise<Project | null> {
   const registry = await readRegistry();
-
-  return registry.projects.find((project) => project.id === projectId) ?? null;
+  const index = registry.projects.findIndex((project) => project.id === projectId);
+  if (index < 0) return null;
+  const project = registry.projects[index] as Project;
+  if (project.policyBinding) return project;
+  const migrated = { ...project, policyBinding: await registerBinding(project.id, project.dataClassification), updatedAt: new Date().toISOString() };
+  registry.projects[index] = migrated;
+  await writeRegistry(registry.projects);
+  return migrated;
 }
 
 export async function createProject(input: ProjectCreateInput): Promise<Project> {
@@ -114,6 +135,8 @@ export async function createProject(input: ProjectCreateInput): Promise<Project>
 
   const now = new Date().toISOString();
   const detected = await inspectProject(normalizedPath);
+  const dataClassification = input.dataClassification ?? "internal";
+  const policyBinding = await registerBinding(id, dataClassification);
   const project: Project = {
     id,
     name: input.name.trim(),
@@ -122,7 +145,8 @@ export async function createProject(input: ProjectCreateInput): Promise<Project>
     publicUrl: sanitizePublicUrl(input.publicUrl),
     defaultBranch: normalizeNullableString(input.defaultBranch ?? detected.defaultBranch),
     technologyStack: detected.technologyStack,
-    dataClassification: input.dataClassification ?? "internal",
+    dataClassification,
+    policyBinding,
     owner: normalizeNullableString(input.owner),
     createdAt: now,
     updatedAt: now
@@ -150,6 +174,10 @@ export async function updateProject(projectId: string, input: ProjectUpdateInput
   }
 
   const detected = nextPath !== current.path ? await inspectProject(nextPath) : null;
+  const dataClassification = input.dataClassification ?? current.dataClassification;
+  const policyBinding = dataClassification !== current.dataClassification || !current.policyBinding
+    ? await registerBinding(current.id, dataClassification)
+    : current.policyBinding;
   const next: Project = {
     ...current,
     name: input.name?.trim() ?? current.name,
@@ -158,7 +186,8 @@ export async function updateProject(projectId: string, input: ProjectUpdateInput
     publicUrl: sanitizePublicUrl(input.publicUrl !== undefined ? input.publicUrl : current.publicUrl),
     defaultBranch: normalizeNullableString(input.defaultBranch !== undefined ? input.defaultBranch : (detected?.defaultBranch ?? current.defaultBranch)),
     technologyStack: detected?.technologyStack ?? current.technologyStack,
-    dataClassification: input.dataClassification ?? current.dataClassification,
+    dataClassification,
+    policyBinding,
     owner: input.owner !== undefined ? normalizeNullableString(input.owner) : current.owner,
     updatedAt: new Date().toISOString()
   };
@@ -293,6 +322,7 @@ async function syncAutoDiscoveredProjects(projects: Project[]): Promise<Project[
       defaultBranch: previous?.defaultBranch ?? detected.defaultBranch,
       technologyStack: detected.technologyStack,
       dataClassification: previous?.dataClassification ?? candidate.dataClassification,
+      policyBinding: previous?.policyBinding ?? await registerBinding(previous?.id ?? candidate.id, previous?.dataClassification ?? candidate.dataClassification),
       owner: previous?.owner ?? candidate.owner,
       createdAt: previous?.createdAt ?? now,
       updatedAt: previous?.updatedAt ?? now
@@ -314,6 +344,30 @@ async function syncAutoDiscoveredProjects(projects: Project[]): Promise<Project[
   }
 
   return nextProjects;
+}
+
+async function registerBinding(projectId: string, classification: DataClassification) {
+  try {
+    return await registerProjectPolicyBinding(projectId, classification);
+  } catch (error) {
+    if (error instanceof PolicyRegistryError) throw new ProjectRegistryError(error.statusCode, error.code, error.message);
+    throw error;
+  }
+}
+
+async function ensureProjectBindings(projects: Project[]): Promise<Project[]> {
+  let changed = false;
+  const migrated: Project[] = [];
+  for (const project of projects) {
+    if (project.policyBinding) {
+      migrated.push(project);
+      continue;
+    }
+    migrated.push({ ...project, policyBinding: await registerBinding(project.id, project.dataClassification), updatedAt: new Date().toISOString() });
+    changed = true;
+  }
+  if (changed) await writeRegistry(migrated);
+  return migrated;
 }
 
 async function discoverMountedProjects(): Promise<Array<{ id: string; name: string; path: string; dataClassification: DataClassification; owner: string }>> {

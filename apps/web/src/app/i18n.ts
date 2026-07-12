@@ -257,7 +257,7 @@ export const localizedCapabilityRows: Record<AppLocale, CapabilityRow[]> = {
       area: "Authentication and authorization",
       status: "Partial",
       implemented: "API supports STRATOS OIDC/JWKS RBAC, shared-token transition mode, protected endpoints, and UI bearer handoff.",
-      gap: "Production still needs Keycloak client/roles, TLS termination, and audit event persistence.",
+      gap: "Production still needs the Keycloak client, Access Governance binding, TLS termination, and audit event persistence.",
       priority: "P0"
     }
   ]

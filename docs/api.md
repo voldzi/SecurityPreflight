@@ -39,7 +39,7 @@ If `SECURITY_PREFLIGHT_AUTH_MODE` is unset, development defaults to
 issuer, client id, and audience are configured. For Keycloak, the JWKS URL is
 derived from the issuer unless `SECURITY_PREFLIGHT_OIDC_JWKS_URL` is set
 explicitly. OIDC tokens are validated with RS256/JWKS and checked against
-configured viewer/operator roles.
+the centrally managed STRATOS identity baseline; capabilities and scopes govern access.
 `shared-token` is intended only as a controlled transition mode.
 
 ```bash
@@ -84,6 +84,13 @@ The API uses path versioning:
 | GET | `/api/v1/toolchain/doctor` | Check local toolchain availability |
 | GET | `/api/v1/toolchain/requirements` | List scanner/evidence tools required for healthcare reference coverage |
 | POST | `/api/v1/results/ingest` | Accept a redacted result envelope for central storage |
+
+Project creation and a change of `dataClassification` first call the STRATOS
+Policy Registry. The project response contains the authoritative
+`policyBindingId`, `organizationId`, `policyVersion`, and `policyHash`. If the
+Registry is unavailable or rejects the binding, the project mutation is not
+persisted. Scan requests refer to the registered project and cannot replace its
+classification or binding with request payload data.
 
 Scan run evidence manifests include booleans for `execution-result.json`,
 `report.json`, `report.md`, `central-result-envelope.json`,

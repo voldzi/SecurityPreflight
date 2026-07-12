@@ -68,6 +68,12 @@ if [[ -f "$root/AGENTS.md" && -f "$root/CLAUDE.md" ]]; then
   fi
 fi
 
+if grep -Eq 'security-preflight\.(viewer|operator|admin)|stratos_security_admin|stratos_superadmin' "$root/infra/keycloak/ensure-security-preflight-client.sh"; then
+  fail "Keycloak provisioning contains deprecated SecurityPreflight/STRATOS realm roles"
+else
+  ok "Keycloak provisioning does not create deprecated realm roles"
+fi
+
 no_api_marker="does not provide a REST API"
 
 if [[ ! -f "$root/openapi/openapi.json" ]]; then

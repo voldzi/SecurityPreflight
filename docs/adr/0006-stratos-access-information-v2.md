@@ -18,6 +18,11 @@ evidence exports additionally require PAP. Generated reports and scan artefacts
 inherit the canonical binding and central exchange uses Integration Envelope
 V1 with correlation, idempotency and policy hash.
 
+Before a project is stored, and whenever its classification changes, the API
+registers the proposed binding in the STRATOS Policy Registry. Only the complete
+authoritative response, including binding id and hash, may enter a scan plan or
+derived artefact.
+
 ## Consequences
 
 Legacy display roles no longer authorize routes. Production requires the

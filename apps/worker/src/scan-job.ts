@@ -129,6 +129,7 @@ async function writeReports(
     defaultBranch: null,
     technologyStack: [],
     dataClassification: plan.project.dataClassification ?? "internal",
+    policyBinding: plan.project.policyBinding,
     owner: null,
     createdAt: plan.createdAt,
     updatedAt: now

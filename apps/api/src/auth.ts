@@ -161,7 +161,7 @@ export async function authenticateSecurityPreflightRequest(request: FastifyReque
         provider: "security-preflight",
         name: "Shared token operator",
         email: null,
-        roles: [...new Set([...config.requiredRoles, ...config.operatorRoles, "security-preflight.admin"])].sort(),
+        roles: [...new Set([...config.requiredRoles, ...config.operatorRoles])].sort(),
         isAdmin: true
       }
     };
@@ -272,7 +272,7 @@ function claimsToAuthContext(claims: JwtPayload, issuer: string): SecurityPrefli
     name,
     email: email ?? null,
     roles,
-    isAdmin: hasAnyRole(roles, ["superadmin", "stratos_superadmin", "security-preflight.admin", "stratos_security_admin"])
+    isAdmin: hasAnyRole(roles, ["stratos_admin"])
   };
 }
 
@@ -294,21 +294,8 @@ function getAuthConfig() {
   return {
     mode: ["disabled", "shared-token", "oidc"].includes(mode) ? mode : "disabled",
     sharedToken: firstNonEmpty(process.env.SECURITY_PREFLIGHT_API_TOKEN),
-    requiredRoles: csv(process.env.SECURITY_PREFLIGHT_REQUIRED_ROLES, [
-      "security-preflight.viewer",
-      "security-preflight.operator",
-      "security-preflight.admin",
-      "stratos_security_admin",
-      "stratos_superadmin",
-      "superadmin"
-    ]),
-    operatorRoles: csv(process.env.SECURITY_PREFLIGHT_OPERATOR_ROLES, [
-      "security-preflight.operator",
-      "security-preflight.admin",
-      "stratos_security_admin",
-      "stratos_superadmin",
-      "superadmin"
-    ])
+    requiredRoles: csv(process.env.SECURITY_PREFLIGHT_REQUIRED_ROLES, ["stratos_user", "stratos_admin"]),
+    operatorRoles: csv(process.env.SECURITY_PREFLIGHT_OPERATOR_ROLES, ["stratos_admin"])
   };
 }
 
