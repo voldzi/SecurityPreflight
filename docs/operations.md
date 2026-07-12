@@ -363,8 +363,11 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_OIDC_JWKS_URL` | no | derived from issuer | JWKS URL for RS256 bearer token validation; can be explicit for nonstandard IdPs |
 | `SECURITY_PREFLIGHT_OIDC_CLIENT_ID` | required for OIDC | `security-preflight-web` in `.env.example` | OIDC client id / authorized party |
 | `SECURITY_PREFLIGHT_OIDC_AUDIENCE` | required for OIDC | client id | Expected token audience |
-| `SECURITY_PREFLIGHT_REQUIRED_ROLES` | no | STRATOS/SecurityPreflight viewer/operator/admin roles | Comma-separated roles allowed to read API data |
-| `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | STRATOS/SecurityPreflight operator/admin roles | Comma-separated roles allowed to mutate state, queue scans, export reports, and ask AKB |
+| `SECURITY_PREFLIGHT_REQUIRED_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize API data |
+| `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize mutations or exports |
+| `SECURITY_PREFLIGHT_POLICY_DECISION_URL` | production | unset | STRATOS Information Policy V2 decision endpoint; protected OIDC operations fail closed when unavailable |
+| `STRATOS_POLICY_SERVICE_TOKEN` | production | unset | Secret service credential supplied at runtime for delegated policy decisions; never commit it |
+| `SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS` | no | `3000` | Timeout for a synchronous capability/scope/policy decision |
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |
 | `SCANNER_RUNNER_ENABLED` | no | `true` | Enables worker execution of planned external scanner commands |
 | `SCANNER_RUNNER_MODE` | no | `direct` | `direct` runs scanners inside the worker; `docker` runs them through Docker with the scanner-toolbox image; `remote` dispatches supported web scanners to the external scanner API |

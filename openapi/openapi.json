@@ -3071,7 +3071,9 @@
           "profile",
           "gate",
           "findings",
-          "evidence"
+          "evidence",
+          "policyBinding",
+          "integrationEnvelope"
         ],
         "properties": {
           "schemaVersion": {
@@ -3232,7 +3234,46 @@
                 "const": true
               }
             }
+          },
+          "policyBinding": {
+            "$ref": "#/components/schemas/InformationPolicyBindingV2"
+          },
+          "integrationEnvelope": {
+            "$ref": "#/components/schemas/StratosIntegrationEnvelopeV1"
           }
+        }
+      },
+      "InformationPolicyBindingV2": {
+        "type": "object",
+        "required": ["policyBindingId", "policyVersion", "handlingClass", "legalClassification", "tlp", "pap", "obligations", "contentCategories", "audience"],
+        "properties": {
+          "policyBindingId": { "type": "string" },
+          "policyVersion": { "type": "string", "const": "information-policy-2.0.0" },
+          "handlingClass": { "type": "string", "enum": ["PUBLIC", "INTERNAL", "RESTRICTED"] },
+          "legalClassification": { "type": "string", "const": "NONE" },
+          "tlp": { "type": ["string", "null"], "enum": ["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR", null] },
+          "pap": { "type": ["string", "null"], "enum": ["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR", null] },
+          "obligations": { "type": "array", "items": { "type": "string" } },
+          "contentCategories": { "type": "array", "items": { "type": "string" } },
+          "audience": { "type": "object", "additionalProperties": true }
+        }
+      },
+      "StratosIntegrationEnvelopeV1": {
+        "type": "object",
+        "required": ["schemaVersion", "organizationId", "sourceSystem", "externalRef", "actor", "correlationId", "idempotencyKey", "policyBindingId", "policyVersion", "policyHash", "classification", "payload"],
+        "properties": {
+          "schemaVersion": { "type": "string", "const": "stratos-integration-envelope-1" },
+          "organizationId": { "type": "string", "const": "org_stratos" },
+          "sourceSystem": { "type": "string", "const": "SECURITY_PREFLIGHT" },
+          "externalRef": { "type": "string" },
+          "actor": { "type": "object", "required": ["type", "subjectId"], "properties": { "type": { "type": "string", "const": "service" }, "subjectId": { "type": "string" } } },
+          "correlationId": { "type": "string" },
+          "idempotencyKey": { "type": "string" },
+          "policyBindingId": { "type": "string" },
+          "policyVersion": { "type": "string", "const": "information-policy-2.0.0" },
+          "policyHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "classification": { "type": "object", "required": ["handlingClass", "legalClassification", "tlp", "pap"], "properties": { "handlingClass": { "type": "string" }, "legalClassification": { "type": "string", "const": "NONE" }, "tlp": { "type": ["string", "null"] }, "pap": { "type": ["string", "null"] } } },
+          "payload": { "type": "object", "additionalProperties": true }
         }
       },
       "ResultIngestResponse": {

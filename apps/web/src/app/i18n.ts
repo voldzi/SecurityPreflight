@@ -627,7 +627,7 @@ export const uiText = {
       accessDeniedTitle: "Přístup k SecurityPreflight není povolen",
       accessDeniedBody:
         "Vaše STRATOS identita je ověřená, ale nemá přiřazenou roli pro SecurityPreflight. Aplikace proto nezobrazuje projekty, skeny ani bezpečnostní evidenci.",
-      accessDeniedHint: "Pokračujte do jiné aplikace přes horní přepínač, nebo požádejte správce o roli security-preflight.viewer/operator.",
+      accessDeniedHint: "Pokračujte do jiné aplikace přes horní přepínač, nebo požádejte správce o přístup SecurityPreflight s potřebnou capability a rozsahem projektu.",
       accessDeniedAria: "Obrazovka bez oprávnění",
       initial: "Stav autentizace zatím nebyl ověřen.",
       oidcEstablished: "STRATOS OIDC session byla navázána.",
@@ -1186,7 +1186,7 @@ export const uiText = {
       accessDeniedTitle: "SecurityPreflight access is not allowed",
       accessDeniedBody:
         "Your STRATOS identity is authenticated, but it does not have an assigned SecurityPreflight role. The application therefore hides projects, scans, and security evidence.",
-      accessDeniedHint: "Use the top application switcher to continue elsewhere, or ask an administrator for the security-preflight.viewer/operator role.",
+      accessDeniedHint: "Use the top application switcher to continue elsewhere, or ask an administrator for SecurityPreflight access with the required capability and project scope.",
       accessDeniedAria: "No-access screen",
       initial: "Authentication status has not been checked yet.",
       oidcEstablished: "STRATOS OIDC session established.",

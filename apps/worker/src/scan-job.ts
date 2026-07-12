@@ -9,7 +9,7 @@ import {
 } from "@security-preflight/scanners";
 import { recordCompletedScan, recordFailedScan, recordRunningScan, recordScanStepResult } from "@security-preflight/persistence";
 import { generateCentralResultEnvelope, generateJsonReport, generateMarkdownReport, generateSarifReport } from "@security-preflight/report";
-import type { Project, ScanProfile, ScanRun } from "@security-preflight/core";
+import { informationPolicyBindingForClassification, type Project, type ScanProfile, type ScanRun } from "@security-preflight/core";
 
 export interface ExecuteScanJobInput {
   plan: ScanExecutionPlan;
@@ -222,6 +222,9 @@ async function deliverCentralTelemetry(centralEnvelopePath: string): Promise<Rec
 
   const token = await resolveSecretReference(process.env.SECURITY_PREFLIGHT_RESULT_SINK_TOKEN_REF);
   const envelope = await readFile(centralEnvelopePath, "utf8");
+  const parsedEnvelope = JSON.parse(envelope) as { project?: { id?: string; dataClassification?: string }; policyBinding?: Record<string, unknown> };
+  const policyDecision = await authorizeWorkerExternalOperation({ operation: "external_operation", scopeId: parsedEnvelope.project?.id ?? "unknown", policyBinding: parsedEnvelope.policyBinding });
+  if (!policyDecision.allowed) return { status: "failed", message: "Central telemetry delivery denied by policy.", decisionId: policyDecision.decisionId, reasonCodes: policyDecision.reasonCodes, generatedAt: new Date().toISOString() };
 
   try {
     const response = await fetch(endpoint, {
@@ -269,6 +272,8 @@ async function deliverDefectDojoSarif(plan: ScanExecutionPlan, sarifPath: string
   }
 
   const token = await resolveSecretReference(process.env.SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF);
+  const policyDecision = await authorizeWorkerExternalOperation({ operation: "export", scopeId: plan.project.id, policyBinding: informationPolicyBindingForClassification(plan.project.dataClassification ?? "internal") });
+  if (!policyDecision.allowed) return { status: "failed", message: "DefectDojo export denied by policy.", decisionId: policyDecision.decisionId, reasonCodes: policyDecision.reasonCodes, generatedAt: new Date().toISOString() };
 
   if (!baseUrl || !productName || !token.ok) {
     return {
@@ -330,6 +335,25 @@ async function deliverDefectDojoSarif(plan: ScanExecutionPlan, sarifPath: string
       generatedAt: new Date().toISOString(),
       message: error instanceof Error ? error.message : String(error)
     };
+  }
+}
+
+async function authorizeWorkerExternalOperation(input: { operation: string; scopeId: string; policyBinding?: object }): Promise<{ allowed: boolean; decisionId: string | null; reasonCodes: string[] }> {
+  const endpoint = process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL?.trim();
+  const token = process.env.STRATOS_POLICY_SERVICE_TOKEN?.trim();
+  if (!endpoint || !token || !input.policyBinding) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json", "x-correlation-id": `worker:${input.scopeId}` },
+      body: JSON.stringify({ actorSubjectId: "service:security-preflight", applicationId: "security-preflight", capabilityId: "security-preflight:external_operation", operation: input.operation, scope: { type: "project", id: input.scopeId }, policyBinding: input.policyBinding }),
+      signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
+    });
+    if (!response.ok) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
+    const decision = await response.json() as { decision?: string; decisionId?: string; reasonCodes?: string[] };
+    return { allowed: decision.decision === "ALLOW" && Boolean(decision.decisionId), decisionId: decision.decisionId ?? null, reasonCodes: decision.reasonCodes ?? ["POLICY_RESPONSE_INVALID"] };
+  } catch {
+    return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
   }
 }
 

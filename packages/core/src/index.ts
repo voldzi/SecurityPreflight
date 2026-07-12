@@ -22,6 +22,38 @@ export type FindingType =
   | "configuration"
   | "tooling";
 export type FindingScope = "application" | "platform";
+export const INFORMATION_POLICY_VERSION = "information-policy-2.0.0" as const;
+export const INTEGRATION_ENVELOPE_VERSION = "stratos-integration-envelope-1" as const;
+export const STRATOS_ORGANIZATION_ID = "org_stratos" as const;
+export interface InformationPolicyBinding {
+  policyBindingId?: string;
+  policyVersion: string;
+  handlingClass: string;
+  legalClassification: "NONE";
+  tlp: string | null;
+  pap: string | null;
+  obligations: string[];
+  contentCategories: string[];
+  audience: Record<string, unknown>;
+}
+
+export function informationPolicyBindingForClassification(classification: string): InformationPolicyBinding {
+  const values: Record<string, Pick<InformationPolicyBinding, "handlingClass" | "tlp" | "pap" | "obligations">> = {
+    public: { handlingClass: "PUBLIC", tlp: "TLP:CLEAR", pap: "PAP:CLEAR", obligations: ["AUDIT_ACCESS"] },
+    internal: { handlingClass: "INTERNAL", tlp: "TLP:GREEN", pap: "PAP:GREEN", obligations: ["AUDIT_ACCESS"] },
+    confidential: { handlingClass: "RESTRICTED", tlp: "TLP:AMBER", pap: "PAP:AMBER", obligations: ["AUDIT_ACCESS", "NO_PUBLIC_EXPORT", "ENCRYPT_AT_REST"] },
+    sensitive: { handlingClass: "RESTRICTED", tlp: "TLP:AMBER+STRICT", pap: "PAP:AMBER", obligations: ["AUDIT_ACCESS", "NO_PUBLIC_EXPORT", "ENCRYPT_AT_REST"] },
+    "health-data": { handlingClass: "RESTRICTED", tlp: "TLP:AMBER+STRICT", pap: "PAP:AMBER", obligations: ["AUDIT_ACCESS", "NO_PUBLIC_EXPORT", "ENCRYPT_AT_REST"] }
+  };
+  const mapped = values[classification];
+  if (!mapped) throw new Error(`Unknown SecurityPreflight data classification: ${classification}`);
+  return { ...mapped, policyVersion: INFORMATION_POLICY_VERSION, legalClassification: "NONE", contentCategories: ["security-evidence"], audience: { organizationIds: [STRATOS_ORGANIZATION_ID] } };
+}
+
+export function informationPolicyBindingHash(binding: InformationPolicyBinding): string {
+  const canonical = JSON.stringify({ audience: binding.audience, contentCategories: binding.contentCategories, handlingClass: binding.handlingClass, legalClassification: binding.legalClassification, obligations: binding.obligations, pap: binding.pap, policyBindingId: binding.policyBindingId ?? null, policyVersion: binding.policyVersion, tlp: binding.tlp });
+  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
+}
 export type ToolCategory =
   | "runtime"
   | "secret-scanning"
@@ -407,6 +439,16 @@ export const defaultScanProfiles: ScanProfile[] = [
     allowActiveDast: false,
     allowProductionTargets: false,
     timeoutSeconds: 1200
+  },
+  {
+    id: "stratos-policy-conformance",
+    name: "stratos-policy-conformance",
+    description: "STRATOS Access Governance V1, Information Policy V2 and integration envelope conformance checks.",
+    checks: ["policy:openapi-binding", "policy:audit-correlation", "policy:log-redaction", "policy:export-inheritance", "policy:fail-closed", "policy:provider-compatibility"],
+    failThreshold: "high",
+    allowActiveDast: false,
+    allowProductionTargets: false,
+    timeoutSeconds: 300
   },
   {
     id: "documentation-compliance",

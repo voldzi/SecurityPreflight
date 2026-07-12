@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import {
   applicationFindings,
   findingScope,
+  informationPolicyBindingForClassification,
+  informationPolicyBindingHash,
+  INTEGRATION_ENVELOPE_VERSION,
+  STRATOS_ORGANIZATION_ID,
   platformFindings,
   redactSecrets,
   summarizeFindings,
@@ -9,7 +13,8 @@ import {
   type GateEvaluation,
   type Project,
   type ScanProfile,
-  type ScanRun
+  type ScanRun,
+  type InformationPolicyBinding
 } from "@security-preflight/core";
 
 export interface ReportInput {
@@ -18,6 +23,21 @@ export interface ReportInput {
   profile: ScanProfile;
   gate: GateEvaluation;
   findings: Finding[];
+}
+
+export interface StratosIntegrationEnvelope<T> {
+  schemaVersion: typeof INTEGRATION_ENVELOPE_VERSION;
+  organizationId: typeof STRATOS_ORGANIZATION_ID;
+  sourceSystem: "SECURITY_PREFLIGHT";
+  externalRef: string;
+  actor: { type: "service"; subjectId: "service:security-preflight" };
+  correlationId: string;
+  idempotencyKey: string;
+  policyBindingId: string;
+  policyVersion: string;
+  policyHash: string;
+  classification: Pick<InformationPolicyBinding, "handlingClass" | "legalClassification" | "tlp" | "pap">;
+  payload: T;
 }
 
 export interface CentralResultEnvelope {
@@ -40,10 +60,12 @@ export interface CentralResultEnvelope {
     redacted: true;
     source: "local-report";
   };
+  policyBinding: InformationPolicyBinding;
+  integrationEnvelope: StratosIntegrationEnvelope<{ envelopeId: string; scanRunId: string; projectId: string }>;
 }
 
 export function generateJsonReport(input: ReportInput): string {
-  return JSON.stringify(input, redactingJsonReplacer, 2);
+  return JSON.stringify({ ...input, policyBinding: reportPolicyBinding(input) }, redactingJsonReplacer, 2);
 }
 
 export function generateSarifReport(input: ReportInput): string {
@@ -86,6 +108,9 @@ export function generateSarifReport(input: ReportInput): string {
           description: {
             text: `${input.project.name} / ${input.profile.name}`
           }
+        },
+        properties: {
+          policyBinding: reportPolicyBinding(input)
         },
         results: sarifFindings.map((finding) => {
           const ruleId = `${finding.tool}:${finding.cve ?? finding.cwe ?? finding.fingerprint.slice(0, 16)}`;
@@ -155,10 +180,13 @@ export function generateCentralResultEnvelope(input: ReportInput, generatedAt = 
     gate: input.gate.result,
     findings: redactedFindings.map((finding) => finding.fingerprint)
   });
+  const envelopeId = `spr_${createHash("sha256").update(material).digest("hex").slice(0, 24)}`;
+  const policyBinding = reportPolicyBinding(input);
+  const policyHash = informationPolicyBindingHash(policyBinding);
 
   return {
     schemaVersion: "security-preflight.result.v1",
-    envelopeId: `spr_${createHash("sha256").update(material).digest("hex").slice(0, 24)}`,
+    envelopeId,
     generatedAt,
     producer: {
       name: "SecurityPreflight",
@@ -190,9 +218,29 @@ export function generateCentralResultEnvelope(input: ReportInput, generatedAt = 
       platformReadinessGapCount: platformFindings(redactedFindings).length,
       redacted: true,
       source: "local-report"
+    },
+    policyBinding,
+    integrationEnvelope: {
+      schemaVersion: INTEGRATION_ENVELOPE_VERSION,
+      organizationId: STRATOS_ORGANIZATION_ID,
+      sourceSystem: "SECURITY_PREFLIGHT",
+      externalRef: `scan:${input.scanRun.id}`,
+      actor: { type: "service", subjectId: "service:security-preflight" },
+      correlationId: input.scanRun.id,
+      idempotencyKey: `security-preflight:${input.scanRun.id}:${envelopeId}`,
+      policyBindingId: policyBinding.policyBindingId as string,
+      policyVersion: policyBinding.policyVersion,
+      policyHash,
+      classification: { handlingClass: policyBinding.handlingClass, legalClassification: policyBinding.legalClassification, tlp: policyBinding.tlp, pap: policyBinding.pap },
+      payload: { envelopeId, scanRunId: input.scanRun.id, projectId: input.project.id }
     }
   };
 }
+
+function reportPolicyBinding(input: ReportInput): InformationPolicyBinding {
+  return { ...informationPolicyBindingForClassification(input.project.dataClassification), policyBindingId: `pb_security_preflight_${input.project.id}` };
+}
+
 
 export function generateMarkdownReport(input: ReportInput): string {
   const appFindings = applicationFindings(input.findings);

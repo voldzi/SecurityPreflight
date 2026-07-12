@@ -2,10 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import cors from "@fastify/cors";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { Queue } from "bullmq";
-import { defaultScanProfiles, requiredScannerTools, type FindingStatus, type GateResult, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
+import { defaultScanProfiles, informationPolicyBindingForClassification, informationPolicyBindingHash, requiredScannerTools, type FindingStatus, type GateResult, type ScanStatus, type SeveritySummary } from "@security-preflight/core";
 import { buildScanExecutionPlan, type ScanExecutionPlan, runToolchainDoctor } from "@security-preflight/scanners";
 import {
   getPersistedScanRunDetail,
@@ -34,6 +34,7 @@ import {
 } from "./projects.js";
 import { buildCodexRemediationExport, buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
 import { applySecurityHeaders } from "./security-headers.js";
+import { authorizeGovernedRequest, policyBindingForClassification, type PolicyBinding } from "./governance.js";
 
 export interface CreateServerOptions {
   logger?: boolean;
@@ -218,6 +219,33 @@ const scanPlanRequestSchema = z.object({
     .optional()
 });
 
+const policyBindingSchema = z.object({
+  policyBindingId: z.string().min(1),
+  policyVersion: z.literal("information-policy-2.0.0"),
+  handlingClass: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED"]),
+  legalClassification: z.literal("NONE"),
+  tlp: z.enum(["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"]).nullable(),
+  pap: z.enum(["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"]).nullable(),
+  obligations: z.array(z.enum(["AUDIT_ACCESS", "NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY", "NO_PUBLIC_EXPORT", "NO_EXPORT", "WATERMARK", "ENCRYPT_AT_REST", "RECIPIENT_CONFIRMATION", "ORIGINATOR_APPROVAL", "PAP_ENFORCEMENT"])),
+  contentCategories: z.array(z.string()),
+  audience: z.record(z.unknown())
+});
+
+const integrationEnvelopeSchema = z.object({
+  schemaVersion: z.literal("stratos-integration-envelope-1"),
+  organizationId: z.literal("org_stratos"),
+  sourceSystem: z.literal("SECURITY_PREFLIGHT"),
+  externalRef: z.string().min(1),
+  actor: z.object({ type: z.literal("service"), subjectId: z.string().min(1) }),
+  correlationId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+  policyBindingId: z.string().min(1),
+  policyVersion: z.literal("information-policy-2.0.0"),
+  policyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  classification: z.object({ handlingClass: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED"]), legalClassification: z.literal("NONE"), tlp: z.string().nullable(), pap: z.string().nullable() }),
+  payload: z.object({}).passthrough()
+});
+
 const resultEnvelopeSchema = z
   .object({
     schemaVersion: z.literal("security-preflight.result.v1"),
@@ -250,7 +278,9 @@ const resultEnvelopeSchema = z
     evidence: z.object({
       findingCount: z.number().int().min(0),
       redacted: z.literal(true)
-    }).passthrough()
+    }).passthrough(),
+    policyBinding: policyBindingSchema,
+    integrationEnvelope: integrationEnvelopeSchema
   })
   .passthrough();
 
@@ -291,6 +321,31 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     }
 
     request.authContext = auth.context;
+
+    const governed = governedOperation(request);
+    if (governed) {
+      const decision = await authorizeGovernedRequest({
+        request,
+        context: auth.context,
+        capabilityId: governed.capabilityId,
+        operation: governed.operation,
+        scope: governed.scope,
+        policyBinding: governed.policyBinding,
+        cyberInformation: governed.cyberInformation
+      });
+      request.log.info({
+        event: "policy.decision",
+        decisionId: decision.decisionId,
+        decision: decision.decision,
+        reasonCodes: decision.reasonCodes,
+        capabilityId: governed.capabilityId,
+        scope: governed.scope,
+        subject: auth.context?.subject ?? "local-runtime"
+      }, "access governance decision");
+      if (decision.decision !== "ALLOW") {
+        return reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The operation is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
+      }
+    }
   });
 
   server.setErrorHandler((error, request, reply) => {
@@ -690,6 +745,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       });
     }
 
+    if (!(await enforceRunPolicy(request, reply, run, "security-preflight:export", "export"))) return;
+
     const markdownReport = await readScanRunReport(parsed.data.scanRunId, "markdown");
     const format = parsed.data.format.toUpperCase() as ScanRunExportFormat;
     const exported = await buildScanRunReportExport({
@@ -731,6 +788,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       });
     }
 
+    if (!(await enforceRunPolicy(request, reply, run, "security-preflight:export", "export"))) return;
+
     return {
       data: buildCodexRemediationExport({
         run,
@@ -768,6 +827,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         }
       });
     }
+
+    if (!(await enforceRunPolicy(request, reply, run, "security-preflight:external_operation", "external_ai"))) return;
 
     try {
       const result = await askAkb({
@@ -848,6 +909,12 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       });
     }
 
+    if (planUsesExternalOperation(result.plan)) {
+      const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId: "security-preflight:external_operation", operation: "external_operation", scope: { type: "project", id: result.plan.project.id }, policyBinding: policyBindingForClassification(result.plan.project.dataClassification ?? "internal"), cyberInformation: true });
+      request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId: "security-preflight:external_operation", scope: { type: "project", id: result.plan.project.id }, subject: request.authContext?.subject ?? "local-runtime" }, "external scan policy decision");
+      if (decision.decision !== "ALLOW") return reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The external scan is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
+    }
+
     scanQueue ??= new Queue(process.env.SCAN_QUEUE_NAME ?? "security-preflight-scans", {
       connection: {
         url: process.env.REDIS_URL ?? "redis://localhost:6379/0"
@@ -895,6 +962,20 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       });
     }
 
+    const expectedBinding = informationPolicyBindingForClassification(parsed.data.project.dataClassification);
+    const bindingMatches = parsed.data.policyBinding.policyVersion === expectedBinding.policyVersion
+      && parsed.data.policyBinding.handlingClass === expectedBinding.handlingClass
+      && parsed.data.policyBinding.legalClassification === "NONE"
+      && parsed.data.policyBinding.tlp === expectedBinding.tlp
+      && parsed.data.policyBinding.pap === expectedBinding.pap
+      && informationPolicyBindingHash(parsed.data.policyBinding) === parsed.data.integrationEnvelope.policyHash
+      && parsed.data.integrationEnvelope.policyVersion === parsed.data.policyBinding.policyVersion
+      && parsed.data.integrationEnvelope.classification.handlingClass === parsed.data.policyBinding.handlingClass
+      && parsed.data.integrationEnvelope.classification.legalClassification === "NONE";
+    if (!bindingMatches) {
+      return reply.status(403).send({ error: { code: "POLICY_BINDING_MISMATCH", message: "The result envelope policy binding is unknown or inconsistent.", requestId: request.id } });
+    }
+
     const material = JSON.stringify({
       projectId: parsed.data.project.id,
       scanRunId: parsed.data.scanRun.id,
@@ -918,6 +999,53 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
 function getReportsPath(): string {
   return path.resolve(process.env.REPORTS_PATH ?? "/reports");
+}
+
+function governedOperation(request: { method: string; url: string; body?: unknown }): {
+  capabilityId: string;
+  operation: string;
+  scope: { type: string; id: string };
+  policyBinding: PolicyBinding;
+  cyberInformation: boolean;
+} | null {
+  const route = request.url.split("?")[0] ?? request.url;
+  const body = asRecord(request.body);
+  const project = recordValue(body.project) ?? {};
+  const classification = stringValue(project.dataClassification)
+    ?? stringValue(recordValue(body.classification)?.dataClassification)
+    ?? "internal";
+  const policyBinding = policyBindingForClassification(classification);
+  const projectId = stringValue(project.id) ?? stringValue(body.projectId);
+  const scope = projectId ? { type: "project", id: projectId } : { type: "organization", id: "org_stratos" };
+
+  if (route === "/api/v1/auth/status") return null;
+  if (route === "/api/v1/akb/ai/ask" || route.startsWith("/api/v1/reports/")) return null;
+  if (route === "/api/v1/results/ingest") return { capabilityId: "security-preflight:external_operation", operation: "external_operation", scope, policyBinding, cyberInformation: true };
+  if (route === "/api/v1/scans/queue" || route === "/api/v1/scans/plan") return { capabilityId: "security-preflight:submit_scan", operation: request.method === "POST" ? "create" : "read", scope, policyBinding, cyberInformation: false };
+  if (route.includes("/triage")) return { capabilityId: "security-preflight:submit_scan", operation: "update", scope, policyBinding, cyberInformation: false };
+  if (route.startsWith("/api/v1/projects") && request.method !== "GET") return { capabilityId: "security-preflight:manage_access", operation: "manage", scope, policyBinding, cyberInformation: false };
+  if (route === "/api/v1/capabilities" || route === "/api/v1/toolchain/doctor") return { capabilityId: "security-preflight:read_audit", operation: "read", scope, policyBinding, cyberInformation: false };
+  return { capabilityId: "security-preflight:read_scan", operation: "read", scope, policyBinding, cyberInformation: false };
+}
+
+function planUsesExternalOperation(plan: ScanExecutionPlan): boolean {
+  if (plan.policy.activeDastTarget) return true;
+  return plan.steps.some((step) => ["external-runner:vps", "zap:baseline", "zap:api-scan", "nuclei:safe", "dns:records", "tls:certificate", "tls:configuration", "ports:common", "http:security-headers", "endpoint:admin", "endpoint:debug", "api:discovery", "waf:behavior", "openapi:runtime-safe"].includes(step.checkId));
+}
+
+async function enforceRunPolicy(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  run: ScanRunDetailDto,
+  capabilityId: "security-preflight:external_operation" | "security-preflight:export",
+  operation: "external_ai" | "export"
+): Promise<boolean> {
+  const policyBinding = policyBindingForClassification(run.project.dataClassification);
+  const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId, operation, scope: { type: "project", id: run.project.id }, policyBinding, cyberInformation: true });
+  request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId, scope: { type: "project", id: run.project.id }, subject: request.authContext?.subject ?? "local-runtime" }, "scan-run policy decision");
+  if (decision.decision === "ALLOW") return true;
+  await reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The operation is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
+  return false;
 }
 
 async function listScanRuns(): Promise<ScanRunSummaryDto[]> {

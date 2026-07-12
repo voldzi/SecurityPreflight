@@ -152,6 +152,25 @@ Never configure SecurityPreflight Docker IPAM with `192.168.1.x`,
   in `/api/v1`.
 - Do not treat a skipped external scanner step as a production pass.
 
+## Coordinated epoch reset
+
+`pnpm reset:epoch` is always a dry-run and lists the three owner volumes for
+PostgreSQL, Redis/scan queue and report storage. Destructive execution is only
+permitted inside the approved G7 window:
+
+```bash
+SECURITY_PREFLIGHT_DATA_EPOCH=stratos-epoch-2026-01 \
+SECURITY_PREFLIGHT_RESET_APPROVED_WINDOW=G7 \
+SECURITY_PREFLIGHT_RESET_CONFIRM=RESET_SECURITY_PREFLIGHT_stratos-epoch-2026-01 \
+pnpm reset:epoch -- --execute
+```
+
+The script validates Docker Compose ownership for every existing volume before
+stopping services or deleting data. It contains no database or service
+credentials. Do not execute it during G2-G6. G5 must run two isolated rehearsal
+cycles and G6 must restore PostgreSQL, Redis and reports independently from
+their rehearsal backups.
+
 ## High Latency
 
 - Identify whether latency is API request handling, queue wait time, scanner

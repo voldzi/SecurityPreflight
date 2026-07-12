@@ -175,35 +175,10 @@ export async function authenticateSecurityPreflightRequest(request: FastifyReque
   try {
     const claims = await verifyJwt(token, oidc);
     const context = claimsToAuthContext(claims, oidc.issuer);
-    const routeAuthorization = authorizeRoute(request, context, config);
-
-    if (!routeAuthorization.ok) {
-      return routeAuthorization;
-    }
-
     return { ok: true, context };
   } catch (error) {
     return fail(401, "UNAUTHORIZED", error instanceof Error ? error.message : "Bearer token could not be verified.");
   }
-}
-
-function authorizeRoute(
-  request: FastifyRequest,
-  context: SecurityPreflightAuthContext,
-  config: ReturnType<typeof getAuthConfig>
-): SecurityPreflightAuthResult {
-  const neededRoles = isMutationRoute(request) ? config.operatorRoles : config.requiredRoles;
-
-  if (!neededRoles.length || hasAnyRole(context.roles, neededRoles) || context.isAdmin) {
-    return { ok: true, context };
-  }
-
-  return fail(403, "FORBIDDEN", "Authenticated identity does not have the required SecurityPreflight role.");
-}
-
-function isMutationRoute(request: FastifyRequest): boolean {
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) return true;
-  return false;
 }
 
 async function verifyJwt(token: string, config: OidcConfig): Promise<JwtPayload> {

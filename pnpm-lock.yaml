@@ -77,8 +77,8 @@ importers:
   apps/web:
     dependencies:
       '@voldzi/stratos-ui':
-        specifier: 0.3.20
-        version: 0.3.20(lucide-react@1.22.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: 0.3.32
+        version: 0.3.32(lucide-react@1.22.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       lucide-react:
         specifier: ^1.22.0
         version: 1.22.0(react@19.2.7)
@@ -1292,8 +1292,8 @@ packages:
   '@vitest/utils@3.2.6':
     resolution: {integrity: sha512-lI23nIs4bnT3T8NIoh+vFaz5s2/DdP0Jgt2jxwgWljvwn82cLJtyi/If+fjFyoLMGIOz0U/fKvWE0d4jsNQEfg==}
 
-  '@voldzi/stratos-ui@0.3.20':
-    resolution: {integrity: sha512-t/JkDGOrW5922y0/gz5hx2YcgdT1UjB0YGw4R6Xet18hqZ3xi8RW9d8TJDWa6PGyY1MZAZgqu/K98gKqC3t8uw==}
+  '@voldzi/stratos-ui@0.3.32':
+    resolution: {integrity: sha512-oXsz1NuBSYfib4bf1MVWC5XFW5DGifJBHu/tFLkCsMCzCI4lJuJo5pDMCrC921lAdqdG/eMVXJfeI/b7z5O+sA==}
     peerDependencies:
       lucide-react: ^1.21.0
       pdfjs-dist: ^6.1.200
@@ -3735,7 +3735,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  '@voldzi/stratos-ui@0.3.20(lucide-react@1.22.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@voldzi/stratos-ui@0.3.32(lucide-react@1.22.0(react@19.2.7))(pdfjs-dist@6.1.200)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       lucide-react: 1.22.0(react@19.2.7)
       pdfjs-dist: 6.1.200

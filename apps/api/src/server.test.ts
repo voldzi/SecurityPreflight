@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { informationPolicyBindingForClassification, informationPolicyBindingHash } from "@security-preflight/core";
 import { createServer } from "./server.js";
+
+const healthcarePolicyBinding = { ...informationPolicyBindingForClassification("health-data"), policyBindingId: "pb_test" };
 
 describe("api server", () => {
   afterEach(() => {
@@ -1032,6 +1035,21 @@ describe("api server", () => {
         evidence: {
           findingCount: 0,
           redacted: true
+        },
+        policyBinding: healthcarePolicyBinding,
+        integrationEnvelope: {
+          schemaVersion: "stratos-integration-envelope-1",
+          organizationId: "org_stratos",
+          sourceSystem: "SECURITY_PREFLIGHT",
+          externalRef: "scan:scan_test",
+          actor: { type: "service", subjectId: "service:security-preflight" },
+          correlationId: "scan_test",
+          idempotencyKey: "security-preflight:scan_test:test",
+          policyBindingId: "pb_test",
+          policyVersion: "information-policy-2.0.0",
+          policyHash: informationPolicyBindingHash(healthcarePolicyBinding),
+          classification: { handlingClass: "RESTRICTED", legalClassification: "NONE", tlp: "TLP:AMBER+STRICT", pap: "PAP:AMBER" },
+          payload: { scanRunId: "scan_test" }
         }
       }
     });

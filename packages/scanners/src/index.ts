@@ -2104,6 +2104,13 @@ async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep
       return checkEnvExample(plan, step);
     case "forbidden-files":
       return checkForbiddenFiles(plan, step);
+    case "policy:openapi-binding":
+    case "policy:audit-correlation":
+    case "policy:log-redaction":
+    case "policy:export-inheritance":
+    case "policy:fail-closed":
+    case "policy:provider-compatibility":
+      return checkStratosPolicyConformance(plan, step);
     default:
       {
         const requiredPaths = singleDocumentChecks[step.checkId];
@@ -2121,6 +2128,41 @@ async function runInternalCheck(plan: ScanExecutionPlan, step: ScanExecutionStep
           recommendation: "Add an executor for this check or remove it from production profiles."
         })
       ];
+  }
+}
+
+async function checkStratosPolicyConformance(plan: ScanExecutionPlan, step: ScanExecutionStep): Promise<Finding[]> {
+  const requirements: Record<string, { files: string[]; fragments: string[]; title: string }> = {
+    "policy:openapi-binding": { files: ["openapi/openapi.json"], fragments: ["information-policy-2.0.0", "policyBinding", "stratos-integration-envelope-1"], title: "OpenAPI does not publish the STRATOS policy binding" },
+    "policy:audit-correlation": { files: ["apps/api/src", "src", "docs/observability.md"], fragments: ["decisionId", "reasonCodes", "correlation"], title: "Policy audit correlation is incomplete" },
+    "policy:log-redaction": { files: ["apps/api/src", "src", "docs/security.md"], fragments: ["redact", "requestId"], title: "Policy-aware log redaction evidence is incomplete" },
+    "policy:export-inheritance": { files: ["packages/report/src", "src", "openapi/openapi.json"], fragments: ["policyBinding", "policyHash"], title: "Export policy inheritance is incomplete" },
+    "policy:fail-closed": { files: ["apps/api/src", "src", "docs/security.md"], fragments: ["POLICY_UNAVAILABLE", "DENY"], title: "Policy enforcement is not demonstrably fail-closed" },
+    "policy:provider-compatibility": { files: ["apps/api/src", "apps/worker/src", "src", "docs/security.md"], fragments: ["PAP", "external"], title: "External provider compatibility does not include PAP policy" }
+  };
+  const requirement = requirements[step.checkId];
+  if (!requirement) return [];
+  const corpus = (await Promise.all(requirement.files.map((relativePath) => readConformancePath(path.join(plan.project.path, relativePath))))).join("\n");
+  const missing = requirement.fragments.filter((fragment) => !corpus.toLowerCase().includes(fragment.toLowerCase()));
+  if (!missing.length) return [];
+  return [createExecutionFinding(plan, step, {
+    severity: "high",
+    title: requirement.title,
+    description: `Missing conformance evidence: ${missing.join(", ")}.`,
+    recommendation: "Implement and document the missing STRATOS capability/scope, Information Policy V2 and integration-envelope evidence."
+  })];
+}
+
+async function readConformancePath(absolutePath: string): Promise<string> {
+  try {
+    const details = await stat(absolutePath);
+    if (details.isFile()) return await readFile(absolutePath, "utf8");
+    if (!details.isDirectory()) return "";
+    const entries = await readdir(absolutePath, { withFileTypes: true });
+    const files = entries.filter((entry) => entry.isFile() && /\.(?:ts|tsx|js|json|md)$/.test(entry.name)).slice(0, 100);
+    return (await Promise.all(files.map((entry) => readFile(path.join(absolutePath, entry.name), "utf8").catch(() => "")))).join("\n");
+  } catch {
+    return "";
   }
 }
 
