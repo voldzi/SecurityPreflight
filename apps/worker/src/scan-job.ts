@@ -343,15 +343,21 @@ async function authorizeWorkerExternalOperation(input: { operation: string; scop
   const token = process.env.STRATOS_POLICY_SERVICE_TOKEN?.trim();
   if (!endpoint || !token || !input.policyBinding) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json", "x-correlation-id": `worker:${input.scopeId}` },
-      body: JSON.stringify({ actorSubjectId: "service:security-preflight", applicationId: "security-preflight", capabilityId: "security-preflight:external_operation", operation: input.operation, scope: { type: "project", id: input.scopeId }, policyBinding: input.policyBinding }),
-      signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
-    });
-    if (!response.ok) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
-    const decision = await response.json() as { decision?: string; decisionId?: string; reasonCodes?: string[] };
-    return { allowed: decision.decision === "ALLOW" && Boolean(decision.decisionId), decisionId: decision.decisionId ?? null, reasonCodes: decision.reasonCodes ?? ["POLICY_RESPONSE_INVALID"] };
+    const capabilities = input.operation === "export" ? ["security-preflight:external_operation", "security-preflight:export"] : ["security-preflight:external_operation"];
+    let finalDecisionId: string | null = null;
+    for (const capabilityId of capabilities) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json", "x-correlation-id": `worker:${input.scopeId}` },
+        body: JSON.stringify({ actorSubjectId: "service:security-preflight", applicationId: "security-preflight", capabilityId, operation: input.operation, scope: { type: "project", id: input.scopeId }, policyBinding: input.policyBinding }),
+        signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
+      });
+      if (!response.ok) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
+      const decision = await response.json() as { decision?: string; decisionId?: string; reasonCodes?: string[] };
+      if (decision.decision !== "ALLOW" || !decision.decisionId) return { allowed: false, decisionId: decision.decisionId ?? null, reasonCodes: decision.reasonCodes ?? ["POLICY_RESPONSE_INVALID"] };
+      finalDecisionId = decision.decisionId;
+    }
+    return { allowed: true, decisionId: finalDecisionId, reasonCodes: ["POLICY_ALLOW"] };
   } catch {
     return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
   }
