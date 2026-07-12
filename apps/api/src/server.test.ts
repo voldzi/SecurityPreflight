@@ -5,7 +5,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { informationPolicyBindingForClassification, informationPolicyBindingHash } from "@security-preflight/core";
 import { createServer } from "./server.js";
 
-const healthcarePolicyBinding = { ...informationPolicyBindingForClassification("health-data"), policyBindingId: "pb_test" };
+const healthcarePolicyBindingBase = {
+  ...informationPolicyBindingForClassification("health-data"),
+  policyBindingId: "pb_test",
+  organizationId: "org_stratos"
+};
+const healthcarePolicyBinding = {
+  ...healthcarePolicyBindingBase,
+  policyHash: informationPolicyBindingHash(healthcarePolicyBindingBase)
+};
 
 describe("api server", () => {
   afterEach(() => {
@@ -1019,7 +1027,8 @@ describe("api server", () => {
         project: {
           id: "project_test",
           name: "Test Project",
-          dataClassification: "health-data"
+          dataClassification: "health-data",
+          policyBinding: healthcarePolicyBinding
         },
         scanRun: {
           id: "scan_test",
@@ -1120,7 +1129,8 @@ async function withReportFixture(scanRunId: string, callback: () => Promise<void
         project: {
           id: "project_test",
           name: "Test Project",
-          dataClassification: "health-data"
+          dataClassification: "health-data",
+          policyBinding: healthcarePolicyBinding
         },
         scanRun: {
           id: scanRunId,
