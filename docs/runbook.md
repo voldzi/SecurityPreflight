@@ -40,6 +40,34 @@ symptoms, diagnosis, fix, verification.
 - If a DAST target is unavailable, verify it is a permitted localhost or
   allowlisted staging host before retrying.
 
+## STRATOS Access Governance Denies a Request
+
+- Use the returned `requestId`, `decisionId`, and reason codes. Do not infer
+  authorization from Keycloak roles.
+- `APPLICATION_ACCESS_MISSING` means `/api/v1/auth/me` did not return a current
+  SecurityPreflight grant with `security-preflight:access` and at least one
+  active scope. Check grant suspension, `validFrom`/`validUntil`, and the active
+  central scope registry.
+- `CAPABILITY_MISSING` means the selected SecurityPreflight profile does not
+  include the route capability. `SCOPE_MISMATCH` means the concrete project is
+  not in `effectiveScopes` or its registered scope was deactivated.
+- `POLICY_UNAVAILABLE` and `ACCESS_GOVERNANCE_UNAVAILABLE` are fail-closed
+  infrastructure states. Verify the configured projection, registry and
+  decision URLs plus runtime service credential without printing the token.
+- For pre-existing local projects during the one-time governed rollout, inspect
+  the migration set first and then apply it in the approved window:
+
+```bash
+pnpm governance:scopes
+pnpm governance:scopes -- --apply
+```
+
+  The apply step delegates as `service:security-preflight`; STRATOS independently
+  requires its active membership and `security-preflight:manage_access` on
+  `organization/org_stratos`. Do not rerun this bulk apply after an operator has
+  intentionally deactivated a project scope. New projects register their scope
+  automatically before binding and local persistence.
+
 ## Run a UI Scan and Hand Off to Codex
 
 - Open the SecurityPreflight Web UI and use the `New scan` / `Nová kontrola`
@@ -205,14 +233,16 @@ Run against the isolated STRATOS G4 environment, never production:
 
 ```bash
 SECURITY_PREFLIGHT_G4_INTEGRATION_TEST=true \
+SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL=https://g4.example/api/v1/access/scopes \
 SECURITY_PREFLIGHT_POLICY_REGISTRY_URL=https://g4.example/api/v1/policy/bindings \
 SECURITY_PREFLIGHT_POLICY_DECISION_URL=https://g4.example/api/v1/policy/decisions \
 STRATOS_POLICY_SERVICE_TOKEN='<runtime secret>' \
 pnpm --filter @security-preflight/api exec vitest run src/policy-registry.integration.test.ts
 ```
 
-The test registers an isolated binding and verifies ALLOW, unknown id, stale
-hash and unknown obligation. User-specific project-scope and inactive-access
+The test registers an isolated active project scope and authoritative binding,
+then verifies ALLOW, unknown id, stale hash and unknown obligation.
+User-specific project-scope and inactive-access
 fixtures must be executed by the STRATOS G4 orchestrator because those identity
 states are owned by central Access Governance.
 

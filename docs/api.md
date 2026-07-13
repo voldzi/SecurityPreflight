@@ -40,7 +40,10 @@ issuer, client id, and audience are configured. For Keycloak, the JWKS URL is
 derived from the issuer unless `SECURITY_PREFLIGHT_OIDC_JWKS_URL` is set
 explicitly. OIDC tokens are validated with RS256/JWKS and checked against
 the centrally managed STRATOS identity baseline; capabilities and scopes govern access.
-`shared-token` is intended only as a controlled transition mode.
+OIDC requests also require a fresh central `/api/v1/auth/me` projection and a
+central policy decision. `shared-token` is intended only as a controlled
+transition mode and does not bypass governance unless the explicit local-only
+compatibility switch is enabled outside production.
 
 ```bash
 curl http://localhost:8781/api/v1/auth/status
@@ -62,7 +65,7 @@ The API uses path versioning:
 | --- | --- | --- |
 | GET | `/health` | Health check |
 | GET | `/ready` | Readiness check |
-| GET | `/api/v1/auth/status` | Report API auth mode, OIDC public config, and RBAC roles without secrets |
+| GET | `/api/v1/auth/status` | Report API auth mode, OIDC public config, and legacy role diagnostics without secrets |
 | GET | `/api/v1/capabilities` | Report measured application capability readiness, maturity score, and open P0/P1 gaps without secrets |
 | GET | `/api/v1/projects` | List registered local projects |
 | POST | `/api/v1/projects` | Register a local project, validate its mounted path, and detect its stack |
@@ -85,12 +88,19 @@ The API uses path versioning:
 | GET | `/api/v1/toolchain/requirements` | List scanner/evidence tools required for healthcare reference coverage |
 | POST | `/api/v1/results/ingest` | Accept a redacted result envelope for central storage |
 
-Project creation and a change of `dataClassification` first call the STRATOS
-Policy Registry. The project response contains the authoritative
+Project creation first registers the owning active STRATOS project scope under
+`scope_org_stratos` on behalf of the authenticated actor. STRATOS independently
+checks `security-preflight:manage_access` on the active parent scope. The API
+then calls the STRATOS Policy Registry. A change of `dataClassification` keeps
+the immutable project scope and registers a new binding. The project response contains the authoritative
 `policyBindingId`, `organizationId`, `policyVersion`, and `policyHash`. If the
-Registry is unavailable or rejects the binding, the project mutation is not
+Scope Registry or Policy Registry is unavailable or rejects the request, the project mutation is not
 persisted. Scan requests refer to the registered project and cannot replace its
 classification or binding with request payload data.
+
+Project and scan-run list responses are filtered by active effective project
+scopes from the projection. Direct scan-run detail, progress, triage and report
+reads are decided again against the concrete project scope.
 
 Scan run evidence manifests include booleans for `execution-result.json`,
 `report.json`, `report.md`, `central-result-envelope.json`,

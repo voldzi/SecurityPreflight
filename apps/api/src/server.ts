@@ -34,7 +34,16 @@ import {
 } from "./projects.js";
 import { buildCodexRemediationExport, buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
 import { applySecurityHeaders } from "./security-headers.js";
-import { authorizeGovernedRequest, policyBindingForClassification, type PolicyBinding } from "./governance.js";
+import {
+  authorizeGovernedRequest,
+  loadSecurityPreflightAccessProjection,
+  policyBindingForClassification,
+  securityPreflightProjectionDefaultScope,
+  securityPreflightProjectionScopeMatches,
+  type PolicyBinding,
+  type SecurityPreflightAccessProjection,
+  type SecurityPreflightCapability
+} from "./governance.js";
 
 export interface CreateServerOptions {
   logger?: boolean;
@@ -44,6 +53,7 @@ export interface CreateServerOptions {
 declare module "fastify" {
   interface FastifyRequest {
     authContext?: SecurityPreflightAuthContext | null;
+    accessProjection?: SecurityPreflightAccessProjection;
   }
 }
 
@@ -325,14 +335,39 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
     request.authContext = auth.context;
 
+    if (auth.context?.mode === "oidc") {
+      const projected = await loadSecurityPreflightAccessProjection({ request, context: auth.context });
+      if (!projected.ok) {
+        request.log.warn({ event: "access.projection.denied", code: projected.code, reasonCodes: projected.reasonCodes, subject: auth.context.subject }, "central access projection denied the request");
+        return reply.status(projected.statusCode).send({
+          error: {
+            code: projected.code,
+            message: projected.statusCode === 503
+              ? "Central STRATOS access governance is unavailable."
+              : "SecurityPreflight application access is missing, expired, suspended, or has no active scope.",
+            details: [{ reasonCodes: projected.reasonCodes }],
+            requestId: request.id
+          }
+        });
+      }
+      request.accessProjection = projected.projection;
+    }
+
     const governed = governedOperation(request);
     if (governed) {
+      const governedScope = governed.useAnyActiveScope && request.accessProjection
+        ? securityPreflightProjectionDefaultScope(request.accessProjection)
+        : governed.scope;
+      if (!governedScope) {
+        return reply.status(403).send({ error: { code: "POLICY_DENIED", message: "No active registered scope is available for this operation.", details: [{ reasonCodes: ["SCOPE_MISMATCH"] }], requestId: request.id } });
+      }
       const decision = await authorizeGovernedRequest({
         request,
         context: auth.context,
         capabilityId: governed.capabilityId,
         operation: governed.operation,
-        scope: governed.scope,
+        scope: governedScope,
+        accessProjection: request.accessProjection,
         policyBinding: governed.policyBinding,
         cyberInformation: governed.cyberInformation
       });
@@ -342,7 +377,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         decision: decision.decision,
         reasonCodes: decision.reasonCodes,
         capabilityId: governed.capabilityId,
-        scope: governed.scope,
+        scope: governedScope,
         subject: auth.context?.subject ?? "local-runtime"
       }, "access governance decision");
       if (decision.decision !== "ALLOW") {
@@ -404,8 +439,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     data: getAuthStatus()
   }));
 
-  server.get("/api/v1/projects", async () => {
-    const data = await listProjects();
+  server.get("/api/v1/projects", async (request, reply) => {
+    const projects = await listProjects();
+    const data = await filterProjectScopedCollection(request, reply, projects, (project) => project.id, "security-preflight:read_scan");
+    if (!data) return;
 
     return {
       data,
@@ -431,7 +468,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     }
 
     try {
-      const project = await createProject(parsed.data);
+      const project = await createProject({
+        ...parsed.data,
+        governanceActorSubjectId: request.authContext?.subject ?? "service:security-preflight"
+      });
 
       return reply.status(201).send({
         data: project
@@ -553,8 +593,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     data: defaultScanProfiles
   }));
 
-  server.get("/api/v1/scans/runs", async () => {
-    const data = await listScanRuns();
+  server.get("/api/v1/scans/runs", async (request, reply) => {
+    const runs = await listScanRuns();
+    const data = await filterProjectScopedCollection(request, reply, runs, (run) => run.project.id, "security-preflight:read_scan");
+    if (!data) return;
 
     return {
       data,
@@ -591,6 +633,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       });
     }
 
+    if (!(await enforceRunAccessPolicy(request, reply, detail, "security-preflight:read_scan"))) return;
+
     return {
       data: detail
     };
@@ -609,6 +653,18 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         }
       });
     }
+
+    const run = await getScanRunDetail(parsed.data);
+    if (!run) {
+      return reply.status(404).send({
+        error: {
+          code: "SCAN_RUN_NOT_FOUND",
+          message: "Scan run progress was not found.",
+          requestId: request.id
+        }
+      });
+    }
+    if (!(await enforceRunAccessPolicy(request, reply, run, "security-preflight:read_scan"))) return;
 
     const persisted = await getScanRunProgress(parsed.data);
 
@@ -653,6 +709,14 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
           requestId: request.id
         }
       });
+    }
+
+    if (request.authContext) {
+      const run = await getScanRunDetail(scanRunId.data);
+      if (!run) {
+        return reply.status(404).send({ error: { code: "SCAN_RUN_NOT_FOUND", message: "Scan run evidence was not found.", requestId: request.id } });
+      }
+      if (!(await enforceRunAccessPolicy(request, reply, run, "security-preflight:submit_scan"))) return;
     }
 
     const result = await updateFindingTriage(scanRunId.data, findingId.data, {
@@ -704,6 +768,12 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         }
       });
     }
+
+    const run = await getScanRunDetail(scanRunId.data);
+    if (!run) {
+      return reply.status(404).send({ error: { code: "SCAN_RUN_NOT_FOUND", message: "Scan report evidence was not found.", requestId: request.id } });
+    }
+    if (!(await enforceRunAccessPolicy(request, reply, run, "security-preflight:read_scan"))) return;
 
     const report = await readScanRunReport(scanRunId.data, format.data);
 
@@ -916,7 +986,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     if (!(await enforcePlanPolicy(request, reply, result.plan))) return;
 
     if (planUsesExternalOperation(result.plan)) {
-      const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId: "security-preflight:external_operation", operation: "external_operation", scope: { type: "project", id: result.plan.project.id }, policyBinding: result.plan.project.policyBinding, cyberInformation: true });
+      const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, accessProjection: request.accessProjection, capabilityId: "security-preflight:external_operation", operation: "external_operation", scope: { type: "project", id: result.plan.project.id }, policyBinding: result.plan.project.policyBinding, cyberInformation: true });
       request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId: "security-preflight:external_operation", scope: { type: "project", id: result.plan.project.id }, subject: request.authContext?.subject ?? "local-runtime" }, "external scan policy decision");
       if (decision.decision !== "ALLOW") return reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The external scan is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
     }
@@ -1012,6 +1082,7 @@ function governedOperation(request: { method: string; url: string; body?: unknow
   capabilityId: string;
   operation: string;
   scope: { type: string; id: string };
+  useAnyActiveScope?: boolean;
   policyBinding?: PolicyBinding;
   cyberInformation: boolean;
 } | null {
@@ -1023,9 +1094,14 @@ function governedOperation(request: { method: string; url: string; body?: unknow
 
   if (route === "/api/v1/auth/status") return null;
   if (route === "/api/v1/akb/ai/ask" || route.startsWith("/api/v1/reports/")) return null;
+  if (route === "/api/v1/scan-profiles" || route === "/api/v1/akb/status" || route === "/api/v1/toolchain/requirements") {
+    return { capabilityId: "security-preflight:access", operation: "access", scope, useAnyActiveScope: true, cyberInformation: false };
+  }
   if (route === "/api/v1/results/ingest") return { capabilityId: "security-preflight:external_operation", operation: "external_operation", scope, policyBinding: policyBindingValue(body.policyBinding), cyberInformation: true };
   if (route === "/api/v1/scans/queue" || route === "/api/v1/scans/plan") return null;
-  if (route.includes("/triage")) return { capabilityId: "security-preflight:submit_scan", operation: "access", scope, cyberInformation: false };
+  if (route === "/api/v1/projects" && request.method === "GET") return null;
+  if (route.startsWith("/api/v1/scans/runs")) return null;
+  if (route === "/api/v1/projects" && request.method === "POST") return { capabilityId: "security-preflight:manage_access", operation: "access", scope: { type: "organization", id: "org_stratos" }, cyberInformation: false };
   if (route.startsWith("/api/v1/projects") && request.method !== "GET") return { capabilityId: "security-preflight:manage_access", operation: "access", scope: projectScopeFromRoute(route) ?? scope, cyberInformation: false };
   if (route === "/api/v1/capabilities" || route === "/api/v1/toolchain/doctor") return { capabilityId: "security-preflight:read_audit", operation: "access", scope, cyberInformation: false };
   return { capabilityId: "security-preflight:read_scan", operation: "access", scope: projectScopeFromRoute(route) ?? scope, cyberInformation: false };
@@ -1047,7 +1123,7 @@ async function enforcePlanPolicy(request: FastifyRequest, reply: FastifyReply, p
     await reply.status(409).send({ error: { code: "POLICY_BINDING_REQUIRED", message: "The project does not have a registered Information Policy binding.", requestId: request.id } });
     return false;
   }
-  const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId: "security-preflight:submit_scan", operation: "create", scope: { type: "project", id: plan.project.id }, policyBinding: binding, cyberInformation: false });
+  const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, accessProjection: request.accessProjection, capabilityId: "security-preflight:submit_scan", operation: "create", scope: { type: "project", id: plan.project.id }, policyBinding: binding, cyberInformation: false });
   if (decision.decision === "ALLOW") return true;
   await reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The scan operation is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
   return false;
@@ -1065,11 +1141,85 @@ async function enforceRunPolicy(
     await reply.status(409).send({ error: { code: "POLICY_BINDING_REQUIRED", message: "The scan artefact does not contain a registered Information Policy binding.", requestId: request.id } });
     return false;
   }
-  const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, capabilityId, operation, scope: { type: "project", id: run.project.id }, policyBinding, cyberInformation: true });
+  const decision = await authorizeGovernedRequest({ request, context: request.authContext ?? null, accessProjection: request.accessProjection, capabilityId, operation, scope: { type: "project", id: run.project.id }, policyBinding, cyberInformation: true });
   request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId, scope: { type: "project", id: run.project.id }, subject: request.authContext?.subject ?? "local-runtime" }, "scan-run policy decision");
   if (decision.decision === "ALLOW") return true;
   await reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The operation is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
   return false;
+}
+
+async function enforceRunAccessPolicy(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  run: ScanRunDetailDto,
+  capabilityId: "security-preflight:read_scan" | "security-preflight:submit_scan"
+) {
+  const scope = { type: "project", id: run.project.id };
+  const decision = await authorizeGovernedRequest({
+    request,
+    context: request.authContext ?? null,
+    accessProjection: request.accessProjection,
+    capabilityId,
+    operation: "access",
+    scope,
+    cyberInformation: false
+  });
+  request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId, scope, subject: request.authContext?.subject ?? "local-runtime" }, "scan-run access policy decision");
+  if (decision.decision === "ALLOW") return true;
+  await reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The scan run is not permitted by access and information policy.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
+  return false;
+}
+
+async function filterProjectScopedCollection<T>(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  values: T[],
+  projectId: (value: T) => string,
+  capabilityId: SecurityPreflightCapability
+): Promise<T[] | null> {
+  if (!request.authContext) return values;
+  if (request.authContext.mode !== "oidc") {
+    const decision = await authorizeGovernedRequest({
+      request,
+      context: request.authContext,
+      capabilityId,
+      operation: "access",
+      scope: { type: "organization", id: "org_stratos" },
+      cyberInformation: false
+    });
+    if (decision.decision === "ALLOW") return values;
+    await reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The collection is not permitted by access governance.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
+    return null;
+  }
+  const projection = request.accessProjection;
+  if (!projection || !projection.capabilities.includes(capabilityId)) {
+    await reply.status(403).send({ error: { code: "POLICY_DENIED", message: "The required SecurityPreflight capability is missing.", details: [{ reasonCodes: ["CAPABILITY_MISSING"] }], requestId: request.id } });
+    return null;
+  }
+  const visible: T[] = [];
+  for (const value of values) {
+    const scope = { type: "project", id: projectId(value) };
+    if (!securityPreflightProjectionScopeMatches(projection, scope, request.authContext.subject)) continue;
+    const decision = await authorizeGovernedRequest({
+      request,
+      context: request.authContext,
+      accessProjection: projection,
+      capabilityId,
+      operation: "access",
+      scope,
+      cyberInformation: false
+    });
+    request.log.info({ event: "policy.decision", decisionId: decision.decisionId, decision: decision.decision, reasonCodes: decision.reasonCodes, capabilityId, scope, subject: request.authContext.subject }, "collection item access policy decision");
+    if (decision.decision === "ALLOW") {
+      visible.push(value);
+      continue;
+    }
+    if (decision.reasonCodes.includes("POLICY_UNAVAILABLE")) {
+      await reply.status(503).send({ error: { code: "ACCESS_GOVERNANCE_UNAVAILABLE", message: "Central STRATOS access governance is unavailable.", details: [{ decisionId: decision.decisionId, reasonCodes: decision.reasonCodes }], requestId: request.id } });
+      return null;
+    }
+  }
+  return visible;
 }
 
 async function listScanRuns(): Promise<ScanRunSummaryDto[]> {
@@ -1163,6 +1313,11 @@ function buildCapabilityAudit(input: { authorization?: string; forwardedProto?: 
   const missingHealthcareChecks = requiredHealthcareChecks.filter((check) => !healthcareChecks.has(check));
   const healthcareToolCategories = new Set(requiredScannerTools.filter((tool) => tool.requiredForHealthcare).map((tool) => tool.category));
   const authStatus = getAuthStatus();
+  const policyDecisionConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_POLICY_DECISION_URL");
+  const accessProjectionConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_ACCESS_PROJECTION_URL") || policyDecisionConfigured;
+  const scopeRegistryConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL") || policyDecisionConfigured;
+  const policyRegistryConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_POLICY_REGISTRY_URL") || policyDecisionConfigured;
+  const policyServiceCredentialConfigured = hasConfiguredEnv("STRATOS_POLICY_SERVICE_TOKEN");
   const akbStatus = getAkbIntegrationStatus(input.authorization);
   const databaseConfigured = isPersistenceEnabled();
   const redisConfigured = hasConfiguredEnv("REDIS_URL");
@@ -1297,15 +1452,22 @@ function buildCapabilityAudit(input: { authorization?: string; forwardedProto?: 
         signal("auth-required", authStatus.required),
         signal("oidc-configured", authStatus.mode === "oidc" && authStatus.configured),
         signal("public-oidc-configured", authStatus.publicOidc.configured),
-        signal("rbac-required-roles", authStatus.requiredRoles.length),
-        signal("rbac-operator-roles", authStatus.operatorRoles.length),
+        signal("access-projection-configured", accessProjectionConfigured),
+        signal("scope-registry-configured", scopeRegistryConfigured),
+        signal("policy-registry-configured", policyRegistryConfigured),
+        signal("policy-decision-configured", policyDecisionConfigured),
+        signal("policy-service-credential-configured", policyServiceCredentialConfigured),
         ...(hasHttpsBoundary ? [signal("tls-forwarded", true)] : [])
       ],
       [
         ...missingSignal(!authStatus.required, "auth-not-required"),
         ...missingSignal(authStatus.mode !== "oidc" || !authStatus.configured, "oidc-not-configured"),
         ...missingSignal(!authStatus.publicOidc.configured, "public-oidc-missing"),
-        ...missingSignal(authStatus.requiredRoles.length === 0 || authStatus.operatorRoles.length === 0, "rbac-roles-missing")
+        ...missingSignal(!accessProjectionConfigured, "access-projection-missing"),
+        ...missingSignal(!scopeRegistryConfigured, "scope-registry-missing"),
+        ...missingSignal(!policyRegistryConfigured, "policy-registry-missing"),
+        ...missingSignal(!policyDecisionConfigured, "policy-decision-missing"),
+        ...missingSignal(!policyServiceCredentialConfigured, "policy-service-credential-missing")
       ]
     )
   ];

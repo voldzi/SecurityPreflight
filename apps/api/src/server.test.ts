@@ -47,9 +47,11 @@ describe("api server", () => {
   it("keeps auth status public and protects API in shared-token mode", async () => {
     const previousMode = process.env.SECURITY_PREFLIGHT_AUTH_MODE;
     const previousToken = process.env.SECURITY_PREFLIGHT_API_TOKEN;
+    const previousGovernanceBypass = process.env.SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS;
 
     process.env.SECURITY_PREFLIGHT_AUTH_MODE = "shared-token";
     process.env.SECURITY_PREFLIGHT_API_TOKEN = "test-api-token";
+    process.env.SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS = "true";
 
     try {
       const server = createServer({ logger: false });
@@ -80,6 +82,7 @@ describe("api server", () => {
     } finally {
       restoreEnv("SECURITY_PREFLIGHT_AUTH_MODE", previousMode);
       restoreEnv("SECURITY_PREFLIGHT_API_TOKEN", previousToken);
+      restoreEnv("SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS", previousGovernanceBypass);
     }
   });
 
@@ -200,6 +203,7 @@ describe("api server", () => {
     const previousResultSinkUrl = process.env.SECURITY_PREFLIGHT_RESULT_SINK_URL;
     const previousMode = process.env.SECURITY_PREFLIGHT_AUTH_MODE;
     const previousApiToken = process.env.SECURITY_PREFLIGHT_API_TOKEN;
+    const previousGovernanceBypass = process.env.SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS;
 
     process.env.DATABASE_URL = "postgres://user:secret@example.test/security_preflight";
     process.env.REDIS_URL = "redis://redis:6379/0";
@@ -211,6 +215,7 @@ describe("api server", () => {
     process.env.SECURITY_PREFLIGHT_RESULT_SINK_URL = "https://central.example.test/api/v1/results/ingest";
     process.env.SECURITY_PREFLIGHT_AUTH_MODE = "shared-token";
     process.env.SECURITY_PREFLIGHT_API_TOKEN = "test-api-token";
+    process.env.SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS = "true";
 
     try {
       const server = createServer({ logger: false });
@@ -240,6 +245,7 @@ describe("api server", () => {
       restoreEnv("SECURITY_PREFLIGHT_RESULT_SINK_URL", previousResultSinkUrl);
       restoreEnv("SECURITY_PREFLIGHT_AUTH_MODE", previousMode);
       restoreEnv("SECURITY_PREFLIGHT_API_TOKEN", previousApiToken);
+      restoreEnv("SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS", previousGovernanceBypass);
     }
   });
 

@@ -93,6 +93,7 @@
     "/api/v1/projects": {
       "get": {
         "summary": "List registered projects",
+        "description": "Returns only projects admitted by the caller's fresh STRATOS capability projection and active effective project scopes.",
         "operationId": "listProjects",
         "tags": [
           "Projects"
@@ -129,7 +130,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -142,6 +143,7 @@
       },
       "post": {
         "summary": "Register a local project",
+        "description": "Requires security-preflight:manage_access on organization/org_stratos, then registers the owning project scope and authoritative policy binding before local persistence.",
         "operationId": "createProject",
         "tags": [
           "Projects"
@@ -188,7 +190,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -250,7 +252,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -312,7 +314,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -384,7 +386,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -456,7 +458,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -519,7 +521,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -592,7 +594,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -685,7 +687,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -781,7 +783,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -843,7 +845,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -895,7 +897,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -957,7 +959,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1019,7 +1021,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1091,7 +1093,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1153,7 +1155,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1215,7 +1217,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1328,7 +1330,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1390,7 +1392,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1459,7 +1461,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -1521,7 +1523,7 @@
             }
           },
           "403": {
-            "description": "Authenticated identity does not have the required role",
+            "description": "STRATOS capability, active scope, or information policy denied the operation",
             "content": {
               "application/json": {
                 "schema": {
@@ -3847,12 +3849,14 @@
           },
           "requiredRoles": {
             "type": "array",
+            "description": "Legacy identity-role diagnostics only; these values do not authorize SecurityPreflight operations.",
             "items": {
               "type": "string"
             }
           },
           "operatorRoles": {
             "type": "array",
+            "description": "Legacy identity-role diagnostics only; capabilities and active scopes authorize operations.",
             "items": {
               "type": "string"
             }
