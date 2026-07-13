@@ -155,21 +155,49 @@ Never configure SecurityPreflight Docker IPAM with `192.168.1.x`,
 ## Coordinated epoch reset
 
 `pnpm reset:epoch` is always a dry-run and lists the three owner volumes for
-PostgreSQL, Redis/scan queue and report storage. Destructive execution is only
-permitted inside the approved G7 window:
+PostgreSQL, Redis/scan queue and report storage.
+
+An isolated G5 rehearsal requires a non-default compose project, a verified
+backup manifest and the rehearsal-only confirmation:
 
 ```bash
+APP_ENV=development \
 SECURITY_PREFLIGHT_DATA_EPOCH=stratos-epoch-2026-01 \
+SECURITY_PREFLIGHT_COMPOSE_PROJECT=security-preflight-g5-1 \
+SECURITY_PREFLIGHT_RESET_PHASE=rehearsal \
+SECURITY_PREFLIGHT_RESET_APPROVED_WINDOW=G5 \
+SECURITY_PREFLIGHT_REHEARSAL_ISOLATED=true \
+SECURITY_PREFLIGHT_RESET_BACKUP_MANIFEST=<verified-manifest.json> \
+SECURITY_PREFLIGHT_RESET_CONFIRM=RESET_SECURITY_PREFLIGHT_REHEARSAL_stratos-epoch-2026-01 \
+pnpm reset:epoch -- --execute
+```
+
+The manifest uses schema `security-preflight-backup-verification-1`, includes a
+non-empty `backupId`, and sets `postgresBackupVerified`, `redisBackupVerified`
+and `reportsBackupVerified` to `true`. Use a separate compose project, manifest
+and evidence id for rehearsal 2.
+
+Production execution is permitted only inside the approved G7 window:
+
+```bash
+APP_ENV=production \
+SECURITY_PREFLIGHT_DATA_EPOCH=stratos-epoch-2026-01 \
+SECURITY_PREFLIGHT_RESET_PHASE=production \
 SECURITY_PREFLIGHT_RESET_APPROVED_WINDOW=G7 \
+SECURITY_PREFLIGHT_RESET_MAINTENANCE_CONFIRMED=true \
+SECURITY_PREFLIGHT_RESET_APPLICATION_STOPPED=true \
+SECURITY_PREFLIGHT_RESET_REHEARSAL_EVIDENCE=<g5-1>,<g5-2> \
+SECURITY_PREFLIGHT_RESET_RESTORE_EVIDENCE=<g6-evidence> \
+SECURITY_PREFLIGHT_RESET_PRODUCTION_CHANGE_ID=<change-id> \
 SECURITY_PREFLIGHT_RESET_CONFIRM=RESET_SECURITY_PREFLIGHT_stratos-epoch-2026-01 \
 pnpm reset:epoch -- --execute
 ```
 
 The script validates Docker Compose ownership for every existing volume before
 stopping services or deleting data. It contains no database or service
-credentials. Do not execute it during G2-G6. G5 must run two isolated rehearsal
-cycles and G6 must restore PostgreSQL, Redis and reports independently from
-their rehearsal backups.
+credentials. Production mode remains forbidden during G2-G6. G5 runs two
+isolated rehearsal cycles and G6 restores PostgreSQL, Redis and reports
+independently from their rehearsal backups.
 
 ## G4 policy compatibility
 
