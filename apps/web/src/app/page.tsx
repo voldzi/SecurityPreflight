@@ -689,8 +689,11 @@ function capabilitySignalLabel(signal: CapabilityAuditSignal, locale: AppLocale)
     "auth-required": { cs: "API vyžaduje autentizaci", en: "API requires authentication" },
     "oidc-configured": { cs: "STRATOS OIDC/JWKS je nakonfigurovaný", en: "STRATOS OIDC/JWKS is configured" },
     "public-oidc-configured": { cs: "web má veřejnou OIDC konfiguraci", en: "web has public OIDC configuration" },
-    "rbac-required-roles": { cs: `${value} čtenářských rolí`, en: `${value} viewer roles` },
-    "rbac-operator-roles": { cs: `${value} operátorských rolí`, en: `${value} operator roles` },
+    "access-projection-configured": { cs: "centrální access projection je nakonfigurovaná", en: "central access projection is configured" },
+    "scope-registry-configured": { cs: "centrální scope registry je nakonfigurovaný", en: "central scope registry is configured" },
+    "policy-registry-configured": { cs: "centrální policy registry je nakonfigurovaný", en: "central policy registry is configured" },
+    "policy-decision-configured": { cs: "centrální policy decision endpoint je nakonfigurovaný", en: "central policy decision endpoint is configured" },
+    "policy-service-credential-configured": { cs: "runtime policy credential je nakonfigurovaný", en: "runtime policy credential is configured" },
     "tls-forwarded": { cs: "TLS terminace je předaná přes reverse proxy", en: "TLS termination is forwarded by reverse proxy" },
     "missing-healthcare-profile": { cs: "chybí healthcare referenční profil", en: "healthcare reference profile is missing" },
     "missing-web-perimeter-profile": { cs: "chybí web/API perimeter profil", en: "web/API perimeter profile is missing" },
@@ -709,7 +712,11 @@ function capabilitySignalLabel(signal: CapabilityAuditSignal, locale: AppLocale)
     "auth-not-required": { cs: "produkční API neběží ve vyžadovaném auth režimu", en: "production API is not running in required auth mode" },
     "oidc-not-configured": { cs: "OIDC/JWKS konfigurace není kompletní", en: "OIDC/JWKS configuration is incomplete" },
     "public-oidc-missing": { cs: "veřejná OIDC konfigurace webu není kompletní", en: "public web OIDC configuration is incomplete" },
-    "rbac-roles-missing": { cs: "chybí RBAC role pro čtení nebo operace", en: "viewer or operator RBAC roles are missing" }
+    "access-projection-missing": { cs: "chybí centrální access projection endpoint", en: "central access projection endpoint is missing" },
+    "scope-registry-missing": { cs: "chybí centrální scope registry", en: "central scope registry is missing" },
+    "policy-registry-missing": { cs: "chybí centrální policy registry", en: "central policy registry is missing" },
+    "policy-decision-missing": { cs: "chybí centrální policy decision endpoint", en: "central policy decision endpoint is missing" },
+    "policy-service-credential-missing": { cs: "chybí runtime policy credential", en: "runtime policy credential is missing" }
   };
 
   return labels[signal.id]?.[locale] ?? (value ? `${signal.id}: ${value}` : signal.id);

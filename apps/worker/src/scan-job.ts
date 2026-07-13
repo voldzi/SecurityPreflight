@@ -9,7 +9,7 @@ import {
 } from "@security-preflight/scanners";
 import { recordCompletedScan, recordFailedScan, recordRunningScan, recordScanStepResult } from "@security-preflight/persistence";
 import { generateCentralResultEnvelope, generateJsonReport, generateMarkdownReport, generateSarifReport } from "@security-preflight/report";
-import { informationPolicyBindingForClassification, type Project, type ScanProfile, type ScanRun } from "@security-preflight/core";
+import type { Project, ScanProfile, ScanRun } from "@security-preflight/core";
 
 export interface ExecuteScanJobInput {
   plan: ScanExecutionPlan;
@@ -37,6 +37,12 @@ export async function executeScanJob(input: ExecuteScanJobInput): Promise<Execut
   const plan = mapProjectPathForWorker(input.plan);
 
   try {
+    if (planRequiresExternalOperation(plan)) {
+      const decision = await authorizeWorkerExternalOperation({ operation: "external_operation", scopeId: plan.project.id, policyBinding: plan.project.policyBinding });
+      if (!decision.allowed) {
+        throw new Error(`Worker external operation denied by STRATOS policy (${decision.reasonCodes.join(",")}).`);
+      }
+    }
     await recordRunningScan(plan, input.requestId);
 
     const execution = await executeScanPlan(plan, {
@@ -70,6 +76,10 @@ export async function executeScanJob(input: ExecuteScanJobInput): Promise<Execut
     await recordFailedScan(plan, error, input.requestId);
     throw error;
   }
+}
+
+export function planRequiresExternalOperation(plan: ScanExecutionPlan) {
+  return Boolean(plan.policy.activeDastTarget) || plan.steps.some((step) => step.networkMode === "restricted");
 }
 
 function resolveWorkerRunnerMode(): "direct" | "docker" | "remote" {
@@ -273,7 +283,7 @@ async function deliverDefectDojoSarif(plan: ScanExecutionPlan, sarifPath: string
   }
 
   const token = await resolveSecretReference(process.env.SECURITY_PREFLIGHT_DEFECTDOJO_TOKEN_REF);
-  const policyDecision = await authorizeWorkerExternalOperation({ operation: "export", scopeId: plan.project.id, policyBinding: informationPolicyBindingForClassification(plan.project.dataClassification ?? "internal") });
+  const policyDecision = await authorizeWorkerExternalOperation({ operation: "export", scopeId: plan.project.id, policyBinding: plan.project.policyBinding });
   if (!policyDecision.allowed) return { status: "failed", message: "DefectDojo export denied by policy.", decisionId: policyDecision.decisionId, reasonCodes: policyDecision.reasonCodes, generatedAt: new Date().toISOString() };
 
   if (!baseUrl || !productName || !token.ok) {
@@ -339,13 +349,14 @@ async function deliverDefectDojoSarif(plan: ScanExecutionPlan, sarifPath: string
   }
 }
 
-async function authorizeWorkerExternalOperation(input: { operation: string; scopeId: string; policyBinding?: object }): Promise<{ allowed: boolean; decisionId: string | null; reasonCodes: string[] }> {
+export async function authorizeWorkerExternalOperation(input: { operation: string; scopeId: string; policyBinding?: object }): Promise<{ allowed: boolean; decisionId: string | null; reasonCodes: string[] }> {
   const endpoint = process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL?.trim();
   const token = process.env.STRATOS_POLICY_SERVICE_TOKEN?.trim();
-  if (!endpoint || !token || !input.policyBinding) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
+  if (!endpoint || !token || !registeredPolicyBinding(input.policyBinding)) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
   try {
     const capabilities = input.operation === "export" ? ["security-preflight:external_operation", "security-preflight:export"] : ["security-preflight:external_operation"];
     let finalDecisionId: string | null = null;
+    let finalReasonCodes = ["POLICY_ALLOW"];
     for (const capabilityId of capabilities) {
       const response = await fetch(endpoint, {
         method: "POST",
@@ -354,14 +365,50 @@ async function authorizeWorkerExternalOperation(input: { operation: string; scop
         signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
       });
       if (!response.ok) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
-      const decision = await response.json() as { decision?: string; decisionId?: string; reasonCodes?: string[] };
-      if (decision.decision !== "ALLOW" || !decision.decisionId) return { allowed: false, decisionId: decision.decisionId ?? null, reasonCodes: decision.reasonCodes ?? ["POLICY_RESPONSE_INVALID"] };
-      finalDecisionId = decision.decisionId;
+      const decision = await response.json() as { decision?: string; decisionId?: string; reasonCodes?: string[]; obligations?: string[]; policyVersion?: string };
+      const validDecision = (decision.decision === "ALLOW" || decision.decision === "DENY")
+        && typeof decision.decisionId === "string"
+        && Boolean(decision.decisionId)
+        && decision.policyVersion === "information-policy-2.0.0"
+        && Array.isArray(decision.reasonCodes)
+        && decision.reasonCodes.length > 0
+        && decision.reasonCodes.every((reason) => typeof reason === "string" && Boolean(reason))
+        && Array.isArray(decision.obligations)
+        && decision.obligations.every((obligation) => typeof obligation === "string" && workerPolicyObligations.has(obligation));
+      if (!validDecision) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_RESPONSE_INVALID"] };
+      if (decision.decision !== "ALLOW" || !decision.obligations?.includes("AUDIT_ACCESS")) {
+        return { allowed: false, decisionId: decision.decisionId ?? null, reasonCodes: decision.reasonCodes ?? ["POLICY_RESPONSE_INVALID"] };
+      }
+      finalDecisionId = decision.decisionId as string;
+      finalReasonCodes = decision.reasonCodes as string[];
     }
-    return { allowed: true, decisionId: finalDecisionId, reasonCodes: ["POLICY_ALLOW"] };
+    return { allowed: true, decisionId: finalDecisionId, reasonCodes: finalReasonCodes };
   } catch {
     return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
   }
+}
+
+const workerPolicyObligations = new Set([
+  "AUDIT_ACCESS",
+  "NO_EXTERNAL_AI",
+  "LOCAL_PROCESSING_ONLY",
+  "NO_PUBLIC_EXPORT",
+  "NO_EXPORT",
+  "WATERMARK",
+  "ENCRYPT_AT_REST",
+  "RECIPIENT_CONFIRMATION",
+  "ORIGINATOR_APPROVAL",
+  "PAP_ENFORCEMENT"
+]);
+
+function registeredPolicyBinding(value: object | undefined): value is Record<string, unknown> {
+  if (!value || Array.isArray(value)) return false;
+  const binding = value as Record<string, unknown>;
+  return typeof binding.policyBindingId === "string"
+    && Boolean(binding.policyBindingId.trim())
+    && binding.policyVersion === "information-policy-2.0.0"
+    && typeof binding.policyHash === "string"
+    && /^sha256:[a-f0-9]{64}$/.test(binding.policyHash);
 }
 
 function redactDeliveryBody(value: string, maxLength = 4_000): string {

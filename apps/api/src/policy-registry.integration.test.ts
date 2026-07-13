@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { registerProjectPolicyBinding } from "./policy-registry.js";
+import { registerProjectGovernanceScope } from "./scope-registry.js";
 
 const registryUrl = process.env.SECURITY_PREFLIGHT_POLICY_REGISTRY_URL?.trim();
 const decisionUrl = process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL?.trim();
@@ -9,6 +10,8 @@ const enabled = process.env.SECURITY_PREFLIGHT_G4_INTEGRATION_TEST === "true" &&
 describe.skipIf(!enabled)("live STRATOS Registry and decision compatibility", () => {
   it("allows an authoritative binding and denies unknown id and stale hash", async () => {
     const projectId = `g4_${Date.now().toString(36)}`;
+    const scope = await registerProjectGovernanceScope({ projectId, displayName: `G4 ${projectId}`, actorSubjectId: "service:security-preflight" });
+    expect(scope).toMatchObject({ type: "project", key: projectId, parentId: "scope_org_stratos", application: "SECURITY_PREFLIGHT", isActive: true });
     const binding = await registerProjectPolicyBinding(projectId, "sensitive");
     const base = { actorSubjectId: "service:security-preflight", applicationId: "security-preflight", capabilityId: "security-preflight:read_scan", operation: "read", scope: { type: "project", id: projectId } };
     const allowed = await decide({ ...base, policyBinding: binding });

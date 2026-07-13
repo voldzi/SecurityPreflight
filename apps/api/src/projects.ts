@@ -5,6 +5,7 @@ import path from "node:path";
 import { z } from "zod";
 import { detectTechnologyStack, type DataClassification, type Project } from "@security-preflight/core";
 import { PolicyRegistryError, registerProjectPolicyBinding } from "./policy-registry.js";
+import { registerProjectGovernanceScope, ScopeRegistryError } from "./scope-registry.js";
 
 const registrySchemaVersion = "security-preflight.projects.v1";
 const maxStackFiles = 1500;
@@ -77,6 +78,7 @@ export interface ProjectCreateInput {
   defaultBranch?: string | null;
   dataClassification?: DataClassification;
   owner?: string | null;
+  governanceActorSubjectId?: string;
 }
 
 export interface ProjectUpdateInput {
@@ -136,6 +138,7 @@ export async function createProject(input: ProjectCreateInput): Promise<Project>
   const now = new Date().toISOString();
   const detected = await inspectProject(normalizedPath);
   const dataClassification = input.dataClassification ?? "internal";
+  await registerScope(id, input.name.trim(), input.governanceActorSubjectId);
   const policyBinding = await registerBinding(id, dataClassification);
   const project: Project = {
     id,
@@ -322,7 +325,11 @@ async function syncAutoDiscoveredProjects(projects: Project[]): Promise<Project[
       defaultBranch: previous?.defaultBranch ?? detected.defaultBranch,
       technologyStack: detected.technologyStack,
       dataClassification: previous?.dataClassification ?? candidate.dataClassification,
-      policyBinding: previous?.policyBinding ?? await registerBinding(previous?.id ?? candidate.id, previous?.dataClassification ?? candidate.dataClassification),
+      policyBinding: previous?.policyBinding ?? await registerNewProjectGovernance(
+        previous?.id ?? candidate.id,
+        previous?.name ?? candidate.name,
+        previous?.dataClassification ?? candidate.dataClassification
+      ),
       owner: previous?.owner ?? candidate.owner,
       createdAt: previous?.createdAt ?? now,
       updatedAt: previous?.updatedAt ?? now
@@ -353,6 +360,20 @@ async function registerBinding(projectId: string, classification: DataClassifica
     if (error instanceof PolicyRegistryError) throw new ProjectRegistryError(error.statusCode, error.code, error.message);
     throw error;
   }
+}
+
+async function registerScope(projectId: string, displayName: string, actorSubjectId?: string) {
+  try {
+    return await registerProjectGovernanceScope({ projectId, displayName, actorSubjectId });
+  } catch (error) {
+    if (error instanceof ScopeRegistryError) throw new ProjectRegistryError(error.statusCode, error.code, error.message);
+    throw error;
+  }
+}
+
+async function registerNewProjectGovernance(projectId: string, displayName: string, classification: DataClassification) {
+  await registerScope(projectId, displayName, "service:security-preflight");
+  return registerBinding(projectId, classification);
 }
 
 async function ensureProjectBindings(projects: Project[]): Promise<Project[]> {

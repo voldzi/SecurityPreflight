@@ -260,7 +260,10 @@ configured. `SECURITY_PREFLIGHT_OIDC_JWKS_URL` may be supplied explicitly; when
 it is absent, the API derives the standard Keycloak URL
 `<issuer>/protocol/openid-connect/certs`. `shared-token` mode exists only for
 controlled transition deployments and requires
-`SECURITY_PREFLIGHT_API_TOKEN`. Do not place GitHub Packages tokens, scanner
+`SECURITY_PREFLIGHT_API_TOKEN`; it does not authorize governed operations by
+itself. `SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS=true` is an explicit
+development-only compatibility switch and is ignored when `APP_ENV=production`.
+Do not place GitHub Packages tokens, scanner
 tokens, production secrets, private keys, bearer tokens, or certificate material
 in the repository or generated reports.
 
@@ -366,10 +369,13 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_OIDC_AUDIENCE` | required for OIDC | client id | Expected token audience |
 | `SECURITY_PREFLIGHT_REQUIRED_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize API data |
 | `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize mutations or exports |
+| `SECURITY_PREFLIGHT_ACCESS_PROJECTION_URL` | production | derived from decision URL | STRATOS `GET /api/v1/auth/me` endpoint called with the original OIDC bearer on every protected request |
+| `SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL` | production | derived from decision URL | STRATOS `/api/v1/access/scopes` base used for delegated owning project-scope registration |
 | `SECURITY_PREFLIGHT_POLICY_DECISION_URL` | production | unset | STRATOS Information Policy V2 decision endpoint; protected OIDC operations fail closed when unavailable |
 | `SECURITY_PREFLIGHT_POLICY_REGISTRY_URL` | production | derived from decision URL | STRATOS `POST /api/v1/policy/bindings` endpoint used before a project or classification is persisted |
 | `STRATOS_POLICY_SERVICE_TOKEN` | production | unset | Secret service credential supplied at runtime for delegated policy decisions; never commit it |
 | `SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS` | no | `3000` | Timeout for a synchronous capability/scope/policy decision |
+| `SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS` | no | `false` | Explicit shared-token compatibility bypass for local development only; production always ignores it |
 
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |
 | `SCANNER_RUNNER_ENABLED` | no | `true` | Enables worker execution of planned external scanner commands |
