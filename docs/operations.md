@@ -370,6 +370,7 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_POLICY_REGISTRY_URL` | production | derived from decision URL | STRATOS `POST /api/v1/policy/bindings` endpoint used before a project or classification is persisted |
 | `STRATOS_POLICY_SERVICE_TOKEN` | production | unset | Secret service credential supplied at runtime for delegated policy decisions; never commit it |
 | `SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS` | no | `3000` | Timeout for a synchronous capability/scope/policy decision |
+
 | `SCANNER_NETWORK_MODE` | no | `none` | Default network mode for passive scanners |
 | `SCANNER_RUNNER_ENABLED` | no | `true` | Enables worker execution of planned external scanner commands |
 | `SCANNER_RUNNER_MODE` | no | `direct` | `direct` runs scanners inside the worker; `docker` runs them through Docker with the scanner-toolbox image; `remote` dispatches supported web scanners to the external scanner API |
@@ -416,6 +417,10 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_AKB_OIDC_SCOPE` | no | `openid profile email` | OIDC scopes requested for AKB service access |
 | `SECURITY_PREFLIGHT_AKB_SYNC_REQUIRED` | no | `false` | Reserved fail-fast flag for future AKB document registration workflows |
 | `SECURITY_PREFLIGHT_TENANT_ID` | no | `default` | Tenant id sent to AKB scoped RAG requests |
+
+The API and worker receive the same Policy Registry endpoints and rotated
+runtime credential. This keeps report creation, queued scans and external
+operations on the same fail-closed policy decision path.
 
 ## Health Endpoints
 
