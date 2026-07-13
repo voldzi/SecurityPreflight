@@ -7,7 +7,7 @@ export type RegisteredProjectScope = {
   application: "SECURITY_PREFLIGHT";
   sourceSystem: "APPLICATION";
   sourceRef: string;
-  isActive: true;
+  isActive: boolean;
 };
 
 export class ScopeRegistryError extends Error {
@@ -19,15 +19,28 @@ export class ScopeRegistryError extends Error {
 export async function registerProjectGovernanceScope(input: {
   projectId: string;
   displayName: string;
-  actorSubjectId?: string;
+}): Promise<RegisteredProjectScope | null> {
+  return setProjectGovernanceScopeActive({ ...input, isActive: true });
+}
+
+export async function deactivateProjectGovernanceScope(input: {
+  projectId: string;
+  displayName: string;
+}): Promise<RegisteredProjectScope | null> {
+  return setProjectGovernanceScopeActive({ ...input, isActive: false });
+}
+
+export async function setProjectGovernanceScopeActive(input: {
+  projectId: string;
+  displayName: string;
+  isActive: boolean;
 }): Promise<RegisteredProjectScope | null> {
   const baseUrl = scopeRegistryBaseUrl();
-  const token = process.env.STRATOS_POLICY_SERVICE_TOKEN?.trim();
+  const token = process.env.SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN?.trim();
   if (!baseUrl || !token) {
     if (localGovernanceMode()) return null;
     throw new ScopeRegistryError("SCOPE_REGISTRY_UNAVAILABLE", "STRATOS Scope Registry is not configured.");
   }
-  const actorSubjectId = input.actorSubjectId?.trim() || "service:security-preflight";
   const sourceRef = `security-preflight:project:${input.projectId}`;
   let response: Response;
   try {
@@ -39,14 +52,15 @@ export async function registerProjectGovernanceScope(input: {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        actorSubjectId,
         displayName: input.displayName,
         description: "SecurityPreflight audit project scope.",
         parentId: "scope_org_stratos",
         applicationId: "security-preflight",
         sourceRef,
-        isActive: true,
-        reason: "Register or refresh the owning SecurityPreflight project scope."
+        isActive: input.isActive,
+        reason: input.isActive
+          ? "Register, reactivate, or refresh the owning SecurityPreflight project scope."
+          : "Deactivate the owning SecurityPreflight project scope because its local project registration is being removed or was not committed."
       }),
       signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
     });
@@ -60,7 +74,12 @@ export async function registerProjectGovernanceScope(input: {
       response.status === 400 || response.status === 401 || response.status === 403 || response.status === 409 ? response.status : 503
     );
   }
-  const scope = await response.json() as Partial<RegisteredProjectScope>;
+  let scope: Partial<RegisteredProjectScope>;
+  try {
+    scope = await response.json() as Partial<RegisteredProjectScope>;
+  } catch {
+    throw new ScopeRegistryError("SCOPE_REGISTRY_RESPONSE_INVALID", "STRATOS Scope Registry returned an invalid project scope.");
+  }
   if (
     scope.organizationId !== "org_stratos"
     || scope.type !== "project"
@@ -69,7 +88,7 @@ export async function registerProjectGovernanceScope(input: {
     || scope.application !== "SECURITY_PREFLIGHT"
     || scope.sourceSystem !== "APPLICATION"
     || scope.sourceRef !== sourceRef
-    || scope.isActive !== true
+    || scope.isActive !== input.isActive
     || typeof scope.id !== "string"
     || !scope.id
   ) {

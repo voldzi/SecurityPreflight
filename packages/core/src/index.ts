@@ -53,8 +53,19 @@ export function informationPolicyBindingForClassification(classification: string
 }
 
 export function informationPolicyBindingHash(binding: InformationPolicyBinding): string {
-  const canonical = JSON.stringify({ audience: binding.audience, contentCategories: binding.contentCategories, handlingClass: binding.handlingClass, legalClassification: binding.legalClassification, obligations: binding.obligations, pap: binding.pap, policyBindingId: binding.policyBindingId ?? null, policyVersion: binding.policyVersion, tlp: binding.tlp });
+  const canonical = stablePolicyJson({ audience: binding.audience, contentCategories: binding.contentCategories, handlingClass: binding.handlingClass, legalClassification: binding.legalClassification, obligations: binding.obligations, pap: binding.pap, policyBindingId: binding.policyBindingId ?? null, policyVersion: binding.policyVersion, tlp: binding.tlp });
   return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
+}
+
+function stablePolicyJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stablePolicyJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stablePolicyJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
 }
 export type ToolCategory =
   | "runtime"

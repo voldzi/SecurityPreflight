@@ -118,13 +118,13 @@ export async function authorizeGovernedRequest(input: {
     return decidePolicy({ operation: input.operation, identityActive: true, membershipActive: true, applicationAccess: true, capability: true, scopeMatches: true, policyBinding: input.policyBinding ?? policyBindingForClassification("internal"), cyberInformation: input.cyberInformation });
   }
   const endpoint = process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL?.trim();
-  const token = process.env.STRATOS_POLICY_SERVICE_TOKEN?.trim();
-  if (!endpoint || !token) return denyUnavailable(input.policyBinding);
+  const authorization = bearerAuthorization(input.request);
+  if (!endpoint || !authorization) return denyUnavailable(input.policyBinding);
   try {
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json", "x-correlation-id": input.request.id },
-      body: JSON.stringify({ actorSubjectId: input.context.subject, applicationId: "security-preflight", capabilityId: input.capabilityId, operation: input.operation, scope: input.scope ?? { type: "organization", id: STRATOS_ORGANIZATION_ID }, policyBinding: input.policyBinding ?? policyBindingForClassification("internal") }),
+      headers: { accept: "application/json", authorization, "content-type": "application/json", "x-correlation-id": input.request.id },
+      body: JSON.stringify({ applicationId: "security-preflight", capabilityId: input.capabilityId, operation: input.operation, scope: input.scope ?? { type: "organization", id: STRATOS_ORGANIZATION_ID }, policyBinding: input.policyBinding ?? policyBindingForClassification("internal") }),
       signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
     });
     if (!response.ok) return denyUnavailable(input.policyBinding);

@@ -63,14 +63,63 @@ envelopes inherit the binding. External AI, central delivery and DefectDojo
 export require capability, project scope, an ALLOW decision and PAP for cyber
 information/evidence. Policy outage and unknown obligations deny the operation.
 Project creation first registers an owning active STRATOS `project` scope under
-`scope_org_stratos` through a service-token on-behalf-of call. STRATOS reloads
-the actor identity, membership and `security-preflight:manage_access` capability
-on the parent organization scope. The API then registers an authoritative
-binding before local persistence. Scans, reports, SARIF, telemetry and exports
-use the returned id and hash. The worker rechecks `external_operation` as
-`service:security-preflight` immediately before any restricted-network plan;
+`scope_org_stratos` as the authenticated
+`service:security-preflight-governance` identity. STRATOS resolves the bearer to
+that fixed identity and rechecks its active membership plus
+`security-preflight:manage_access` capability on the parent organization scope.
+The API then registers an authoritative binding before atomic local persistence.
+If binding registration or local persistence fails for a new project, the API
+deactivates the just-activated scope. Deletion deactivates the scope before the
+local commit and reactivates it if that commit fails. A failed compensation is
+reported as `PROJECT_GOVERNANCE_RECONCILIATION_REQUIRED`; it is never hidden as
+a successful mutation. List/get migration and auto-discovery reconcile an
+active scope before ensuring a missing binding.
+
+Registry responses are accepted only when every identifier, enum, unique
+obligation/category array, audience cross-field, policy hash and proposed value
+matches the canonical Information Policy V2 request. Scans, reports, SARIF,
+telemetry and exports use the returned id and hash. The worker rechecks
+`external_operation`/`export` as the distinct
+`service:security-preflight-worker` identity immediately before any
+restricted-network plan;
 queued approval is not treated as a lasting authorization. SecurityPreflight does not provide a true-public
 publication surface; audit evidence always remains authenticated and governed.
+The Web UI renders every available authoritative project binding through the
+shared `@voldzi/stratos-ui` `InformationPolicyPanel`; it does not infer access
+from the display-only data-classification label and does not invent a binding
+when Registry lineage is missing.
+
+### STRATOS service identity boundary
+
+The two credentials are intentionally non-interchangeable:
+
+- `SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN` exists only in the API and
+  authenticates `service:security-preflight-governance`. It can mutate the
+  SecurityPreflight scope namespace and register/read SecurityPreflight policy
+  bindings. It must not authorize worker runtime decisions or exports.
+- `SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN` exists only in the worker and
+  authenticates `service:security-preflight-worker`. It can request fresh
+  `security-preflight:external_operation` and `security-preflight:export`
+  decisions for active SecurityPreflight project scopes. It must not read or
+  mutate the Scope or Policy Registry.
+- The tokens must be different. Neither service sends a trusted
+  `actorSubjectId`; STRATOS derives the actor from the bearer. The worker identity
+  is also the actor in Integration Envelope V1.
+- Component startup/readiness enforces the boundary: the API rejects worker or
+  retired shared credentials and the worker rejects governance or retired
+  shared credentials.
+
+The corresponding central STRATOS contract requires an idempotent bootstrap for
+both identities, isolated credential-purpose resolution, a startup check that
+rejects equal tokens, and negative tests in both directions. The governance
+identity needs only `security-preflight:access` and
+`security-preflight:manage_access` at `organization/org_stratos`. The worker
+identity needs only `security-preflight:access`,
+`security-preflight:external_operation`, and `security-preflight:export` over
+the active SecurityPreflight project hierarchy. Central Policy Registry and
+scope mutation handlers must accept only the governance purpose; the policy
+decision handler must reject that purpose and accept the worker purpose only for
+the two runtime capabilities/operations above.
 
 ## Secret Management
 
@@ -252,3 +301,9 @@ classification, and a correlation id. SecurityPreflight must not store AKB
 prompts, RAG answers, chunks, embeddings, extracted document text, or citation
 source context. If AKB is not configured or cannot provide a cited answer, the
 API fails closed or returns AKB's explicit no-answer state.
+
+Every AKB/RAG subject is server-bound to the single STRATOS organization
+`org_stratos`. Client `subject.tenantId`, `SECURITY_PREFLIGHT_TENANT_ID` and any
+legacy environment value cannot select another organization. A conflicting
+request is rejected and a conflicting startup configuration aborts the API;
+the historical `default` tenant is never emitted.

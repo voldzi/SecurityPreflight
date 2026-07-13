@@ -46,6 +46,7 @@ import {
   GlobalTopbar,
   HelpHint,
   IconButton,
+  InformationPolicyPanel,
   MetricCard,
   ProgressBar,
   ProjectPicker,
@@ -92,6 +93,7 @@ import {
 } from "./i18n";
 import { completeOidcLogin, oidcConfig, oidcLogoutUrl, startOidcLogin, type OidcClientConfig } from "./oidc";
 import { ScanProgressPanel } from "./components/ScanProgressPanel";
+import { projectPolicyDetails, type ProjectPolicyBinding } from "./information-policy";
 
 type WorkspaceView = "new-scan" | "dashboard" | "capabilities" | "execution" | "telemetry";
 type RailPanel = "security" | "evidence";
@@ -382,6 +384,7 @@ interface RegisteredProject {
   defaultBranch: string | null;
   technologyStack: string[];
   dataClassification: "public" | "internal" | "confidential" | "sensitive" | "health-data";
+  policyBinding?: ProjectPolicyBinding;
   owner: string | null;
   createdAt: string;
   updatedAt: string;
@@ -895,6 +898,7 @@ export default function DashboardPage() {
   );
   const executionStages = localizedExecutionStages[locale];
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null;
+  const selectedProjectPolicy = projectPolicyDetails(selectedProject?.policyBinding);
   const effectiveProfileId = selectedProfileId;
   const activeScanProject = selectedProject ?? {
     id: "security-preflight-local",
@@ -2944,6 +2948,17 @@ export default function DashboardPage() {
                   <strong>{healthcareDoctor ? copy.runPanel.healthcareReady(healthcareDoctor.available) : copy.runPanel.notChecked}</strong>
                 </div>
               </div>
+
+              {selectedProjectPolicy ? (
+                <InformationPolicyPanel
+                  value={selectedProjectPolicy}
+                  title={locale === "cs" ? "Informační policy projektu" : "Project information policy"}
+                  accessExplanation={locale === "cs"
+                    ? "Přístup k bezpečnostním důkazům vyžaduje aktivní oprávnění SecurityPreflight, přesný projektový scope a soulad s touto centrálně registrovanou policy. SecurityPreflight neposkytuje anonymní veřejnou publikaci."
+                    : "Security evidence requires active SecurityPreflight access, the exact project scope, and compliance with this centrally registered policy. SecurityPreflight does not provide anonymous public publication."}
+                  compact
+                />
+              ) : null}
 
               <div className="security-scan-command-row">
                 <div className="security-actions">

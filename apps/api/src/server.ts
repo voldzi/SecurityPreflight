@@ -16,7 +16,7 @@ import {
   updateFindingTriage,
   type PersistedScanRunProgress
 } from "@security-preflight/persistence";
-import { AkbIntegrationError, askAkb, getAkbIntegrationStatus } from "./akb.js";
+import { AkbIntegrationError, askAkb, getAkbIntegrationStatus, securityPreflightOrganizationId } from "./akb.js";
 import {
   authenticateSecurityPreflightRequest,
   getAuthStatus,
@@ -32,6 +32,7 @@ import {
   ProjectRegistryError,
   updateProject
 } from "./projects.js";
+import { registeredPolicyBindingSchema } from "./policy-registry.js";
 import { buildCodexRemediationExport, buildScanRunReportExport, type ScanRunExportFormat } from "./report-export.js";
 import { applySecurityHeaders } from "./security-headers.js";
 import {
@@ -198,7 +199,7 @@ const akbAskRequestSchema = z.object({
   maxChunks: z.number().int().min(1).max(30).optional(),
   subject: z
     .object({
-      tenantId: z.string().min(1).max(120).optional(),
+      tenantId: z.literal("org_stratos").optional(),
       userId: z.string().min(1).max(120).optional(),
       roles: z.array(z.string().min(1).max(120)).max(30).optional(),
       classificationClearance: z.array(z.string().min(1).max(120)).max(20).optional()
@@ -230,32 +231,25 @@ const scanPlanRequestSchema = z.object({
     .optional()
 });
 
-const policyBindingSchema = z.object({
-  policyBindingId: z.string().min(1),
-  organizationId: z.literal("org_stratos"),
-  policyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  policyVersion: z.literal("information-policy-2.0.0"),
-  handlingClass: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED"]),
-  legalClassification: z.literal("NONE"),
-  tlp: z.enum(["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"]).nullable(),
-  pap: z.enum(["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"]).nullable(),
-  obligations: z.array(z.enum(["AUDIT_ACCESS", "NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY", "NO_PUBLIC_EXPORT", "NO_EXPORT", "WATERMARK", "ENCRYPT_AT_REST", "RECIPIENT_CONFIRMATION", "ORIGINATOR_APPROVAL", "PAP_ENFORCEMENT"])),
-  contentCategories: z.array(z.string()),
-  audience: z.record(z.unknown())
-});
+const policyBindingSchema = registeredPolicyBindingSchema;
 
 const integrationEnvelopeSchema = z.object({
   schemaVersion: z.literal("stratos-integration-envelope-1"),
   organizationId: z.literal("org_stratos"),
   sourceSystem: z.literal("SECURITY_PREFLIGHT"),
   externalRef: z.string().min(1),
-  actor: z.object({ type: z.literal("service"), subjectId: z.string().min(1) }),
+  actor: z.object({ type: z.literal("service"), subjectId: z.literal("service:security-preflight-worker") }),
   correlationId: z.string().min(1),
   idempotencyKey: z.string().min(1),
-  policyBindingId: z.string().min(1),
+  policyBindingId: z.string().regex(/^(?:pol|pb)_[A-Za-z0-9_-]{8,}$/),
   policyVersion: z.literal("information-policy-2.0.0"),
   policyHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-  classification: z.object({ handlingClass: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED"]), legalClassification: z.literal("NONE"), tlp: z.string().nullable(), pap: z.string().nullable() }),
+  classification: z.object({
+    handlingClass: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED"]),
+    legalClassification: z.literal("NONE"),
+    tlp: z.enum(["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"]).nullable(),
+    pap: z.enum(["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"]).nullable()
+  }),
   payload: z.object({}).passthrough()
 });
 
@@ -298,6 +292,7 @@ const resultEnvelopeSchema = z
   .passthrough();
 
 export function createServer(options: CreateServerOptions = {}): FastifyInstance {
+  securityPreflightOrganizationId();
   let scanQueue: ScanQueue | null = options.scanQueue ?? null;
   const server = Fastify({
     logger: options.logger ?? true,
@@ -408,10 +403,18 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   }));
 
   server.get("/ready", async (request, reply) => {
+    const production = process.env.APP_ENV === "production";
+    const policyDecisionConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_POLICY_DECISION_URL");
     const required = {
       databaseUrl: Boolean(process.env.DATABASE_URL),
       redisUrl: Boolean(process.env.REDIS_URL),
-      reportsPath: Boolean(process.env.REPORTS_PATH)
+      reportsPath: Boolean(process.env.REPORTS_PATH),
+      scopeRegistry: !production || hasConfiguredEnv("SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL") || policyDecisionConfigured,
+      policyRegistry: !production || hasConfiguredEnv("SECURITY_PREFLIGHT_POLICY_REGISTRY_URL") || policyDecisionConfigured,
+      policyDecision: !production || policyDecisionConfigured,
+      governanceCredential: !production || hasConfiguredEnv("SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN"),
+      workerCredentialAbsent: !hasConfiguredEnv("SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN"),
+      retiredSharedCredentialAbsent: !hasConfiguredEnv("SECURITY_PREFLIGHT_POLICY_SERVICE_TOKEN")
     };
 
     const ready = Object.values(required).every(Boolean);
@@ -420,7 +423,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       return reply.status(503).send({
         error: {
           code: "SERVICE_NOT_READY",
-          message: "Required local dependencies are not configured.",
+          message: "Required dependencies or component-scoped governance credentials are not configured safely.",
           details: [required],
           requestId: request.id
         }
@@ -468,10 +471,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     }
 
     try {
-      const project = await createProject({
-        ...parsed.data,
-        governanceActorSubjectId: request.authContext?.subject ?? "service:security-preflight"
-      });
+      const project = await createProject(parsed.data);
 
       return reply.status(201).send({
         data: project
@@ -1046,9 +1046,12 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       && parsed.data.policyBinding.pap === expectedBinding.pap
       && parsed.data.policyBinding.policyHash === parsed.data.integrationEnvelope.policyHash
       && informationPolicyBindingHash(parsed.data.policyBinding) === parsed.data.policyBinding.policyHash
+      && parsed.data.integrationEnvelope.policyBindingId === parsed.data.policyBinding.policyBindingId
       && parsed.data.integrationEnvelope.policyVersion === parsed.data.policyBinding.policyVersion
       && parsed.data.integrationEnvelope.classification.handlingClass === parsed.data.policyBinding.handlingClass
-      && parsed.data.integrationEnvelope.classification.legalClassification === "NONE";
+      && parsed.data.integrationEnvelope.classification.legalClassification === "NONE"
+      && parsed.data.integrationEnvelope.classification.tlp === parsed.data.policyBinding.tlp
+      && parsed.data.integrationEnvelope.classification.pap === parsed.data.policyBinding.pap;
     if (!bindingMatches) {
       return reply.status(403).send({ error: { code: "POLICY_BINDING_MISMATCH", message: "The result envelope policy binding is unknown or inconsistent.", requestId: request.id } });
     }
@@ -1317,7 +1320,7 @@ function buildCapabilityAudit(input: { authorization?: string; forwardedProto?: 
   const accessProjectionConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_ACCESS_PROJECTION_URL") || policyDecisionConfigured;
   const scopeRegistryConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL") || policyDecisionConfigured;
   const policyRegistryConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_POLICY_REGISTRY_URL") || policyDecisionConfigured;
-  const policyServiceCredentialConfigured = hasConfiguredEnv("STRATOS_POLICY_SERVICE_TOKEN");
+  const governanceServiceCredentialConfigured = hasConfiguredEnv("SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN");
   const akbStatus = getAkbIntegrationStatus(input.authorization);
   const databaseConfigured = isPersistenceEnabled();
   const redisConfigured = hasConfiguredEnv("REDIS_URL");
@@ -1456,7 +1459,7 @@ function buildCapabilityAudit(input: { authorization?: string; forwardedProto?: 
         signal("scope-registry-configured", scopeRegistryConfigured),
         signal("policy-registry-configured", policyRegistryConfigured),
         signal("policy-decision-configured", policyDecisionConfigured),
-        signal("policy-service-credential-configured", policyServiceCredentialConfigured),
+        signal("governance-service-credential-configured", governanceServiceCredentialConfigured),
         ...(hasHttpsBoundary ? [signal("tls-forwarded", true)] : [])
       ],
       [
@@ -1467,7 +1470,7 @@ function buildCapabilityAudit(input: { authorization?: string; forwardedProto?: 
         ...missingSignal(!scopeRegistryConfigured, "scope-registry-missing"),
         ...missingSignal(!policyRegistryConfigured, "policy-registry-missing"),
         ...missingSignal(!policyDecisionConfigured, "policy-decision-missing"),
-        ...missingSignal(!policyServiceCredentialConfigured, "policy-service-credential-missing")
+        ...missingSignal(!governanceServiceCredentialConfigured, "governance-service-credential-missing")
       ]
     )
   ];

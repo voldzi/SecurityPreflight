@@ -62,10 +62,9 @@ describe("Information Policy V2", () => {
 
   it("delegates capability and project scope with audit correlation", async () => {
     process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL = "https://policy.test/api/v1/policy/decisions";
-    process.env.STRATOS_POLICY_SERVICE_TOKEN = "runtime-secret";
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => new Response(JSON.stringify({ decision: "ALLOW", reasonCodes: ["POLICY_ALLOW"], obligations: ["AUDIT_ACCESS"], policyVersion: "information-policy-2.0.0", decisionId: "dec_test" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    const request = { id: "req_test" } as Parameters<typeof authorizeGovernedRequest>[0]["request"];
+    const request = { id: "req_test", headers: { authorization: "Bearer caller-token" } } as Parameters<typeof authorizeGovernedRequest>[0]["request"];
     const accessProjection: SecurityPreflightAccessProjection = {
       capabilities: ["security-preflight:access", "security-preflight:read_scan"],
       scopes: [{ type: "organization", id: "org_stratos" }],
@@ -73,12 +72,15 @@ describe("Information Policy V2", () => {
     };
     const decision = await authorizeGovernedRequest({ request, context: { mode: "oidc", subject: "user:test", provider: "keycloak", name: "Test", email: null, roles: ["stratos_user"], isAdmin: false }, accessProjection, capabilityId: "security-preflight:read_scan", operation: "read", scope: { type: "project", id: "project_test" }, policyBinding: base.policyBinding });
     expect(decision.decisionId).toBe("dec_test");
-    const sent = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
-    expect(sent).toMatchObject({ actorSubjectId: "user:test", capabilityId: "security-preflight:read_scan", scope: { type: "project", id: "project_test" } });
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const sent = JSON.parse(String(init.body));
+    expect(new Headers(init.headers).get("authorization")).toBe("Bearer caller-token");
+    expect(sent).toMatchObject({ capabilityId: "security-preflight:read_scan", scope: { type: "project", id: "project_test" } });
+    expect(sent).not.toHaveProperty("actorSubjectId");
   });
 
   it("fails closed for unknown capabilities and policy outage", async () => {
-    const request = { id: "req_test" } as Parameters<typeof authorizeGovernedRequest>[0]["request"];
+    const request = { id: "req_test", headers: {} } as Parameters<typeof authorizeGovernedRequest>[0]["request"];
     const context = { mode: "oidc" as const, subject: "user:test", provider: "keycloak", name: "Test", email: null, roles: ["stratos_admin"], isAdmin: true };
     const accessProjection: SecurityPreflightAccessProjection = { capabilities: ["security-preflight:access", "security-preflight:read_scan"], scopes: [{ type: "organization", id: "org_stratos" }], effectiveScopes: [{ type: "organization", id: "org_stratos" }] };
     await expect(authorizeGovernedRequest({ request, context, capabilityId: "security-preflight:unknown", operation: "read", policyBinding: base.policyBinding })).resolves.toMatchObject({ decision: "DENY", reasonCodes: ["CAPABILITY_MISSING"] });
@@ -118,7 +120,6 @@ describe("Information Policy V2", () => {
 
   it("does not let a stratos_admin display role bypass a missing capability or scope", async () => {
     process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL = "https://policy.test/api/v1/policy/decisions";
-    process.env.STRATOS_POLICY_SERVICE_TOKEN = "runtime-secret";
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ decision: "ALLOW", reasonCodes: ["POLICY_ALLOW"], obligations: ["AUDIT_ACCESS"], policyVersion: "information-policy-2.0.0", decisionId: "dec_should_not_be_called" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const request = { id: "req_admin" } as Parameters<typeof authorizeGovernedRequest>[0]["request"];

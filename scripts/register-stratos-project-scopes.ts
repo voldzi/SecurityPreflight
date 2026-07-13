@@ -26,8 +26,7 @@ if (!apply) {
 for (const project of projects) {
   await registerProjectGovernanceScope({
     projectId: project.id,
-    displayName: project.name,
-    actorSubjectId: "service:security-preflight"
+    displayName: project.name
   });
 }
 

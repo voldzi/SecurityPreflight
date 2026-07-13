@@ -30,7 +30,7 @@ export interface StratosIntegrationEnvelope<T> {
   organizationId: typeof STRATOS_ORGANIZATION_ID;
   sourceSystem: "SECURITY_PREFLIGHT";
   externalRef: string;
-  actor: { type: "service"; subjectId: "service:security-preflight" };
+  actor: { type: "service"; subjectId: "service:security-preflight-worker" };
   correlationId: string;
   idempotencyKey: string;
   policyBindingId: string;
@@ -225,7 +225,7 @@ export function generateCentralResultEnvelope(input: ReportInput, generatedAt = 
       organizationId: STRATOS_ORGANIZATION_ID,
       sourceSystem: "SECURITY_PREFLIGHT",
       externalRef: `scan:${input.scanRun.id}`,
-      actor: { type: "service", subjectId: "service:security-preflight" },
+      actor: { type: "service", subjectId: "service:security-preflight-worker" },
       correlationId: input.scanRun.id,
       idempotencyKey: `security-preflight:${input.scanRun.id}:${envelopeId}`,
       policyBindingId: policyBinding.policyBindingId as string,

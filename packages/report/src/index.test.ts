@@ -79,7 +79,7 @@ describe("central result envelope", () => {
     expect(envelope.evidence.redacted).toBe(true);
     expect(envelope.findings[0]?.evidence).not.toContain("secret-value");
     expect(envelope.policyBinding).toMatchObject({ policyVersion: "information-policy-2.0.0", legalClassification: "NONE", pap: "PAP:AMBER" });
-    expect(envelope.integrationEnvelope).toMatchObject({ schemaVersion: "stratos-integration-envelope-1", organizationId: "org_stratos", sourceSystem: "SECURITY_PREFLIGHT" });
+    expect(envelope.integrationEnvelope).toMatchObject({ schemaVersion: "stratos-integration-envelope-1", organizationId: "org_stratos", sourceSystem: "SECURITY_PREFLIGHT", actor: { type: "service", subjectId: "service:security-preflight-worker" } });
     expect(envelope.integrationEnvelope.policyHash).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 

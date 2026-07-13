@@ -188,11 +188,9 @@ pnpm validate
 
 ## Deployment
 
-Primary deployment is local Docker Desktop on the developer workstation.
-SecurityPreflight is offline-first and does not require a cloud service.
-
-For an internal production-like host, build from the Git repository and apply
-the production Compose override so only the Web UI and API ports are published:
+Primary development remains local Docker Desktop. For a disposable local
+production-like stack, build from the working tree and apply the production
+Compose override so only the Web UI and API ports are published:
 
 ```bash
 docker compose --env-file .env -p securitypreflight \
@@ -205,6 +203,83 @@ docker compose --env-file .env -p securitypreflight \
   -f infra/docker-compose.production.yml \
   up -d --build
 ```
+
+This working-tree command is not the `docker.home.cz` production procedure.
+
+### Immutable docker.home.cz releases
+
+Production uses one fixed layout and Compose identity:
+
+| Path or identity | Purpose |
+| --- | --- |
+| `/srv/SecurityPreflight/.env` | Persistent production configuration; regular file with exact mode `0600` |
+| `/srv/SecurityPreflight/git/SecurityPreflight.git` | Bare deployment mirror used to fetch and verify an exact commit |
+| `/srv/SecurityPreflight/releases/<40-char-sha>` | Read-only tree produced only by `git archive` |
+| `/srv/SecurityPreflight/current` | Atomically replaced symlink to the last fully verified release |
+| `/srv/SecurityPreflight/backups/` | Mode `0700` PostgreSQL, Redis and report backups; old backups are never pruned by deployment scripts |
+| `/srv/SecurityPreflight/deployments/` | Mode `0700` deployment records, exact image IDs and private Compose image overrides |
+| `securitypreflight` | Mandatory explicit Docker Compose project name |
+
+The persistent `.env` must set `APP_ENV=production`,
+`SECURITY_PREFLIGHT_DB_REQUIRED=true`, the HA PostgreSQL endpoint
+`haproxy.home.cz:5000`, an absolute `PROJECTS_ROOT_HOST`, the HTTPS public URL,
+and all current OIDC/governance credentials. Do not symlink the file. Prepare
+the directories without copying a working tree into the release root:
+
+```bash
+sudo install -d -m 0755 /srv/SecurityPreflight
+sudo install -d -m 0755 /srv/SecurityPreflight/git
+sudo install -d -m 0755 /srv/SecurityPreflight/releases
+sudo install -d -m 0700 /srv/SecurityPreflight/backups
+sudo install -d -m 0700 /srv/SecurityPreflight/deployments
+sudo install -m 0600 /secure/operator/path/securitypreflight.env \
+  /srv/SecurityPreflight/.env
+```
+
+Deploy only a reviewed full lowercase commit SHA reachable from
+`origin/main`:
+
+```bash
+sudo ./scripts/deploy-docker-home-release.sh \
+  --sha <full-40-character-git-sha>
+```
+
+The command performs the following fail-closed sequence:
+
+1. fetches into the bare mirror, resolves the SHA exactly, proves ancestry from
+   `refs/remotes/origin/main`, creates a `git archive`, verifies its SHA-256 and
+   extracted Git tree, and rejects an existing-directory or image-tag
+   collision;
+2. renders Compose with `--project-name securitypreflight`, builds
+   `scanner-runtime`, Web, API, worker and scanner-toolbox from the immutable
+   release, records their exact image IDs, and creates SHA-specific image tags
+   before maintenance begins;
+3. stops the existing API and worker writers, then creates a PostgreSQL custom
+   dump plus `SHA256SUMS` and a non-empty `pg_restore --list`, a Redis RDB
+   transfer verified by `redis-check-rdb`, and a read-only tar archive plus
+   inventory of the Compose-owned report volume;
+4. starts the prebuilt target images with `up -d --no-build`. The target must
+   descend from the recorded runtime SHA; no downgrade, reset, restore, volume
+   deletion, `compose down`, or old-release deletion exists in this path;
+5. proves the running API/Web/worker/scanner-toolbox image IDs, obtains Redis
+   `PONG` and a read-only PostgreSQL `SELECT 1`, calls the local and published
+   `/ready`, runs local and published Web HTML smoke checks, and only then
+   atomically advances `/srv/SecurityPreflight/current`.
+
+If preparation, build, or backup fails before target startup, the unchanged
+previous API and worker containers are restarted and `current` is untouched.
+If target startup was attempted, the target SHA is conservatively recorded in
+`/srv/SecurityPreflight/runtime-sha`; recovery is a reviewed descendant
+forward-fix release through the same command. Backups are disaster-recovery
+evidence and are never applied automatically as an in-place rollback.
+
+`SECURITY_PREFLIGHT_RELEASE_GIT_URL`,
+`SECURITY_PREFLIGHT_RELEASE_TRUSTED_REF`, and
+`SECURITY_PREFLIGHT_RELEASE_PUBLIC_BASE_URL` may be supplied to the deployment
+process for an approved infrastructure variation. The release root, env path,
+verification retry count and delay also have `SECURITY_PREFLIGHT_RELEASE_*`
+operator overrides for isolated rehearsal only. Production keeps the paths and
+project identity shown above.
 
 SecurityPreflight uses an explicit Docker Compose default network outside
 common LAN ranges:
@@ -286,7 +361,7 @@ is present. The wrapper prompts only for the Keycloak admin password and uses
 the STRATOS/SecurityPreflight production defaults:
 
 ```bash
-cd /srv/SecurityPreflight
+cd /srv/SecurityPreflight/current
 ./infra/keycloak/provision-production-keycloak-client.sh
 ```
 
@@ -305,7 +380,7 @@ The internet-facing URL is `https://stratos.zeleznalady.cz/sp`. Add the
 repository include file to the publishing nginx host:
 
 ```bash
-cp /srv/SecurityPreflight/infra/nginx/stratos-security-preflight.conf \
+cp /srv/SecurityPreflight/current/infra/nginx/stratos-security-preflight.conf \
   /etc/nginx/stratos-locations.d/security-preflight.conf
 nginx -t
 systemctl reload nginx
@@ -370,10 +445,11 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_REQUIRED_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize API data |
 | `SECURITY_PREFLIGHT_OPERATOR_ROLES` | no | legacy role list | Migration diagnostics exposed by auth status; does not authorize mutations or exports |
 | `SECURITY_PREFLIGHT_ACCESS_PROJECTION_URL` | production | derived from decision URL | STRATOS `GET /api/v1/auth/me` endpoint called with the original OIDC bearer on every protected request |
-| `SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL` | production | derived from decision URL | STRATOS `/api/v1/access/scopes` base used for delegated owning project-scope registration |
+| `SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL` | production | derived from decision URL | STRATOS `/api/v1/access/scopes` base used only by `service:security-preflight-governance` |
 | `SECURITY_PREFLIGHT_POLICY_DECISION_URL` | production | unset | STRATOS Information Policy V2 decision endpoint; protected OIDC operations fail closed when unavailable |
 | `SECURITY_PREFLIGHT_POLICY_REGISTRY_URL` | production | derived from decision URL | STRATOS `POST /api/v1/policy/bindings` endpoint used before a project or classification is persisted |
-| `STRATOS_POLICY_SERVICE_TOKEN` | production | unset | Secret service credential supplied at runtime for delegated policy decisions; never commit it |
+| `SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN` | API production | unset | Registry/scope secret mapped only to `service:security-preflight-governance`; never inject it into the worker |
+| `SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN` | worker production | unset | Runtime decision/export secret mapped only to `service:security-preflight-worker`; never inject it into the API |
 | `SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS` | no | `3000` | Timeout for a synchronous capability/scope/policy decision |
 | `SECURITY_PREFLIGHT_LOCAL_GOVERNANCE_BYPASS` | no | `false` | Explicit shared-token compatibility bypass for local development only; production always ignores it |
 
@@ -422,11 +498,25 @@ table and must stay in sync.
 | `SECURITY_PREFLIGHT_AKB_OIDC_AUDIENCE` | no | `akl-api` | AKB API audience for OIDC client credentials |
 | `SECURITY_PREFLIGHT_AKB_OIDC_SCOPE` | no | `openid profile email` | OIDC scopes requested for AKB service access |
 | `SECURITY_PREFLIGHT_AKB_SYNC_REQUIRED` | no | `false` | Reserved fail-fast flag for future AKB document registration workflows |
-| `SECURITY_PREFLIGHT_TENANT_ID` | no | `default` | Tenant id sent to AKB scoped RAG requests |
+| `SECURITY_PREFLIGHT_TENANT_ID` | no | `org_stratos` | Fixed STRATOS organization sent to AKB scoped RAG requests. Any other non-empty value aborts API startup; tenant selection is not supported. |
 
-The API and worker receive the same Policy Registry endpoints and rotated
-runtime credential. This keeps report creation, queued scans and external
-operations on the same fail-closed policy decision path.
+The API receives the Scope/Policy Registry URLs and governance credential; the
+worker receives only the policy decision URL and worker credential. Interactive
+API decisions forward the caller bearer. Compose intentionally does not expose
+either service credential to the other component. Rotation must provision and
+verify the new central credential first, restart only its owning component, and
+retire the old credential after a successful negative cross-purpose test.
+Production API readiness fails if a worker or retired shared credential is
+present. The production worker refuses to initialize without its decision URL
+and worker credential, or if a governance/retired shared credential leaked into
+its environment.
+
+The API has one organization boundary: `org_stratos`. API startup fails closed
+when `SECURITY_PREFLIGHT_TENANT_ID` contains any other non-empty value. Omitting
+the variable still resolves to `org_stratos`; neither `default` nor the retired
+`STRATOS_TENANT_ID` fallback is used. Verify the effective Compose configuration
+before deployment and reject any AKB/RAG request whose subject attempts to
+select a different organization.
 
 ## Health Endpoints
 

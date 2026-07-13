@@ -1,3 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+allowBuilds:
+  core-js: false
+  esbuild: true
+  msgpackr-extract: false
+  protobufjs: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - '@voldzi/stratos-ui@0.3.33'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFindingFingerprint, defaultScanProfiles, evaluateGate, redactSecrets, type Finding } from "./index.js";
+import { createFindingFingerprint, defaultScanProfiles, evaluateGate, informationPolicyBindingForClassification, informationPolicyBindingHash, redactSecrets, type Finding } from "./index.js";
 
 const baseFinding: Finding = {
   id: "finding-1",
@@ -58,6 +58,22 @@ describe("evaluateGate", () => {
     expect(result.result).toBe("warning");
     expect(result.summary.high).toBe(0);
     expect(result.blockingReasons[0]).toContain("PLATFORM readiness gap");
+  });
+});
+
+describe("Information Policy canonical hash", () => {
+  it("matches regardless of object-key insertion order, including nested audience fields", () => {
+    const base = {
+      ...informationPolicyBindingForClassification("sensitive"),
+      policyBindingId: "pb_security_preflight_project_hash_sensitive",
+      audience: { organizationId: "org_stratos", scopeType: "project", scopeIds: ["project_hash"] }
+    };
+    const reordered = {
+      ...base,
+      audience: { scopeIds: ["project_hash"], scopeType: "project", organizationId: "org_stratos" }
+    };
+    expect(informationPolicyBindingHash(base)).toBe("sha256:9f22ea0b372796af9b2101320127e705fb4dea8128e2292e06f985dd70895e43");
+    expect(informationPolicyBindingHash(base)).toBe(informationPolicyBindingHash(reordered));
   });
 });
 
