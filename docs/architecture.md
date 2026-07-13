@@ -69,15 +69,20 @@ flowchart LR
 1. A user registers a local project path through the UI or CLI.
 2. The API validates that the project path is absolute, mounted inside
    a configured project root such as `PROJECTS_ROOT_CONTAINER` or one of
-   `PROJECTS_ROOTS_CONTAINER`, and points to a directory. It stores project
-   metadata in `REPORTS_PATH/projects.json` and infers the stack from bounded
+   `PROJECTS_ROOTS_CONTAINER`, and points to a directory. With the API-only
+   governance identity it activates the owned central project scope, registers
+   and fully validates the immutable policy binding, then atomically stores
+   project metadata in `REPORTS_PATH/projects.json`. A failure before the local
+   commit deactivates a newly activated scope. Stack inference uses bounded
    file-name inspection such as `package.json`, `Dockerfile`, `pyproject.toml`,
    or `Package.swift`.
 3. A scan request creates a `ScanRun` and queues work in Redis.
 4. The API builds a scan execution plan with command argument arrays, evidence
    paths, read-only project mounts, network mode, and guardrail decisions.
 5. The worker consumes unblocked queued plans and executes supported internal
-   checks plus external scanner commands through the configured runner. Missing
+   checks plus external scanner commands through the configured runner. Its
+   worker-only identity obtains a fresh central decision for restricted network
+   operations and exports; it has no Registry credential. Missing
    tools, non-zero scanner failures without parseable findings, or disabled
    runner policy create blocking tooling evidence.
 6. Check outputs are redacted, stored under the report volume, parsed, and
@@ -114,8 +119,8 @@ flowchart LR
   scanners and explicitly allowed local/staging DAST targets.
 - STRATOS UI alignment: the Web UI consumes `@voldzi/stratos-ui` from the public
   npm registry and composes the dashboard from shared STRATOS shell,
-  navigation, global topbar, command center, table, badge, metric, list, and
-  form primitives. SecurityPreflight does not use a repository `.npmrc` or
+  navigation, global topbar, command center, Information Policy panel, table,
+  badge, metric, list, and form primitives. SecurityPreflight does not use a repository `.npmrc` or
   GitHub Packages registry override for this package.
 - Localization: the Web UI is bilingual Czech/English. Czech is the default
   language, the topbar exposes a CS/EN switch aligned with other STRATOS apps,

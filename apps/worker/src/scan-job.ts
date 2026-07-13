@@ -9,7 +9,7 @@ import {
 } from "@security-preflight/scanners";
 import { recordCompletedScan, recordFailedScan, recordRunningScan, recordScanStepResult } from "@security-preflight/persistence";
 import { generateCentralResultEnvelope, generateJsonReport, generateMarkdownReport, generateSarifReport } from "@security-preflight/report";
-import type { Project, ScanProfile, ScanRun } from "@security-preflight/core";
+import { informationPolicyBindingHash, type InformationPolicyBinding, type Project, type ScanProfile, type ScanRun } from "@security-preflight/core";
 
 export interface ExecuteScanJobInput {
   plan: ScanExecutionPlan;
@@ -351,38 +351,36 @@ async function deliverDefectDojoSarif(plan: ScanExecutionPlan, sarifPath: string
 
 export async function authorizeWorkerExternalOperation(input: { operation: string; scopeId: string; policyBinding?: object }): Promise<{ allowed: boolean; decisionId: string | null; reasonCodes: string[] }> {
   const endpoint = process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL?.trim();
-  const token = process.env.STRATOS_POLICY_SERVICE_TOKEN?.trim();
-  if (!endpoint || !token || !registeredPolicyBinding(input.policyBinding)) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
+  const token = process.env.SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN?.trim();
+  const capabilityId = input.operation === "export"
+    ? "security-preflight:export"
+    : input.operation === "external_operation"
+      ? "security-preflight:external_operation"
+      : null;
+  if (!endpoint || !token || !capabilityId || !registeredPolicyBinding(input.policyBinding, input.scopeId)) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
   try {
-    const capabilities = input.operation === "export" ? ["security-preflight:external_operation", "security-preflight:export"] : ["security-preflight:external_operation"];
-    let finalDecisionId: string | null = null;
-    let finalReasonCodes = ["POLICY_ALLOW"];
-    for (const capabilityId of capabilities) {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json", "x-correlation-id": `worker:${input.scopeId}` },
-        body: JSON.stringify({ actorSubjectId: "service:security-preflight", applicationId: "security-preflight", capabilityId, operation: input.operation, scope: { type: "project", id: input.scopeId }, policyBinding: input.policyBinding }),
-        signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
-      });
-      if (!response.ok) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
-      const decision = await response.json() as { decision?: string; decisionId?: string; reasonCodes?: string[]; obligations?: string[]; policyVersion?: string };
-      const validDecision = (decision.decision === "ALLOW" || decision.decision === "DENY")
-        && typeof decision.decisionId === "string"
-        && Boolean(decision.decisionId)
-        && decision.policyVersion === "information-policy-2.0.0"
-        && Array.isArray(decision.reasonCodes)
-        && decision.reasonCodes.length > 0
-        && decision.reasonCodes.every((reason) => typeof reason === "string" && Boolean(reason))
-        && Array.isArray(decision.obligations)
-        && decision.obligations.every((obligation) => typeof obligation === "string" && workerPolicyObligations.has(obligation));
-      if (!validDecision) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_RESPONSE_INVALID"] };
-      if (decision.decision !== "ALLOW" || !decision.obligations?.includes("AUDIT_ACCESS")) {
-        return { allowed: false, decisionId: decision.decisionId ?? null, reasonCodes: decision.reasonCodes ?? ["POLICY_RESPONSE_INVALID"] };
-      }
-      finalDecisionId = decision.decisionId as string;
-      finalReasonCodes = decision.reasonCodes as string[];
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json", "x-correlation-id": `worker:${input.scopeId}` },
+      body: JSON.stringify({ applicationId: "security-preflight", capabilityId, operation: input.operation, scope: { type: "project", id: input.scopeId }, policyBinding: input.policyBinding }),
+      signal: AbortSignal.timeout(Number(process.env.SECURITY_PREFLIGHT_POLICY_TIMEOUT_MS ?? 3000))
+    });
+    if (!response.ok) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
+    const decision = await response.json() as { decision?: string; decisionId?: string; reasonCodes?: string[]; obligations?: string[]; policyVersion?: string };
+    const validDecision = (decision.decision === "ALLOW" || decision.decision === "DENY")
+      && typeof decision.decisionId === "string"
+      && Boolean(decision.decisionId)
+      && decision.policyVersion === "information-policy-2.0.0"
+      && Array.isArray(decision.reasonCodes)
+      && decision.reasonCodes.length > 0
+      && decision.reasonCodes.every((reason) => typeof reason === "string" && Boolean(reason))
+      && Array.isArray(decision.obligations)
+      && decision.obligations.every((obligation) => typeof obligation === "string" && workerPolicyObligations.has(obligation));
+    if (!validDecision) return { allowed: false, decisionId: null, reasonCodes: ["POLICY_RESPONSE_INVALID"] };
+    if (decision.decision !== "ALLOW" || !decision.obligations?.includes("AUDIT_ACCESS")) {
+      return { allowed: false, decisionId: decision.decisionId ?? null, reasonCodes: decision.reasonCodes ?? ["POLICY_RESPONSE_INVALID"] };
     }
-    return { allowed: true, decisionId: finalDecisionId, reasonCodes: finalReasonCodes };
+    return { allowed: true, decisionId: decision.decisionId as string, reasonCodes: decision.reasonCodes as string[] };
   } catch {
     return { allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] };
   }
@@ -401,14 +399,64 @@ const workerPolicyObligations = new Set([
   "PAP_ENFORCEMENT"
 ]);
 
-function registeredPolicyBinding(value: object | undefined): value is Record<string, unknown> {
+function registeredPolicyBinding(value: object | undefined, scopeId: string): value is Record<string, unknown> {
   if (!value || Array.isArray(value)) return false;
   const binding = value as Record<string, unknown>;
-  return typeof binding.policyBindingId === "string"
-    && Boolean(binding.policyBindingId.trim())
+  const obligations = strictUniqueKnownStrings(binding.obligations, workerPolicyObligations);
+  const categories = strictUniqueKnownStrings(binding.contentCategories, workerPolicyContentCategories);
+  const audience = recordValue(binding.audience);
+  const scopeIds = strictUniqueCanonicalStrings(audience.scopeIds);
+  const recipients = audience.recipientSubjectIds === undefined ? [] : strictUniqueCanonicalStrings(audience.recipientSubjectIds);
+  const hashMatches = typeof binding.policyHash === "string"
+    && binding.policyHash === informationPolicyBindingHash(binding as unknown as InformationPolicyBinding);
+  return binding.schemaVersion === "stratos-information-policy-2"
+    && typeof binding.policyBindingId === "string"
+    && /^(?:pol|pb)_[A-Za-z0-9_-]{8,}$/.test(binding.policyBindingId)
+    && binding.organizationId === "org_stratos"
+    && binding.applicationId === "security-preflight"
     && binding.policyVersion === "information-policy-2.0.0"
-    && typeof binding.policyHash === "string"
-    && /^sha256:[a-f0-9]{64}$/.test(binding.policyHash);
+    && ["PUBLIC", "INTERNAL", "RESTRICTED"].includes(String(binding.handlingClass))
+    && binding.legalClassification === "NONE"
+    && (binding.tlp === null || ["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"].includes(String(binding.tlp)))
+    && (binding.pap === null || ["PAP:RED", "PAP:AMBER", "PAP:GREEN", "PAP:CLEAR"].includes(String(binding.pap)))
+    && obligations !== null
+    && categories !== null
+    && audience.organizationId === "org_stratos"
+    && audience.scopeType === "project"
+    && scopeIds !== null
+    && scopeIds.length === 1
+    && scopeIds[0] === scopeId
+    && recipients !== null
+    && recipients.length === 0
+    && hashMatches;
+}
+
+const workerPolicyContentCategories = new Set([
+  "PERSONAL_DATA",
+  "FINANCIAL",
+  "CONTRACTUAL",
+  "PROJECT_MANAGEMENT",
+  "SECURITY",
+  "CYBER_THREAT",
+  "SOURCE_CODE",
+  "AUTHENTICATION",
+  "AUDIT",
+  "PUBLIC_INFORMATION"
+]);
+
+function strictUniqueKnownStrings(value: unknown, allowed: Set<string>): string[] | null {
+  const items = strictUniqueCanonicalStrings(value);
+  return items && items.every((item) => allowed.has(item)) ? items : null;
+}
+
+function strictUniqueCanonicalStrings(value: unknown): string[] | null {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string" && item.length > 0 && item === item.trim())) return null;
+  const items = value as string[];
+  return new Set(items).size === items.length ? items : null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function redactDeliveryBody(value: string, maxLength = 4_000): string {

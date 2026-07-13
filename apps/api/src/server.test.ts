@@ -6,17 +6,23 @@ import { informationPolicyBindingForClassification, informationPolicyBindingHash
 import { createServer } from "./server.js";
 
 const healthcarePolicyBindingBase = {
+  schemaVersion: "stratos-information-policy-2",
+  applicationId: "security-preflight",
   ...informationPolicyBindingForClassification("health-data"),
-  policyBindingId: "pb_test",
-  organizationId: "org_stratos"
+  policyBindingId: "pb_security_preflight_project_test_health-data",
+  organizationId: "org_stratos",
+  audience: { organizationId: "org_stratos", scopeType: "project", scopeIds: ["project_test"] },
+  originator: "service-security-preflight-governance-id"
 };
 const healthcarePolicyBinding = {
   ...healthcarePolicyBindingBase,
   policyHash: informationPolicyBindingHash(healthcarePolicyBindingBase)
 };
+const originalEnvironment = { ...process.env };
 
 describe("api server", () => {
   afterEach(() => {
+    process.env = { ...originalEnvironment };
     vi.unstubAllGlobals();
   });
 
@@ -42,6 +48,32 @@ describe("api server", () => {
     expect(response.headers["x-frame-options"]).toBe("DENY");
     expect(response.headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
     expect(response.headers["permissions-policy"]).toContain("camera=()");
+  });
+
+  it("fails production readiness when API receives the worker or retired shared credential", async () => {
+    Object.assign(process.env, {
+      APP_ENV: "production",
+      DATABASE_URL: "postgresql://configured.invalid/database",
+      REDIS_URL: "redis://configured.invalid/0",
+      REPORTS_PATH: "/reports",
+      SECURITY_PREFLIGHT_POLICY_DECISION_URL: "https://stratos.test/api/v1/policy/decisions",
+      SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN: "governance-only",
+      SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN: "worker-only"
+    });
+    const server = createServer({ logger: false });
+    const crossCredential = await server.inject({ method: "GET", url: "/ready" });
+    expect(crossCredential.statusCode).toBe(503);
+    expect(crossCredential.json().error.details[0]).toMatchObject({ workerCredentialAbsent: false });
+
+    delete process.env.SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN;
+    process.env.SECURITY_PREFLIGHT_POLICY_SERVICE_TOKEN = "retired";
+    const retiredCredential = await server.inject({ method: "GET", url: "/ready" });
+    expect(retiredCredential.statusCode).toBe(503);
+    expect(retiredCredential.json().error.details[0]).toMatchObject({ retiredSharedCredentialAbsent: false });
+
+    delete process.env.SECURITY_PREFLIGHT_POLICY_SERVICE_TOKEN;
+    const ready = await server.inject({ method: "GET", url: "/ready" });
+    expect(ready.statusCode).toBe(200);
   });
 
   it("keeps auth status public and protects API in shared-token mode", async () => {
@@ -1061,10 +1093,10 @@ describe("api server", () => {
           organizationId: "org_stratos",
           sourceSystem: "SECURITY_PREFLIGHT",
           externalRef: "scan:scan_test",
-          actor: { type: "service", subjectId: "service:security-preflight" },
+          actor: { type: "service", subjectId: "service:security-preflight-worker" },
           correlationId: "scan_test",
           idempotencyKey: "security-preflight:scan_test:test",
-          policyBindingId: "pb_test",
+          policyBindingId: "pb_security_preflight_project_test_health-data",
           policyVersion: "information-policy-2.0.0",
           policyHash: informationPolicyBindingHash(healthcarePolicyBinding),
           classification: { handlingClass: "RESTRICTED", legalClassification: "NONE", tlp: "TLP:AMBER+STRICT", pap: "PAP:AMBER" },

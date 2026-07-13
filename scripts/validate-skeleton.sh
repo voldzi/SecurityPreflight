@@ -74,6 +74,34 @@ else
   ok "Keycloak provisioning does not create deprecated realm roles"
 fi
 
+if [[ -f "$root/infra/docker-compose.yml" ]]; then
+  api_environment="$(awk '/^  api:/{capture=1} /^  worker:/{capture=0} capture' "$root/infra/docker-compose.yml")"
+  worker_environment="$(awk '/^  worker:/{capture=1} /^  postgres:/{capture=0} capture' "$root/infra/docker-compose.yml")"
+  if grep -q 'SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN' <<<"$api_environment" \
+    && ! grep -q 'SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN' <<<"$api_environment"; then
+    ok "API receives only the governance service credential"
+  else
+    fail "API service credential boundary is missing or exposes the worker credential"
+  fi
+  if grep -q 'SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN' <<<"$worker_environment" \
+    && ! grep -q 'SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN' <<<"$worker_environment" \
+    && ! grep -q 'SECURITY_PREFLIGHT_POLICY_REGISTRY_URL' <<<"$worker_environment" \
+    && ! grep -q 'SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL' <<<"$worker_environment"; then
+    ok "worker receives only the runtime decision credential and endpoint"
+  else
+    fail "worker service credential boundary exposes Registry configuration"
+  fi
+fi
+
+retired_credential_references="$(grep -Rl --exclude='*.test.ts' --exclude='*.integration.test.ts' --exclude='validate-skeleton.sh' 'SECURITY_PREFLIGHT_POLICY_SERVICE_TOKEN' \
+  "$root/.env.example" "$root/apps" "$root/infra" "$root/packages" "$root/scripts" 2>/dev/null || true)"
+unexpected_retired_references="$(grep -Ev '/apps/api/src/server\.ts$|/apps/worker/src/governance-config\.ts$' <<<"$retired_credential_references" || true)"
+if [[ -n "$unexpected_retired_references" ]]; then
+  fail "runtime sources still accept or expose the retired shared policy service credential"
+else
+  ok "retired shared credential appears only in fail-closed rejection guards"
+fi
+
 no_api_marker="does not provide a REST API"
 
 if [[ ! -f "$root/openapi/openapi.json" ]]; then

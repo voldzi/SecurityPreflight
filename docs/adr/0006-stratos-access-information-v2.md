@@ -20,19 +20,27 @@ inherit the canonical binding and central exchange uses Integration Envelope
 V1 with correlation, idempotency and policy hash.
 
 Before a project is stored, the API registers the owning project scope as an
-active direct child of `scope_org_stratos` through a restricted on-behalf-of
-service call. STRATOS rechecks the actor's active identity, membership and
-`security-preflight:manage_access` on the parent scope. The API then registers
-the proposed binding in the STRATOS Policy Registry. Whenever classification
+active direct child of `scope_org_stratos` with a dedicated governance service
+credential. STRATOS derives the fixed actor from that bearer and rechecks the
+actor's active identity, membership and `security-preflight:manage_access` on
+the parent scope. The API then registers the proposed binding in the STRATOS
+Policy Registry. Whenever classification
 changes, it registers a new binding without changing the scope. Only the complete
 authoritative response, including binding id and hash, may enter a scan plan or
 derived artefact.
 
+The API governance identity and worker runtime identity are separate. The API
+credential is confined to scope/policy registration; the worker credential is
+confined to fresh external-operation/export decisions. Create/auto-discovery
+compensate an uncommitted new project by deactivating its scope. Delete
+deactivates before local commit and reactivates on local failure. Compensation
+failure is an explicit reconciliation state.
+
 ## Consequences
 
 Legacy display roles no longer authorize routes. Production requires projection,
-scope registry, policy registry and decision endpoints plus a runtime service
-credential. ALLOW projection caching is forbidden so suspended/expired grants
+scope registry, policy registry and decision endpoints plus two distinct,
+component-scoped service credentials. ALLOW projection caching is forbidden so suspended/expired grants
 and inactive scopes affect the next request. Policy outage intentionally denies
 governed operations. SecurityPreflight has no anonymous true-public publication
 surface.

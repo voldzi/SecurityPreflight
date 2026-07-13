@@ -2,6 +2,9 @@ import { readFile } from "node:fs/promises";
 import { Worker } from "bullmq";
 import type { ScanExecutionPlan } from "@security-preflight/scanners";
 import { executeScanJob } from "./scan-job.js";
+import { assertWorkerGovernanceConfiguration } from "./governance-config.js";
+
+assertWorkerGovernanceConfiguration(process.env);
 
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379/0";
 const queueName = process.env.SCAN_QUEUE_NAME ?? "security-preflight-scans";

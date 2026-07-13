@@ -71,7 +71,7 @@ The API uses path versioning:
 | POST | `/api/v1/projects` | Register a local project, validate its mounted path, and detect its stack |
 | GET | `/api/v1/projects/{projectId}` | Get one registered project |
 | PATCH | `/api/v1/projects/{projectId}` | Update project metadata and refresh stack detection when path changes |
-| DELETE | `/api/v1/projects/{projectId}` | Delete a registered project |
+| DELETE | `/api/v1/projects/{projectId}` | Deactivate its central project scope and delete the local registration |
 | GET | `/api/v1/scan-profiles` | List built-in scan profiles |
 | POST | `/api/v1/scans/plan` | Build a guarded scan execution plan without running scanners |
 | POST | `/api/v1/scans/queue` | Queue an unblocked scan execution plan for worker execution |
@@ -89,14 +89,24 @@ The API uses path versioning:
 | POST | `/api/v1/results/ingest` | Accept a redacted result envelope for central storage |
 
 Project creation first registers the owning active STRATOS project scope under
-`scope_org_stratos` on behalf of the authenticated actor. STRATOS independently
-checks `security-preflight:manage_access` on the active parent scope. The API
-then calls the STRATOS Policy Registry. A change of `dataClassification` keeps
-the immutable project scope and registers a new binding. The project response contains the authoritative
-`policyBindingId`, `organizationId`, `policyVersion`, and `policyHash`. If the
-Scope Registry or Policy Registry is unavailable or rejects the request, the project mutation is not
-persisted. Scan requests refer to the registered project and cannot replace its
-classification or binding with request payload data.
+`scope_org_stratos` as `service:security-preflight-governance`; the bearer, not a
+request field, determines that identity. STRATOS independently checks
+`security-preflight:manage_access` on the active parent scope. The API then calls
+the STRATOS Policy Registry. A change of `dataClassification` keeps the immutable
+project scope and registers a new binding. The project response contains the
+schema-validated authoritative `schemaVersion`, `applicationId`,
+`policyBindingId`, `organizationId`, `policyVersion`, `policyHash`, labels,
+obligations, categories, audience and originator.
+
+Create and auto-discovery follow `scope(active) -> binding -> local atomic
+rename`. Failure after scope activation compensates with `isActive=false`.
+Delete follows `scope(inactive) -> local atomic rename`; a local failure
+compensates with `isActive=true`. If compensation itself fails, the API returns
+`PROJECT_GOVERNANCE_RECONCILIATION_REQUIRED` and the operator must reconcile the
+project before retrying. If either Registry is unavailable or rejects the
+request, no local mutation is reported as successful. Scan requests refer to
+the registered project and cannot replace its classification or binding with
+request payload data.
 
 Project and scan-run list responses are filtered by active effective project
 scopes from the projection. Direct scan-run detail, progress, triage and report
@@ -317,6 +327,11 @@ AKB is the STRATOS document-grounded AI boundary. SecurityPreflight calls AKB
 only from the backend and sends scan-run metadata, tags, data classification,
 and `require_citations: true`. SecurityPreflight does not store AKB prompts,
 answers, chunks, embeddings, or document text.
+
+The optional `subject.tenantId` request field, when present, must be exactly
+`org_stratos`. The backend always emits `subject.tenant_id=org_stratos` to AKB;
+`default`, another organization, and legacy env fallbacks are rejected rather
+than forwarded.
 
 ### Toolchain doctor
 

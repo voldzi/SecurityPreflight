@@ -1,7 +1,95 @@
 # Runbook
 
+> [!CAUTION]
+> **STOP — RESET AND G4–G9 COMMANDS ARE HISTORICAL EVIDENCE ONLY.**
+> The coordinated STRATOS G4–G9 rollout and reset epoch were completed on
+> 2026-07-13. Any reset, rehearsal, restore-gate, or epoch-activation procedure
+> retained below documents that completed event; it does not authorize a new
+> execution or destructive rollback. Current rollout is forward-only and must
+> not use destructive database, queue, report-storage, or epoch resets. Follow
+> current non-destructive operating guidance and an approved forward fix
+> instead.
+
 Concrete steps for operational scenarios. Keep each scenario actionable:
 symptoms, diagnosis, fix, verification.
+
+## Immutable docker.home.cz release
+
+Use this procedure for every production application release. It accepts only a
+full reviewed SHA and never deploys the operator's working tree.
+
+Preflight without printing the persistent environment:
+
+```bash
+test "$(stat -c '%a' /srv/SecurityPreflight/.env)" = 600
+test "$(stat -c '%a' /srv/SecurityPreflight/backups)" = 700
+target_sha=<full-40-character-git-sha>
+git fetch origin main
+git cat-file -e "${target_sha}^{commit}"
+git merge-base --is-ancestor "$target_sha" origin/main
+readlink -f /srv/SecurityPreflight/current
+docker compose --project-name securitypreflight \
+  --env-file /srv/SecurityPreflight/.env \
+  -f /srv/SecurityPreflight/current/infra/docker-compose.yml \
+  -f /srv/SecurityPreflight/current/infra/docker-compose.production.yml \
+  ps
+```
+
+Do not continue if `.env` is a symlink, either permission check fails, the SHA
+is not reviewed/reachable from `origin/main`, or the current API, worker, Redis
+or PostgreSQL container is not running exactly once.
+
+Run the immutable deploy from a trusted checkout containing the release
+scripts. The script fetches and archives the target from its own bare mirror;
+dirty files in this checkout are not included:
+
+```bash
+sudo ./scripts/deploy-docker-home-release.sh \
+  --sha <full-40-character-git-sha>
+```
+
+Expected order is `prepare → compose render → build → stop API/worker → three
+backups → forward-only up → /ready → Web smoke → atomic current`. Build must
+finish before the maintenance message and writer shutdown. The backup directory
+is printed only after all of these checks have succeeded:
+
+- PostgreSQL dump is custom format, non-empty, has `SHA256SUMS`, and has a
+  non-empty `postgres.pg_restore.list`;
+- `redis.rdb` passed `redis-check-rdb` while API and worker were stopped;
+- `reports.tar.gz` was produced from a read-only report-volume mount and has a
+  non-empty `reports.tar.list`;
+- the backup directory and deployment evidence directory are mode `0700`; all
+  contained evidence is mode `0600`.
+
+Post-deploy verification:
+
+```bash
+target_sha=<full-40-character-git-sha>
+test "$(basename "$(readlink -f /srv/SecurityPreflight/current)")" = "$target_sha"
+test "$(cat /srv/SecurityPreflight/runtime-sha)" = "$target_sha"
+curl --fail --silent --show-error http://127.0.0.1:8781/ready
+curl --fail --silent --show-error http://127.0.0.1:8780/sp/ >/dev/null
+curl --fail --silent --show-error https://stratos.zeleznalady.cz/sp/api/ready
+curl --fail --silent --show-error https://stratos.zeleznalady.cz/sp/ >/dev/null
+docker compose --project-name securitypreflight \
+  --env-file /srv/SecurityPreflight/.env \
+  -f /srv/SecurityPreflight/current/infra/docker-compose.yml \
+  -f /srv/SecurityPreflight/current/infra/docker-compose.production.yml \
+  ps
+```
+
+To inspect backup evidence, enter the newly printed backup directory and run
+`sha256sum --check SHA256SUMS`, `pg_restore --list postgres.dump`, and
+`tar -tzf reports.tar.gz`. These are inspection commands, not authorization to
+restore production in place.
+
+If failure occurs before target startup, confirm the deployment record says
+`old_writers_restarted=true` and that the unchanged prior API/worker returned.
+If startup was attempted, `current` remains unchanged but `runtime-sha` records
+the attempted target. Do not point `current` back manually, run an older image,
+apply a database downgrade, restore over the live stores, delete a volume, or
+remove an old release. Prepare a reviewed commit descending from the recorded
+runtime SHA and deploy that forward fix through the same command.
 
 ## The Application Does Not Start
 
@@ -53,7 +141,8 @@ symptoms, diagnosis, fix, verification.
   not in `effectiveScopes` or its registered scope was deactivated.
 - `POLICY_UNAVAILABLE` and `ACCESS_GOVERNANCE_UNAVAILABLE` are fail-closed
   infrastructure states. Verify the configured projection, registry and
-  decision URLs plus runtime service credential without printing the token.
+  decision URLs plus the component-specific governance or worker credential
+  without printing either token. Verify that the two credentials are distinct.
 - For pre-existing local projects during the one-time governed rollout, inspect
   the migration set first and then apply it in the approved window:
 
@@ -62,11 +151,18 @@ pnpm governance:scopes
 pnpm governance:scopes -- --apply
 ```
 
-  The apply step delegates as `service:security-preflight`; STRATOS independently
+  The apply step authenticates as the fixed
+  `service:security-preflight-governance`; STRATOS independently
   requires its active membership and `security-preflight:manage_access` on
   `organization/org_stratos`. Do not rerun this bulk apply after an operator has
   intentionally deactivated a project scope. New projects register their scope
   automatically before binding and local persistence.
+- `PROJECT_GOVERNANCE_RECONCILIATION_REQUIRED` means the primary mutation and
+  its scope compensation both failed. Compare the local `projects.json` entry
+  with the owned `security-preflight:project:<projectId>` scope. Reactivate the
+  scope if the local project exists; deactivate it if the local project is
+  absent. Then rerun the idempotent project read/list or deletion. Do not create
+  a replacement scope or edit a policy binding in place.
 
 ## Run a UI Scan and Hand Off to Codex
 
@@ -236,12 +332,17 @@ SECURITY_PREFLIGHT_G4_INTEGRATION_TEST=true \
 SECURITY_PREFLIGHT_SCOPE_REGISTRY_URL=https://g4.example/api/v1/access/scopes \
 SECURITY_PREFLIGHT_POLICY_REGISTRY_URL=https://g4.example/api/v1/policy/bindings \
 SECURITY_PREFLIGHT_POLICY_DECISION_URL=https://g4.example/api/v1/policy/decisions \
-STRATOS_POLICY_SERVICE_TOKEN='<runtime secret>' \
+SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN='<governance secret>' \
+SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN='<worker secret>' \
 pnpm --filter @security-preflight/api exec vitest run src/policy-registry.integration.test.ts
 ```
 
-The test registers an isolated active project scope and authoritative binding,
-then verifies ALLOW, unknown id, stale hash and unknown obligation.
+The test uses the governance identity to register an isolated active project
+scope and authoritative binding, uses the worker identity for decisions, and
+deactivates the fixture scope in cleanup. It verifies ALLOW, unknown id, stale
+hash and unknown obligation. Central negative tests must additionally prove that
+the governance token cannot request worker decisions, the worker token cannot
+read/write either Registry, and equal configured tokens fail readiness.
 User-specific project-scope and inactive-access
 fixtures must be executed by the STRATOS G4 orchestrator because those identity
 states are owned by central Access Governance.

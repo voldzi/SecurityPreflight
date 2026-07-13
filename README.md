@@ -24,6 +24,9 @@ CODEX and Claude Code, following the central application standards
 - Production API boundary with STRATOS OIDC/JWKS bearer validation, a fresh
   `/auth/me` capability/scope projection, central policy decisions, an explicit
   CORS allowlist, and UI bearer handoff.
+- Compensating project governance lifecycle with separate API Registry/scope
+  and worker decision/export service identities, plus schema-validated
+  Information Policy V2 bindings displayed in the shared STRATOS policy panel.
 - STRATOS Keycloak client provisioning for realm `stratos`, public client
   `security-preflight-web`, and validation of the centrally managed
   `stratos_user`/`stratos_admin` identity baseline without application roles.

@@ -51,22 +51,18 @@ describe("scan job execution", () => {
 
   it("requires and forwards the authoritative registered binding for a worker external operation", async () => {
     process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL = "https://stratos.test/api/v1/policy/decisions";
-    process.env.STRATOS_POLICY_SERVICE_TOKEN = "runtime-only";
-    const bindingBase = {
-      ...informationPolicyBindingForClassification("sensitive"),
-      policyBindingId: "pb_security_preflight_project_sensitive",
-      organizationId: "org_stratos"
-    };
-    const policyBinding = { ...bindingBase, policyHash: informationPolicyBindingHash(bindingBase) };
+    process.env.SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN = "worker-only";
+    const policyBinding = registeredBinding("project_sensitive", "sensitive");
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       expect(body).toMatchObject({
-        actorSubjectId: "service:security-preflight",
         capabilityId: "security-preflight:external_operation",
         operation: "external_operation",
         scope: { type: "project", id: "project_sensitive" },
         policyBinding
       });
+      expect(body).not.toHaveProperty("actorSubjectId");
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer worker-only");
       return new Response(JSON.stringify({ decision: "ALLOW", decisionId: "dec_external", reasonCodes: ["POLICY_ALLOW"], obligations: ["AUDIT_ACCESS"], policyVersion: "information-policy-2.0.0" }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -75,28 +71,25 @@ describe("scan job execution", () => {
 
   it("fails closed for an unregistered binding and a NO_EXPORT decision", async () => {
     process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL = "https://stratos.test/api/v1/policy/decisions";
-    process.env.STRATOS_POLICY_SERVICE_TOKEN = "runtime-only";
+    process.env.SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN = "worker-only";
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as { capabilityId: string };
-      return body.capabilityId === "security-preflight:external_operation"
-        ? new Response(JSON.stringify({ decision: "ALLOW", decisionId: "dec_external", reasonCodes: ["POLICY_ALLOW"], obligations: ["AUDIT_ACCESS"], policyVersion: "information-policy-2.0.0" }), { status: 200 })
-        : new Response(JSON.stringify({ decision: "DENY", decisionId: "dec_export", reasonCodes: ["EXPORT_FORBIDDEN"], obligations: [], policyVersion: "information-policy-2.0.0" }), { status: 200 });
+      expect(body.capabilityId).toBe("security-preflight:export");
+      return new Response(JSON.stringify({ decision: "DENY", decisionId: "dec_export", reasonCodes: ["EXPORT_FORBIDDEN"], obligations: [], policyVersion: "information-policy-2.0.0" }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
     await expect(authorizeWorkerExternalOperation({ operation: "export", scopeId: "project_sensitive", policyBinding: informationPolicyBindingForClassification("sensitive") })).resolves.toEqual({ allowed: false, decisionId: null, reasonCodes: ["POLICY_UNAVAILABLE"] });
     expect(fetchMock).not.toHaveBeenCalled();
 
-    const bindingBase = { ...informationPolicyBindingForClassification("sensitive"), policyBindingId: "pb_security_preflight_project_sensitive", organizationId: "org_stratos" };
-    const policyBinding = { ...bindingBase, policyHash: informationPolicyBindingHash(bindingBase) };
+    const policyBinding = registeredBinding("project_sensitive", "sensitive");
     await expect(authorizeWorkerExternalOperation({ operation: "export", scopeId: "project_sensitive", policyBinding })).resolves.toEqual({ allowed: false, decisionId: "dec_export", reasonCodes: ["EXPORT_FORBIDDEN"] });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed when the policy service returns an unknown worker obligation", async () => {
     process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL = "https://stratos.test/api/v1/policy/decisions";
-    process.env.STRATOS_POLICY_SERVICE_TOKEN = "runtime-only";
-    const bindingBase = { ...informationPolicyBindingForClassification("sensitive"), policyBindingId: "pb_security_preflight_project_sensitive", organizationId: "org_stratos" };
-    const policyBinding = { ...bindingBase, policyHash: informationPolicyBindingHash(bindingBase) };
+    process.env.SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN = "worker-only";
+    const policyBinding = registeredBinding("project_sensitive", "sensitive");
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       decision: "ALLOW",
       decisionId: "dec_unknown_obligation",
@@ -110,6 +103,33 @@ describe("scan job execution", () => {
       decisionId: null,
       reasonCodes: ["POLICY_RESPONSE_INVALID"]
     });
+  });
+
+  it("rejects a tampered, cross-scope, or schema-incomplete binding before calling STRATOS", async () => {
+    process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL = "https://stratos.test/api/v1/policy/decisions";
+    process.env.SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN = "worker-only";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const binding = registeredBinding("project_sensitive", "sensitive");
+    await expect(authorizeWorkerExternalOperation({ operation: "external_operation", scopeId: "project_other", policyBinding: binding })).resolves.toMatchObject({ allowed: false, reasonCodes: ["POLICY_UNAVAILABLE"] });
+    await expect(authorizeWorkerExternalOperation({ operation: "external_operation", scopeId: "project_sensitive", policyBinding: { ...binding, obligations: [...binding.obligations, "AUDIT_ACCESS"] } })).resolves.toMatchObject({ allowed: false, reasonCodes: ["POLICY_UNAVAILABLE"] });
+    await expect(authorizeWorkerExternalOperation({ operation: "external_operation", scopeId: "project_sensitive", policyBinding: { ...binding, policyHash: `sha256:${"0".repeat(64)}` } })).resolves.toMatchObject({ allowed: false, reasonCodes: ["POLICY_UNAVAILABLE"] });
+    await expect(authorizeWorkerExternalOperation({ operation: "public_export", scopeId: "project_sensitive", policyBinding: binding })).resolves.toMatchObject({ allowed: false, reasonCodes: ["POLICY_UNAVAILABLE"] });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not accept the governance credential for worker decisions", async () => {
+    process.env.SECURITY_PREFLIGHT_POLICY_DECISION_URL = "https://stratos.test/api/v1/policy/decisions";
+    delete process.env.SECURITY_PREFLIGHT_WORKER_SERVICE_TOKEN;
+    process.env.SECURITY_PREFLIGHT_GOVERNANCE_SERVICE_TOKEN = "governance-only";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(authorizeWorkerExternalOperation({
+      operation: "external_operation",
+      scopeId: "project_sensitive",
+      policyBinding: registeredBinding("project_sensitive", "sensitive")
+    })).resolves.toMatchObject({ allowed: false, reasonCodes: ["POLICY_UNAVAILABLE"] });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("requires a fresh worker policy decision for every restricted-network scan plan", () => {
@@ -126,3 +146,16 @@ describe("scan job execution", () => {
     })).toBe(true);
   });
 });
+
+function registeredBinding(projectId: string, classification: "public" | "internal" | "confidential" | "sensitive" | "health-data") {
+  const binding = {
+    schemaVersion: "stratos-information-policy-2",
+    applicationId: "security-preflight",
+    ...informationPolicyBindingForClassification(classification),
+    policyBindingId: `pb_security_preflight_${projectId}_${classification}`,
+    organizationId: "org_stratos",
+    audience: { organizationId: "org_stratos", scopeType: "project", scopeIds: [projectId] },
+    originator: "service-security-preflight-governance-id"
+  };
+  return { ...binding, policyHash: informationPolicyBindingHash(binding) };
+}

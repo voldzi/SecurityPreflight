@@ -14,6 +14,23 @@ export interface AkbIntegrationStatus {
   };
 }
 
+export const SECURITY_PREFLIGHT_ORGANIZATION_ID = "org_stratos";
+
+export class SecurityPreflightOrganizationConfigurationError extends Error {
+  constructor(value: string) {
+    super(`SECURITY_PREFLIGHT_TENANT_ID must equal ${SECURITY_PREFLIGHT_ORGANIZATION_ID}; received ${value}.`);
+    this.name = "SecurityPreflightOrganizationConfigurationError";
+  }
+}
+
+export function securityPreflightOrganizationId(environment: NodeJS.ProcessEnv = process.env): typeof SECURITY_PREFLIGHT_ORGANIZATION_ID {
+  const configured = environment.SECURITY_PREFLIGHT_TENANT_ID?.trim();
+  if (configured && configured !== SECURITY_PREFLIGHT_ORGANIZATION_ID) {
+    throw new SecurityPreflightOrganizationConfigurationError(configured);
+  }
+  return SECURITY_PREFLIGHT_ORGANIZATION_ID;
+}
+
 export interface AkbAskInput {
   question: string;
   answerMode?: string;
@@ -74,7 +91,7 @@ export interface AkbAskResult {
 
 export class AkbIntegrationError extends Error {
   constructor(
-    public readonly code: "AKB_NOT_CONFIGURED" | "AKB_TOKEN_FAILED" | "AKB_REQUEST_FAILED",
+    public readonly code: "AKB_NOT_CONFIGURED" | "AKB_ORGANIZATION_INVALID" | "AKB_TOKEN_FAILED" | "AKB_REQUEST_FAILED",
     message: string,
     public readonly statusCode: number,
     public readonly details: unknown[] = []
@@ -119,8 +136,16 @@ export async function askAkb(input: AkbAskInput): Promise<AkbAskResult> {
     `security-preflight-project:${input.run.project.id}`,
     `security-preflight-profile:${input.run.profile.id}`
   ];
+  const requestedOrganizationId = input.subject?.tenantId?.trim();
+  if (input.subject?.tenantId !== undefined && requestedOrganizationId !== config.organizationId) {
+    throw new AkbIntegrationError(
+      "AKB_ORGANIZATION_INVALID",
+      `AKB requests are limited to organization ${config.organizationId}.`,
+      400
+    );
+  }
   const subject = {
-    tenant_id: input.subject?.tenantId ?? process.env.SECURITY_PREFLIGHT_TENANT_ID ?? process.env.STRATOS_TENANT_ID ?? "default",
+    tenant_id: config.organizationId,
     user_id: input.subject?.userId ?? "security-preflight-user",
     roles: input.subject?.roles ?? ["stratos_user"],
     classification_clearance:
@@ -286,6 +311,7 @@ function normalizeAkbResponse(payload: Record<string, unknown>, scanRunId: strin
 
 function getAkbConfig() {
   return {
+    organizationId: securityPreflightOrganizationId(),
     ragBaseUrl: firstNonEmpty(process.env.SECURITY_PREFLIGHT_AKB_RAG_BASE_URL, process.env.AKL_RAG_BASE_URL),
     publicBaseUrl: firstNonEmpty(process.env.SECURITY_PREFLIGHT_AKB_PUBLIC_BASE_URL, process.env.NEXT_PUBLIC_AKB_URL),
     serviceToken: firstNonEmpty(process.env.SECURITY_PREFLIGHT_AKB_SERVICE_TOKEN, process.env.AKL_SERVICE_TOKEN),
