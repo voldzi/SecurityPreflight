@@ -33,6 +33,10 @@ Current implementation uses STRATOS components and layout patterns:
   `StructuredList`, `MetricCard`, `Badge`, `RagBadge`, `SelectField`, and
   `Button`;
 - shared `@voldzi/stratos-ui/styles.css` tokens and component classes;
+- central application directory through `GlobalTopbar.currentAppId` and
+  `appUrls`, without a SecurityPreflight-owned app list;
+- shared `StratosApplicationAccessPage` for the authenticated no-access state,
+  including the stable `APPLICATION_ACCESS_MISSING` reason code;
 - hover/focus-only row actions through `StructuredList.actions`;
 - actionable primary controls only when they are wired to API behavior.
 

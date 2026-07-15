@@ -9,3 +9,4 @@ allowBuilds:
   sharp: true
 minimumReleaseAgeExclude:
   - '@voldzi/stratos-ui@0.3.33'
+  - '@voldzi/stratos-ui@0.3.34'

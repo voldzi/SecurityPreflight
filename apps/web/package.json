@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@voldzi/stratos-ui": "0.3.33",
+    "@voldzi/stratos-ui": "0.3.34",
     "lucide-react": "^1.22.0",
     "next": "^15.3.3",
     "pdfjs-dist": "^6.1.200",

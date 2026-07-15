@@ -57,10 +57,10 @@ import {
   SettingsField,
   SettingsTextInput,
   SettingsToggle,
+  StratosApplicationAccessPage,
   StratosSettingsSurface,
   StructuredList,
   WorkspaceSidebar,
-  buildStratosTopbarApps,
   type BadgeTone,
   type CommandCenterItem,
   type DataTableColumn,
@@ -421,21 +421,9 @@ const stratosAppUrls = {
   projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL || "https://stratos.zeleznalady.cz/project",
   akb: process.env.NEXT_PUBLIC_AKB_URL || "https://stratos.zeleznalady.cz/akb",
   archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
+  aiip: process.env.NEXT_PUBLIC_AIIP_URL || "https://stratos.zeleznalady.cz/aiip",
   processforge: process.env.NEXT_PUBLIC_PROCESSFORGE_URL
 };
-const stratosTopbarApps = [
-  { id: "security-preflight", label: "SecurityPreflight", shortLabel: "SP", icon: <ShieldCheck size={15} />, active: true },
-  ...buildStratosTopbarApps("budget-contract", stratosAppUrls).map((app) => ({
-    ...app,
-    active: false,
-    onSelect:
-      !app.disabled && stratosAppUrls[app.id as keyof typeof stratosAppUrls]
-        ? () => {
-            window.location.assign(stratosAppUrls[app.id as keyof typeof stratosAppUrls] as string);
-          }
-        : app.onSelect
-  }))
-];
 
 class ApiRequestError extends Error {
   constructor(
@@ -3976,7 +3964,8 @@ export default function DashboardPage() {
   function renderGlobalTopbar() {
     return (
       <GlobalTopbar
-        apps={stratosTopbarApps}
+        currentAppId="security-preflight"
+        appUrls={stratosAppUrls}
         className="security-global-topbar"
         labels={{ applications: copy.topbar.applications, userMenu: copy.topbar.userMenu, settings: copy.topbar.settings, logout: copy.topbar.logout }}
         context={<span>{workspaceContextLabel}</span>}
@@ -4042,37 +4031,21 @@ export default function DashboardPage() {
   if (accessDenied) {
     return (
       <AppShell
-        className="security-shell security-shell-access-denied"
+        className="security-shell"
         sidebarOpen={false}
         onSidebarChange={setSidebarOpen}
         topbarPlacement="global"
         topbar={renderGlobalTopbar()}
       >
-        <main className="security-access-denied" aria-label={copy.auth.accessDeniedAria}>
-          <section className="security-access-denied-scene">
-            <div className="security-access-visual" aria-hidden="true">
-              <div className="security-access-grid" />
-              <div className="security-access-shield">
-                <ShieldCheck size={54} aria-hidden="true" />
-                <span>SP</span>
-              </div>
-              <div className="security-access-lockline">
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
-            <div className="security-access-copy">
-              <Badge tone="danger">{copy.auth.accessDenied}</Badge>
-              <ErrorState
-                title={copy.auth.accessDeniedTitle}
-                error={null}
-                fallbackMessage={copy.auth.accessDeniedBody}
-                className="security-access-error-state"
-              />
-              <p>{copy.auth.accessDeniedHint}</p>
-            </div>
-          </section>
+        <main aria-label={copy.auth.accessDeniedAria}>
+          <StratosApplicationAccessPage
+            applicationName="SecurityPreflight"
+            applicationShortLabel="SP"
+            statusLabel={copy.auth.accessDenied}
+            title={copy.auth.accessDeniedTitle}
+            message={copy.auth.accessDeniedBody}
+            hint={copy.auth.accessDeniedHint}
+          />
         </main>
         {renderSettingsSurface()}
       </AppShell>
